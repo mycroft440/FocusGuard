@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
+import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -86,82 +88,88 @@ fun WebsiteRulesTab(
         }
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        // Pornografia primeiro, e não perdida entre os predefinidos: é o motivo
-        // pelo qual boa parte das pessoas abre esta tela, e é o único atalho que
-        // cobre sites e palavras de uma vez — o resto da lista é um site cada.
-        item {
-            PornographyPresetRow(
-                selected = PredefinedWebsites.PORNOGRAPHY_RULE in rules,
-                onToggle = { toggle(PredefinedWebsites.PORNOGRAPHY_RULE) }
-            )
-        }
-        item { SectionLabel(stringResource(R.string.protection_sites_add_new)) }
-        item {
-            RuleInputRow(
-                value = input,
-                onValueChange = { input = it; invalidInput = false },
-                placeholder = stringResource(R.string.block_targets_site_placeholder),
-                icon = Icons.Default.Public,
-                isError = invalidInput,
-                onAdd = {
-                    // Só domínio: normalizeRule aceitaria a palavra solta e a
-                    // gravaria como keyword, o que não é o que se pede aqui.
-                    val domain = WebsiteBlocker.extractDomain(input)
-                    if (domain.isEmpty()) {
-                        invalidInput = true
-                    } else {
-                        toggle(domain)
-                        input = ""
+    Column(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Pornografia primeiro, e não perdida entre os predefinidos: é o motivo
+            // pelo qual boa parte das pessoas abre esta tela, e é o único atalho que
+            // cobre sites e palavras de uma vez — o resto da lista é um site cada.
+            item {
+                PornographyPresetRow(
+                    selected = PredefinedWebsites.PORNOGRAPHY_RULE in rules,
+                    onToggle = { toggle(PredefinedWebsites.PORNOGRAPHY_RULE) }
+                )
+            }
+            item { SectionLabel(stringResource(R.string.protection_sites_add_new)) }
+            item {
+                RuleInputRow(
+                    value = input,
+                    onValueChange = { input = it; invalidInput = false },
+                    placeholder = stringResource(R.string.block_targets_site_placeholder),
+                    icon = Icons.Default.Public,
+                    isError = invalidInput,
+                    onAdd = {
+                        // Só domínio: normalizeRule aceitaria a palavra solta e a
+                        // gravaria como keyword, o que não é o que se pede aqui.
+                        val domain = WebsiteBlocker.extractDomain(input)
+                        if (domain.isEmpty()) {
+                            invalidInput = true
+                        } else {
+                            toggle(domain)
+                            input = ""
+                        }
                     }
-                }
-            )
-        }
-        item {
-            Text(
-                text = if (invalidInput) {
-                    stringResource(R.string.block_targets_site_invalid)
-                } else {
-                    stringResource(R.string.block_targets_site_helper)
-                },
-                color = if (invalidInput) DangerRed else TextHint,
-                fontSize = 12.sp
-            )
-        }
-        item { SectionLabel(stringResource(R.string.protection_sites_common)) }
-        items(PredefinedWebsites.ALL_PRESETS, key = { "preset_${it.domain}" }) { website ->
-            val normalized = WebsiteBlocker.normalizeRule(website.domain)
-            WebsitePresetRow(
-                website = website,
-                selected = normalized in rules,
-                onToggle = { toggle(normalized) }
-            )
-        }
-
-        val chosenSites = rules.filterNot(WebsiteBlocker::isKeywordRule)
-        item { SelectedSectionHeader(stringResource(R.string.protection_sites_selected)) }
-        if (chosenSites.isEmpty()) {
+                )
+            }
             item {
                 Text(
-                    stringResource(R.string.protection_sites_none),
-                    color = TextHint,
-                    modifier = Modifier.padding(vertical = 12.dp)
+                    text = if (invalidInput) {
+                        stringResource(R.string.block_targets_site_invalid)
+                    } else {
+                        stringResource(R.string.block_targets_site_helper)
+                    },
+                    color = if (invalidInput) DangerRed else TextHint,
+                    fontSize = 12.sp
                 )
             }
-        } else {
-            items(chosenSites, key = { "chosen_$it" }) { rule ->
-                ProtectionTargetRow(
-                    icon = Icons.Default.Public,
-                    title = WebsiteBlocker.displayRule(rule),
-                    subtitle = stringResource(R.string.block_targets_tab_sites),
-                    onRemove = { onRulesChange(rules.filterNot { it == rule }) }
+            item { SectionLabel(stringResource(R.string.protection_sites_common)) }
+            items(PredefinedWebsites.ALL_PRESETS, key = { "preset_${it.domain}" }) { website ->
+                val normalized = WebsiteBlocker.normalizeRule(website.domain)
+                WebsitePresetRow(
+                    website = website,
+                    selected = normalized in rules,
+                    onToggle = { toggle(normalized) }
                 )
+            }
+
+            val chosenSites = rules.filterNot(WebsiteBlocker::isKeywordRule)
+            item { SelectedSectionHeader(stringResource(R.string.protection_sites_selected)) }
+            if (chosenSites.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(R.string.protection_sites_none),
+                        color = TextHint,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
+            } else {
+                items(chosenSites, key = { "chosen_$it" }) { rule ->
+                    ProtectionTargetRow(
+                        icon = Icons.Default.Public,
+                        title = WebsiteBlocker.displayRule(rule),
+                        subtitle = stringResource(R.string.block_targets_tab_sites),
+                        onRemove = { onRulesChange(rules.filterNot { it == rule }) }
+                    )
+                }
             }
         }
+
+        FocusGuardBannerAd()
     }
 }
 
@@ -185,65 +193,71 @@ fun KeywordRulesTab(
     var invalidInput by remember { mutableStateOf(false) }
     val chosenKeywords = rules.filter(WebsiteBlocker::isKeywordRule)
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            RuleInputRow(
-                value = input,
-                onValueChange = { input = it; invalidInput = false },
-                placeholder = stringResource(R.string.block_targets_keyword_placeholder),
-                icon = Icons.Default.Tag,
-                isError = invalidInput,
-                onAdd = {
-                    val keyword = WebsiteBlocker.normalizeRule("keyword:$input")
-                    when {
-                        keyword.isEmpty() -> invalidInput = true
-                        keyword in rules -> input = ""
-                        isWebsiteRuleAlreadyBlocked(keyword, blockedRules) -> {
-                            onAlreadyBlocked()
-                            input = ""
-                        }
-                        else -> {
-                            onRulesChange((rules + keyword).distinct())
-                            input = ""
+    Column(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                RuleInputRow(
+                    value = input,
+                    onValueChange = { input = it; invalidInput = false },
+                    placeholder = stringResource(R.string.block_targets_keyword_placeholder),
+                    icon = Icons.Default.Tag,
+                    isError = invalidInput,
+                    onAdd = {
+                        val keyword = WebsiteBlocker.normalizeRule("keyword:$input")
+                        when {
+                            keyword.isEmpty() -> invalidInput = true
+                            keyword in rules -> input = ""
+                            isWebsiteRuleAlreadyBlocked(keyword, blockedRules) -> {
+                                onAlreadyBlocked()
+                                input = ""
+                            }
+                            else -> {
+                                onRulesChange((rules + keyword).distinct())
+                                input = ""
+                            }
                         }
                     }
-                }
-            )
-        }
-        item {
-            Text(
-                text = if (invalidInput) {
-                    stringResource(R.string.block_targets_keyword_invalid)
-                } else {
-                    stringResource(R.string.block_targets_keyword_helper)
-                },
-                color = if (invalidInput) DangerRed else TextHint,
-                fontSize = 12.sp
-            )
-        }
-        item { SelectedSectionHeader(stringResource(R.string.block_targets_keyword_selected)) }
-        if (chosenKeywords.isEmpty()) {
+                )
+            }
             item {
                 Text(
-                    stringResource(R.string.block_targets_keyword_none),
-                    color = TextHint,
-                    modifier = Modifier.padding(vertical = 12.dp)
+                    text = if (invalidInput) {
+                        stringResource(R.string.block_targets_keyword_invalid)
+                    } else {
+                        stringResource(R.string.block_targets_keyword_helper)
+                    },
+                    color = if (invalidInput) DangerRed else TextHint,
+                    fontSize = 12.sp
                 )
             }
-        } else {
-            items(chosenKeywords, key = { "keyword_$it" }) { rule ->
-                ProtectionTargetRow(
-                    icon = Icons.Default.Tag,
-                    title = WebsiteBlocker.displayRule(rule),
-                    subtitle = stringResource(R.string.block_targets_tab_keywords),
-                    onRemove = { onRulesChange(rules.filterNot { it == rule }) }
-                )
+            item { SelectedSectionHeader(stringResource(R.string.block_targets_keyword_selected)) }
+            if (chosenKeywords.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(R.string.block_targets_keyword_none),
+                        color = TextHint,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
+            } else {
+                items(chosenKeywords, key = { "keyword_$it" }) { rule ->
+                    ProtectionTargetRow(
+                        icon = Icons.Default.Tag,
+                        title = WebsiteBlocker.displayRule(rule),
+                        subtitle = stringResource(R.string.block_targets_tab_keywords),
+                        onRemove = { onRulesChange(rules.filterNot { it == rule }) }
+                    )
+                }
             }
         }
+
+        FocusGuardBannerAd()
     }
 }
 
