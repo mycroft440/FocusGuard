@@ -10,14 +10,14 @@ class UnknownSourcesInterceptionPolicyTest {
         assertThat(
             UnknownSourcesInterceptionPolicy.shouldProtect(
                 packageName = "com.android.settings",
-                className = "com.android.settings.Settings$ManageExternalSourcesActivity",
+                className = "com.android.settings.Settings\$ManageExternalSourcesActivity",
                 values = emptyList()
             )
         ).isTrue()
         assertThat(
             UnknownSourcesInterceptionPolicy.shouldProtect(
                 packageName = "com.android.settings",
-                className = "com.android.settings.Settings$ManageAppExternalSourcesActivity",
+                className = "com.android.settings.Settings\$ManageAppExternalSourcesActivity",
                 values = emptyList()
             )
         ).isTrue()
@@ -54,7 +54,7 @@ class UnknownSourcesInterceptionPolicyTest {
         assertThat(
             UnknownSourcesInterceptionPolicy.shouldProtect(
                 packageName = "com.android.settings",
-                className = "com.android.settings.Settings$ManageApplicationsActivity",
+                className = "com.android.settings.Settings\$ManageApplicationsActivity",
                 values = listOf("Aplicativos")
             )
         ).isFalse()
