@@ -5,7 +5,7 @@
     <string name="extra_security_title">Bloqueios de segurança extras</string>
     <string name="extra_security_intro">Estas proteções são opcionais e ficam separadas das proteções automáticas de bloqueio do HardBlock.</string>
     <string name="extra_security_unknown_sources_title">Bloquear instalação de apps de fontes desconhecidas</string>
-    <string name="extra_security_unknown_sources_description">Impede que aplicativos habilitem a instalação de APKs externos depois que você revisar e remover as permissões que já estavam concedidas.</string>
+    <string name="extra_security_unknown_sources_description">Impede que a permissão para instalar por fontes desconhecidas seja ativada novamente depois que você remover as autorizações existentes. Se houver Device Owner, ele é usado como uma camada nativa extra.</string>
     <string name="extra_security_before_activation_title">Antes de ativar este bloqueio</string>
     <string name="extra_security_before_activation_body">Primeiro remova as permissões que já estão ativas. Toque em Abrir configurações. Na tela “Instalar apps desconhecidos” do Android, abra cada aplicativo que aparecer como permitido e desative “Permitir desta fonte”. Depois volte ao HardBlock e confirme que removeu as permissões atuais. O HardBlock só aplicará o bloqueio depois da sua confirmação.</string>
     <string name="extra_security_open_unknown_sources_settings">Abrir configurações</string>
@@ -13,9 +13,9 @@
     <string name="extra_security_confirmation_body">Depois de desativar “Permitir desta fonte” nos aplicativos que tinham essa autorização, confirme abaixo. O HardBlock não consegue revogar automaticamente essa permissão de outros aplicativos usando as APIs públicas do Android, por isso o bloqueio não é ativado até você confirmar esta etapa.</string>
     <string name="extra_security_open_settings_again">Abrir configurações novamente</string>
     <string name="extra_security_confirm_revoked">Já removi as permissões — ativar bloqueio</string>
-    <string name="extra_security_device_owner_required">O Device Owner precisa estar ativo para habilitar este bloqueio extra de segurança.</string>
+    <string name="extra_security_accessibility_required">Ative a Acessibilidade do FocusGuard para usar esta proteção sem Device Owner.</string>
     <string name="extra_security_settings_open_failed">O Android não conseguiu abrir as configurações de “Instalar apps desconhecidos” neste dispositivo.</string>
-    <string name="extra_security_policy_failed">O Android não confirmou a política de segurança para fontes desconhecidas.</string>
-    <string name="extra_security_unknown_sources_enabled">A instalação por fontes desconhecidas está bloqueada.</string>
-    <string name="extra_security_unknown_sources_disabled">A instalação por fontes desconhecidas foi liberada novamente.</string>
+    <string name="extra_security_policy_failed">O FocusGuard não conseguiu ativar a proteção contra fontes desconhecidas.</string>
+    <string name="extra_security_unknown_sources_enabled">A proteção contra instalação por fontes desconhecidas está ativa.</string>
+    <string name="extra_security_unknown_sources_disabled">A proteção contra instalação por fontes desconhecidas foi desativada.</string>
 </resources>
