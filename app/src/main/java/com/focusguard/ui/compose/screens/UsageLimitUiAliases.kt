@@ -5,3 +5,4 @@ package com.focusguard.ui.compose.screens
  * pacote `screens`, sem duplicar as classes declaradas nos componentes.
  */
 typealias UsageLimitAppUi = com.focusguard.ui.compose.components.limits.UsageLimitAppUi
+typealias WebsiteLimitUi = com.focusguard.ui.compose.components.limits.WebsiteLimitUi

@@ -10,8 +10,6 @@ import com.focusguard.data.PredefinedApps
  * own.
  */
 object AssociatedBlockTargets {
-    private const val WEBSITE_COMPANIONS_ENABLED = false
-
     const val DEFAULT_BLOCK_COMPANION = false
 
     data class WebsiteCompanion(
@@ -34,9 +32,8 @@ object AssociatedBlockTargets {
             ?.takeIf(String::isNotEmpty)
     }
 
-    /** Sites are no longer block targets; the site blocker owns its own list. */
     fun websiteCompanionsForApps(packageNames: Collection<String>): List<WebsiteCompanion> {
-        if (packageNames.isEmpty() || !WEBSITE_COMPANIONS_ENABLED) return emptyList()
+        if (packageNames.isEmpty()) return emptyList()
 
         val requestedPackages = packageNames.filter(String::isNotBlank).toSet()
         if (requestedPackages.isEmpty()) return emptyList()

@@ -38,7 +38,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppUsageLimit
+import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.monetization.MonetizationPolicy
 import com.focusguard.monetization.RewardedGateCoordinator
@@ -48,9 +50,11 @@ import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.compose.components.limits.UsageLimitItem
+import com.focusguard.ui.compose.components.limits.WebsiteLimitItem
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.UsageLimitBehaviorPolicy
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +68,19 @@ class AppLimitsTabState {
     internal var hasLoaded = false
 }
 
+@Stable
+class WebsiteLimitsSharedState {
+    internal val allConfiguredCount = mutableIntStateOf(0)
+}
+
+@Stable
+class WebsiteLimitsTabState(
+    internal val shared: WebsiteLimitsSharedState
+) {
+    internal val sites = mutableStateOf<List<WebsiteLimitUi>>(emptyList())
+    internal val isLoading = mutableStateOf(true)
+    internal var hasLoaded = false
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,12 +89,20 @@ fun UsageLimitsScreen(
     onPermissionsRequired: () -> Unit,
     onBack: () -> Unit
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var permissionResumeKey by remember { mutableIntStateOf(0) }
     var protectionPermissionsReady by remember { mutableStateOf<Boolean?>(null) }
     var credentialRevision by remember { mutableIntStateOf(0) }
     val appLimitsState = remember { AppLimitsTabState() }
+    val websiteLimitsSharedState = remember { WebsiteLimitsSharedState() }
+    val websiteLimitsState = remember(websiteLimitsSharedState) {
+        WebsiteLimitsTabState(websiteLimitsSharedState)
+    }
+    val keywordLimitsState = remember(websiteLimitsSharedState) {
+        WebsiteLimitsTabState(websiteLimitsSharedState)
+    }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     val hasMasterCredential = remember(credentialRevision) { credentialManager.hasCredential() }
     val masterPasswordLauncher = rememberLauncherForActivityResult(
@@ -144,17 +169,78 @@ fun UsageLimitsScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            AppLimitsTab(
-                permissionsMissing = false,
-                authManager = authManager,
-                hasMasterCredential = hasMasterCredential,
-                onConfigureMasterPassword = openMasterPassword,
-                onPermissionsRequired = onPermissionsRequired,
-                onWebsiteLimitCreated = {},
-                state = appLimitsState
-            )
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = AccentCyan
+            ) {
+                UsageLimitTab(
+                    selected = selectedTab == 0,
+                    text = stringResource(R.string.sessions_category_apps),
+                    onClick = { selectedTab = 0 }
+                )
+                UsageLimitTab(
+                    selected = selectedTab == 1,
+                    text = stringResource(R.string.block_targets_tab_sites),
+                    onClick = { selectedTab = 1 }
+                )
+                UsageLimitTab(
+                    selected = selectedTab == 2,
+                    text = stringResource(R.string.limits_tab_keywords),
+                    onClick = { selectedTab = 2 }
+                )
+            }
+
+            when (selectedTab) {
+                0 -> AppLimitsTab(
+                    permissionsMissing = false,
+                    authManager = authManager,
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = openMasterPassword,
+                    onPermissionsRequired = onPermissionsRequired,
+                    onWebsiteLimitCreated = {
+                        websiteLimitsState.hasLoaded = false
+                        websiteLimitsState.isLoading.value = true
+                    },
+                    state = appLimitsState
+                )
+                1 -> WebsiteLimitsTab(
+                    permissionsMissing = false,
+                    authManager = authManager,
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = openMasterPassword,
+                    onPermissionsRequired = onPermissionsRequired,
+                    keywordMode = false,
+                    state = websiteLimitsState
+                )
+                else -> WebsiteLimitsTab(
+                    permissionsMissing = false,
+                    authManager = authManager,
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = openMasterPassword,
+                    onPermissionsRequired = onPermissionsRequired,
+                    keywordMode = true,
+                    state = keywordLimitsState
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun UsageLimitTab(selected: Boolean, text: String, onClick: () -> Unit) {
+    Tab(
+        selected = selected,
+        onClick = onClick,
+        text = {
+            Text(
+                text,
+                color = if (selected) AccentCyan else TextHint,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -505,7 +591,7 @@ fun AppLimitsTab(
             hasMasterCredential = hasMasterCredential,
             onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showDialog = false },
-            onSave = { minutes, enabled, lockMode, _, lockUntil, _ ->
+            onSave = { minutes, enabled, lockMode, _, lockUntil, companionDomains ->
                 val appToSave = selectedApp ?: return@AppLimitRedesignedSheet
                 val monetizedAction: () -> Unit = {
                     scope.launch(Dispatchers.IO) {
@@ -514,6 +600,7 @@ fun AppLimitsTab(
                             return@launch
                         }
                         val limitDao = db.appUsageLimitDao()
+                        var companionWebsiteCreated = false
                         val updated = if (minutes != null && minutes > 0) {
                             // AppUsageLimitMeter conta o primeiro plano a partir
                             // de createdAt, então salvar zera a conta do dia aqui.
@@ -532,6 +619,43 @@ fun AppLimitsTab(
                                     unlockWithPassword = lockMode.equals("PASSWORD", ignoreCase = true)
                                 )
                             )
+
+                            if (companionDomains.isNotEmpty()) {
+                                val websiteDao = db.websiteUsageLimitDao()
+                                val existingWebsiteRules = websiteDao.getAllStatic()
+                                    .mapTo(mutableSetOf()) {
+                                        WebsiteBlocker.normalizeRule(it.domain)
+                                    }
+                                companionDomains
+                                    .map(WebsiteBlocker::normalizeRule)
+                                    .filter(String::isNotEmpty)
+                                    .distinct()
+                                    .forEach { domain ->
+                                        if (domain !in existingWebsiteRules) {
+                                            val websiteLockMode = when {
+                                                UsageLimitBehaviorPolicy.isPauseMode(lockMode) ->
+                                                    UsageLimitBehaviorPolicy.pauseModeFor(domain)
+                                                UsageLimitBehaviorPolicy
+                                                    .isBlockUntilTomorrowMode(lockMode) ->
+                                                    UsageLimitBehaviorPolicy
+                                                        .blockUntilTomorrowModeFor(domain)
+                                                else -> lockMode
+                                            }
+                                            websiteDao.insert(
+                                                WebsiteUsageLimit(
+                                                    domain = domain,
+                                                    dailyLimitMinutes = minutes,
+                                                    isEnabled = enabled,
+                                                    lockMode = websiteLockMode,
+                                                    lockPasswordHash = null,
+                                                    lockUntilTimestamp = lockUntil
+                                                )
+                                            )
+                                            existingWebsiteRules += domain
+                                            companionWebsiteCreated = true
+                                        }
+                                    }
+                            }
 
                             appToSave.copy(
                                 currentLimitMinutes = minutes,
@@ -557,6 +681,7 @@ fun AppLimitsTab(
                         withContext(Dispatchers.Main) {
                             apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                             selectedApp = updated
+                            if (companionWebsiteCreated) onWebsiteLimitCreated()
                             showDialog = false
                         }
                     }
@@ -639,6 +764,542 @@ private fun UsageLimitSectionHeader(text: String, accent: Boolean = false) {
         fontWeight = FontWeight.ExtraBold,
         modifier = Modifier.padding(top = 18.dp, bottom = 8.dp)
     )
+}
+
+@Composable
+fun WebsiteLimitsTab(
+    permissionsMissing: Boolean,
+    authManager: AuthManager,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit,
+    onPermissionsRequired: () -> Unit,
+    keywordMode: Boolean = false,
+    state: WebsiteLimitsTabState
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val db = rememberAppDatabase()
+    val blockingSessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    var sites by state.sites
+    var allConfiguredCount by state.shared.allConfiguredCount
+    var isLoading by state.isLoading
+    var showAddDialog by remember { mutableStateOf(false) }
+    var initialRuleForAdd by remember { mutableStateOf<String?>(null) }
+    var selectedSite by remember { mutableStateOf<WebsiteLimitUi?>(null) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showMasterCredentialConfirm by remember { mutableStateOf(false) }
+    var masterCredentialPromptRes by remember {
+        mutableIntStateOf(R.string.master_credential_required_to_change_limit)
+    }
+    var showTimeLockedAlert by remember { mutableStateOf(false) }
+    var showSafetyModeAlert by remember { mutableStateOf(false) }
+    var showCredentialMissingAlert by remember { mutableStateOf(false) }
+    var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
+    var siteInput by remember { mutableStateOf("") }
+    var invalidSiteInput by remember { mutableStateOf(false) }
+    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
+
+    fun requestSiteMutation(site: WebsiteLimitUi, promptRes: Int, action: () -> Unit) {
+        when (
+            MasterCredentialPolicy.evaluateLimitMutation(
+                lockMode = site.lockMode,
+                lockUntilTimestamp = site.lockUntilTimestamp,
+                safetyModeEnabled = authManager.isSafetyModeEnabled(),
+                hasMasterCredential = credentialManager.hasCredential(),
+                masterCredentialVerified = false
+            )
+        ) {
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
+                showTimeLockedAlert = true
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
+                showSafetyModeAlert = true
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
+                showCredentialMissingAlert = true
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
+                selectedSite = site
+                masterCredentialPromptRes = promptRes
+                pendingAction = action
+                showMasterCredentialConfirm = true
+            }
+            MasterCredentialPolicy.MutationGate.ALLOWED -> action()
+        }
+    }
+
+    fun requestRuleEditor(rule: String) {
+        val normalized = WebsiteBlocker.normalizeRule(rule)
+        if (normalized.isEmpty()) return
+        val configured = sites.firstOrNull {
+            WebsiteBlocker.normalizeRule(it.domain) == normalized
+        }
+        if (configured == null) {
+            initialRuleForAdd = normalized
+            showAddDialog = true
+        } else {
+            requestSiteMutation(
+                configured,
+                R.string.master_credential_required_to_change_limit
+            ) {
+                selectedSite = configured
+                showEditDialog = true
+            }
+        }
+    }
+
+    fun requestSiteDelete(site: WebsiteLimitUi) {
+        val normalized = WebsiteBlocker.normalizeRule(site.domain)
+        if (normalized.isEmpty()) return
+        requestSiteMutation(
+            site,
+            R.string.master_credential_required_to_remove_limit
+        ) {
+            scope.launch(Dispatchers.IO) {
+                val dao = db.websiteUsageLimitDao()
+                dao.getAllStatic()
+                    .firstOrNull {
+                        WebsiteBlocker.normalizeRule(it.domain) == normalized
+                    }
+                    ?.let { dao.delete(it) }
+                blockingSessionManager.checkAndEnforce()
+                withContext(Dispatchers.Main) {
+                    sites = sites.filterNot {
+                        WebsiteBlocker.normalizeRule(it.domain) == normalized
+                    }
+                    allConfiguredCount = (allConfiguredCount - 1).coerceAtLeast(0)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(state) {
+        if (state.hasLoaded) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            val today = java.text.SimpleDateFormat(
+                "yyyy-MM-dd",
+                java.util.Locale.US
+            ).format(java.util.Date())
+            val allLimits = db.websiteUsageLimitDao().getAllStatic()
+            val usageStats = com.focusguard.utils.WebsiteUsageLimitPolicy.aggregateUsageByRule(
+                usageByIdentifier = db.dailyUsageStatDao()
+                    .getStatsForDateStatic(today)
+                    .map { it.identifier to it.timeSpentMs },
+                configuredRules = allLimits.map { it.domain }
+            )
+            val loaded = allLimits
+                .filter {
+                    WebsiteBlocker.isKeywordRule(WebsiteBlocker.normalizeRule(it.domain)) == keywordMode
+                }
+                .map {
+                    val normalized = WebsiteBlocker.normalizeRule(it.domain)
+                    WebsiteLimitUi(
+                        domain = normalized,
+                        dailyLimitMinutes = it.dailyLimitMinutes,
+                        isEnabled = it.isEnabled,
+                        usageMs = usageStats[normalized] ?: 0L,
+                        lockMode = it.lockMode,
+                        lockPasswordHash = it.lockPasswordHash,
+                        lockUntilTimestamp = it.lockUntilTimestamp
+                    )
+                }
+            withContext(Dispatchers.Main) {
+                sites = loaded
+                allConfiguredCount = allLimits.size
+                isLoading = false
+                state.hasLoaded = true
+            }
+        }
+    }
+
+    val keywordPresetRules = remember {
+        PredefinedWebsites.PORNOGRAPHY_KEYWORDS
+            .map { WebsiteBlocker.normalizeRule("keyword:$it") }
+            .filter(String::isNotEmpty)
+    }
+    val orderedKeywordRules = remember(keywordPresetRules, sites) {
+        (keywordPresetRules + sites.map { WebsiteBlocker.normalizeRule(it.domain) })
+            .filter(String::isNotEmpty)
+            .distinct()
+    }
+    val configuredByRule = remember(sites) {
+        sites.associateBy { WebsiteBlocker.normalizeRule(it.domain) }
+    }
+
+    if (!keywordMode) {
+        if (isLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = AccentCyan)
+            }
+        } else {
+            // Keep this catalogue on the exact same visual primitives as the
+            // passwordless timed-block picker. Usage Limits only changes what a
+            // tap does: it opens the daily-limit editor instead of selecting a
+            // session target.
+            val pornographyRule = WebsiteBlocker.normalizeRule(
+                PredefinedWebsites.PORNOGRAPHY_RULE
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    PornographyPresetRow(
+                        selected = configuredByRule[pornographyRule]?.isEnabled == true,
+                        onToggle = { requestRuleEditor(pornographyRule) }
+                    )
+                }
+                item { SectionLabel(stringResource(R.string.protection_sites_add_new)) }
+                item {
+                    RuleInputRow(
+                        value = siteInput,
+                        onValueChange = {
+                            siteInput = it
+                            invalidSiteInput = false
+                        },
+                        placeholder = stringResource(R.string.block_targets_site_placeholder),
+                        icon = Icons.Default.Public,
+                        isError = invalidSiteInput,
+                        onAdd = {
+                            val domain = WebsiteBlocker.extractDomain(siteInput)
+                            if (domain.isEmpty()) {
+                                invalidSiteInput = true
+                            } else {
+                                siteInput = ""
+                                invalidSiteInput = false
+                                requestRuleEditor(domain)
+                            }
+                        }
+                    )
+                }
+                item {
+                    Text(
+                        text = if (invalidSiteInput) {
+                            stringResource(R.string.block_targets_site_invalid)
+                        } else {
+                            stringResource(R.string.block_targets_site_helper)
+                        },
+                        color = if (invalidSiteInput) DangerRed else TextHint,
+                        fontSize = 12.sp
+                    )
+                }
+                item { SectionLabel(stringResource(R.string.protection_sites_common)) }
+                items(
+                    PredefinedWebsites.ALL_PRESETS,
+                    key = { "limit_preset_${it.domain}" }
+                ) { website ->
+                    val normalized = WebsiteBlocker.normalizeRule(website.domain)
+                    WebsitePresetRow(
+                        website = website,
+                        selected = configuredByRule[normalized]?.isEnabled == true,
+                        onToggle = { requestRuleEditor(normalized) }
+                    )
+                }
+
+                item {
+                    SelectedSectionHeader(stringResource(R.string.protection_sites_selected))
+                }
+                if (sites.isEmpty()) {
+                    item {
+                        Text(
+                            stringResource(R.string.protection_sites_none),
+                            color = TextHint,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
+                } else {
+                    items(
+                        sites.sortedBy { WebsiteBlocker.displayRule(it.domain).lowercase() },
+                        key = { "configured_${WebsiteBlocker.normalizeRule(it.domain)}" }
+                    ) { configured ->
+                        WebsiteLimitItem(
+                            site = configured,
+                            onClick = { requestRuleEditor(configured.domain) },
+                            onDelete = { requestSiteDelete(configured) }
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            Button(
+                onClick = {
+                    initialRuleForAdd = null
+                    showAddDialog = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Add, null, tint = DarkBg, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.limits_add_keyword_btn),
+                    color = DarkBg,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (isLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AccentCyan)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    item {
+                        UsageLimitSectionHeader(
+                            stringResource(R.string.limits_common_keywords_section),
+                            accent = true
+                        )
+                    }
+                    items(orderedKeywordRules, key = { "rule_$it" }) { rule ->
+                        val configured = configuredByRule[rule]
+                        if (configured != null) {
+                            WebsiteLimitItem(
+                                site = configured,
+                                onClick = { requestRuleEditor(rule) },
+                                onDelete = { requestSiteDelete(configured) }
+                            )
+                        } else {
+                            UsageLimitPresetRow(
+                                rule = rule,
+                                keywordMode = true,
+                                onClick = {
+                                    initialRuleForAdd = rule
+                                    showAddDialog = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddUsageLimitRuleDialog(
+            initialRule = initialRuleForAdd,
+            keywordMode = keywordMode,
+            permissionsMissing = permissionsMissing,
+            hasMasterCredential = hasMasterCredential,
+            onConfigureMasterPassword = onConfigureMasterPassword,
+            onDismiss = {
+                showAddDialog = false
+                initialRuleForAdd = null
+            },
+            onSave = { rule, minutes, lockMode, _, lockUntil ->
+                val clean = WebsiteBlocker.normalizeRule(rule)
+                if (clean.isEmpty() || WebsiteBlocker.isKeywordRule(clean) != keywordMode) {
+                    return@AddUsageLimitRuleDialog
+                }
+                val targetAlreadyConfigured = sites.any {
+                    WebsiteBlocker.normalizeRule(it.domain) == clean
+                }
+                val monetizedAction: () -> Unit = {
+                    scope.launch(Dispatchers.IO) {
+                        if (!ProtectionPermissionGate.read(context).isReady) {
+                            withContext(Dispatchers.Main) { onPermissionsRequired() }
+                            return@launch
+                        }
+                        val dao = db.websiteUsageLimitDao()
+                        dao.getAllStatic()
+                            .filter {
+                                it.domain != clean && WebsiteBlocker.normalizeRule(it.domain) == clean
+                            }
+                            .forEach { dao.delete(it) }
+                        dao.insert(
+                            WebsiteUsageLimit(
+                                domain = clean,
+                                dailyLimitMinutes = minutes,
+                                isEnabled = true,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil
+                            )
+                        )
+                        blockingSessionManager.checkAndEnforce()
+                        withContext(Dispatchers.Main) {
+                            sites = sites.filterNot {
+                                WebsiteBlocker.normalizeRule(it.domain) == clean
+                            } + WebsiteLimitUi(
+                                domain = clean,
+                                dailyLimitMinutes = minutes,
+                                isEnabled = true,
+                                usageMs = 0L,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil
+                            )
+                            if (!targetAlreadyConfigured) allConfiguredCount++
+                            showAddDialog = false
+                            initialRuleForAdd = null
+                        }
+                    }
+                }
+                val isCreatingLimit = minutes > 0 && !targetAlreadyConfigured
+                if (
+                    isCreatingLimit &&
+                    MonetizationPolicy.requiresExtraUsageLimitAd(
+                        allConfiguredCount,
+                        targetAlreadyConfigured
+                    )
+                ) {
+                    RewardedGateCoordinator.launch(
+                        context = context,
+                        requiredAds = 1,
+                        title = if (keywordMode) "Adicionar mais uma palavra" else "Adicionar mais um site",
+                        description = if (keywordMode) {
+                            "Assista a 1 anúncio para adicionar esta palavra ao limite diário."
+                        } else {
+                            "Assista a 1 anúncio para adicionar este site ao limite diário."
+                        },
+                        action = monetizedAction
+                    )
+                } else {
+                    monetizedAction()
+                }
+            }
+        )
+    }
+
+    if (showEditDialog && selectedSite != null) {
+        EditWebsiteLimitDialog(
+            site = selectedSite!!,
+            permissionsMissing = permissionsMissing,
+            onDismiss = { showEditDialog = false },
+            onSave = { minutes, enabled, lockMode, _, lockUntil ->
+                val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
+                scope.launch(Dispatchers.IO) {
+                    if (!ProtectionPermissionGate.read(context).isReady) {
+                        withContext(Dispatchers.Main) { onPermissionsRequired() }
+                        return@launch
+                    }
+                    val dao = db.websiteUsageLimitDao()
+                    val normalizedRule = WebsiteBlocker.normalizeRule(siteToEdit.domain)
+                    if (normalizedRule.isEmpty()) return@launch
+                    if (minutes <= 0) {
+                        dao.getAllStatic()
+                            .firstOrNull {
+                                WebsiteBlocker.normalizeRule(it.domain) == normalizedRule
+                            }
+                            ?.let { dao.delete(it) }
+                        blockingSessionManager.checkAndEnforce()
+                        withContext(Dispatchers.Main) {
+                            sites = sites.filterNot {
+                                WebsiteBlocker.normalizeRule(it.domain) == normalizedRule
+                            }
+                            allConfiguredCount = (allConfiguredCount - 1).coerceAtLeast(0)
+                            showEditDialog = false
+                        }
+                        return@launch
+                    }
+                    dao.insert(
+                        WebsiteUsageLimit(
+                            domain = normalizedRule,
+                            dailyLimitMinutes = minutes,
+                            isEnabled = enabled,
+                            lockMode = lockMode,
+                            lockPasswordHash = null,
+                            lockUntilTimestamp = lockUntil
+                        )
+                    )
+                    blockingSessionManager.checkAndEnforce()
+                    withContext(Dispatchers.Main) {
+                        sites = sites.map {
+                            if (WebsiteBlocker.normalizeRule(it.domain) == normalizedRule) {
+                                it.copy(
+                                    domain = normalizedRule,
+                                    dailyLimitMinutes = minutes,
+                                    isEnabled = enabled,
+                                    lockMode = lockMode,
+                                    lockPasswordHash = null,
+                                    lockUntilTimestamp = lockUntil
+                                )
+                            } else it
+                        }
+                        showEditDialog = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showMasterCredentialConfirm && selectedSite != null) {
+        ConfirmMasterCredentialDialog(
+            promptRes = masterCredentialPromptRes,
+            onDismiss = {
+                showMasterCredentialConfirm = false
+                pendingAction = null
+            },
+            onConfirmed = {
+                showMasterCredentialConfirm = false
+                pendingAction?.invoke()
+                pendingAction = null
+            }
+        )
+    }
+
+    LimitMutationAlerts(
+        showTimeLocked = showTimeLockedAlert,
+        onTimeLockedDismiss = { showTimeLockedAlert = false },
+        showSafetyMode = showSafetyModeAlert,
+        onSafetyModeDismiss = { showSafetyModeAlert = false },
+        showCredentialMissing = showCredentialMissingAlert,
+        onCredentialMissingDismiss = { showCredentialMissingAlert = false },
+        onConfigureMasterPassword = onConfigureMasterPassword
+    )
+}
+
+@Composable
+private fun UsageLimitPresetRow(
+    rule: String,
+    keywordMode: Boolean,
+    onClick: () -> Unit
+) {
+    val icon: ImageVector = if (keywordMode) Icons.Default.Tag else Icons.Default.Public
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(AccentCyan.copy(alpha = 0.10f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = AccentCyan)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    WebsiteBlocker.displayRule(rule),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+                Text(
+                    stringResource(R.string.limits_preset_not_configured),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+            Icon(Icons.Default.Add, contentDescription = null, tint = AccentCyan)
+        }
+    }
 }
 
 @Composable

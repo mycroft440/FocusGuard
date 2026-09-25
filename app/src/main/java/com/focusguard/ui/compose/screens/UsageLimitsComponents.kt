@@ -508,6 +508,165 @@ fun AppLimitDialog(
 }
 
 @Composable
+fun AddWebsiteLimitDialog(
+    permissionsMissing: Boolean,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit,
+    onDismiss: () -> Unit,
+    onSave: (String, Int, String, String?, Long?) -> Unit
+) {
+    var domain by remember { mutableStateOf("") }
+    var hours by remember { mutableStateOf("") }
+    var lockMode by remember { mutableStateOf("NONE") }
+    var days by remember { mutableStateOf("") }
+    var confirmed by remember { mutableStateOf(true) }
+
+    // Um limite de uso conta tempo gasto num alvo, e uma palavra não é um alvo em
+    // que se passa duas horas. Por isso aqui vale só domínio — extractDomain, e
+    // não normalizeRule, que aceitaria a palavra solta como regra de keyword.
+    val normalizedDomain = WebsiteBlocker.extractDomain(domain)
+    val domainValid = normalizedDomain.isNotEmpty()
+    val minutes = (hours.replace(',', '.').toDoubleOrNull()?.times(60))?.toInt() ?: 0
+    val canSave = domainValid && minutes > 0 && (lockMode == "NONE" || confirmed)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.limits_add_site_btn),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                PermissionWarning(permissionsMissing)
+                OutlinedTextField(
+                    value = domain,
+                    onValueChange = { domain = it },
+                    label = { Text(stringResource(R.string.limits_domain_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = domain.isNotBlank() && !domainValid,
+                    supportingText = {
+                        if (domain.isNotBlank() && !domainValid) {
+                            Text(stringResource(R.string.block_targets_site_invalid))
+                        } else {
+                            Text(stringResource(R.string.block_targets_site_helper))
+                        }
+                    }
+                )
+                Spacer(Modifier.height(8.dp))
+                WebsitePresetChips(
+                    selectedDomain = normalizedDomain,
+                    onPick = { domain = it }
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = hours,
+                    onValueChange = { value ->
+                        if (value.isEmpty() || value.replace(',', '.').toDoubleOrNull() != null) {
+                            hours = value
+                        }
+                    },
+                    label = { Text(stringResource(R.string.limits_daily_hours_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(16.dp))
+                LimitSecuritySection(
+                    lockMode = lockMode,
+                    onLockModeChange = { lockMode = it },
+                    days = days,
+                    onDaysChange = { days = it },
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = onConfigureMasterPassword,
+                    onConfirmed = { confirmed = it }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canSave,
+                onClick = {
+                    val until = days.toLongOrNull()
+                        ?.takeIf { lockMode == "TIME" && it > 0L }
+                        ?.let { System.currentTimeMillis() + TimeUnit.DAYS.toMillis(it) }
+                    onSave(normalizedDomain, minutes, lockMode, null, until)
+                }
+            ) {
+                Text(stringResource(R.string.save), color = if (canSave) AccentCyan else TextHint)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.pomodoro_cancel_btn), color = TextHint)
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surface
+    )
+}
+
+/**
+ * One-tap shortcuts for the sites people most often limit.
+ *
+ * Typing a domain by hand still works and is the only way to reach anything off
+ * this list, but "YouTube" is a name and `youtube.com` is a spelling — the chips
+ * spare the user from having to know the second one.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WebsitePresetChips(
+    selectedDomain: String,
+    onPick: (String) -> Unit
+) {
+    Text(
+        stringResource(R.string.limits_preset_sites),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(Modifier.height(6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PredefinedWebsites.POPULAR.forEach { website ->
+            val selected = WebsiteBlocker.normalizeRule(website.domain) == selectedDomain
+            FilterChip(
+                selected = selected,
+                onClick = { onPick(website.domain) },
+                label = { Text(website.name, fontSize = 12.sp) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = AccentCyan.copy(alpha = 0.20f),
+                    selectedLabelColor = AccentCyan
+                )
+            )
+        }
+    }
+}
+
+@Composable
+fun EditWebsiteLimitDialog(
+    site: WebsiteLimitUi,
+    permissionsMissing: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (Int, Boolean, String, String?, Long?) -> Unit
+) {
+    val normalizedRule = WebsiteBlocker.normalizeRule(site.domain)
+    WebsiteUsageLimitEditorSheet(
+        initialRule = normalizedRule,
+        keywordMode = WebsiteBlocker.isKeywordRule(normalizedRule),
+        permissionsMissing = permissionsMissing,
+        initialMinutes = site.dailyLimitMinutes,
+        initialLockMode = site.lockMode,
+        initialLockUntilTimestamp = site.lockUntilTimestamp,
+        allowTargetEditing = false,
+        allowRemove = true,
+        onDismiss = onDismiss,
+        onSave = { _, minutes, enabled, lockMode, lockUntil ->
+            onSave(minutes ?: 0, enabled, lockMode, null, lockUntil)
+        }
+    )
+}
+
+@Composable
 private fun PermissionWarning(visible: Boolean) {
     if (!visible) return
     Card(
