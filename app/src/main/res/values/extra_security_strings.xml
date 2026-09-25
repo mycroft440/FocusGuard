@@ -5,7 +5,7 @@
     <string name="extra_security_title">Extra security blocks</string>
     <string name="extra_security_intro">These protections are optional and stay separate from HardBlock’s automatic blocking protections.</string>
     <string name="extra_security_unknown_sources_title">Block installation from unknown app sources</string>
-    <string name="extra_security_unknown_sources_description">Prevents apps from enabling installation of external APKs after you review and remove permissions that were already granted.</string>
+    <string name="extra_security_unknown_sources_description">Prevents unknown-source permission from being enabled again after you remove existing grants. Device Owner is used as an extra native layer when available.</string>
     <string name="extra_security_before_activation_title">Before enabling this block</string>
     <string name="extra_security_before_activation_body">First remove permissions that are already active. Tap Open settings. On Android’s “Install unknown apps” screen, open every app shown as allowed and turn off “Allow from this source”. Then return to HardBlock and confirm that you removed the current permissions. HardBlock will only apply the block after your confirmation.</string>
     <string name="extra_security_open_unknown_sources_settings">Open settings</string>
@@ -13,9 +13,9 @@
     <string name="extra_security_confirmation_body">After turning off “Allow from this source” for the apps that had it enabled, confirm below. HardBlock cannot revoke those permissions from other apps automatically with the public Android APIs, so the block is not activated until you confirm this step.</string>
     <string name="extra_security_open_settings_again">Open settings again</string>
     <string name="extra_security_confirm_revoked">I removed the permissions — enable block</string>
-    <string name="extra_security_device_owner_required">Device Owner must be active to enable this extra security block.</string>
+    <string name="extra_security_accessibility_required">Enable FocusGuard Accessibility to use this protection without Device Owner.</string>
     <string name="extra_security_settings_open_failed">Android could not open the “Install unknown apps” settings on this device.</string>
-    <string name="extra_security_policy_failed">Android did not confirm the unknown-sources security policy.</string>
-    <string name="extra_security_unknown_sources_enabled">Installation from unknown app sources is now blocked.</string>
-    <string name="extra_security_unknown_sources_disabled">Installation from unknown app sources is allowed again.</string>
+    <string name="extra_security_policy_failed">FocusGuard could not activate the unknown-sources protection.</string>
+    <string name="extra_security_unknown_sources_enabled">Unknown-source installation protection is enabled.</string>
+    <string name="extra_security_unknown_sources_disabled">Unknown-source installation protection is disabled.</string>
 </resources>
