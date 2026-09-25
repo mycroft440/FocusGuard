@@ -71,8 +71,8 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
     }
 
     fun enableAfterManualConfirmation() {
-        if (!securityManager.isDeviceOwnerActive()) {
-            showMessage(R.string.extra_security_device_owner_required)
+        if (!securityManager.canEnableProtection()) {
+            showMessage(R.string.extra_security_accessibility_required)
             return
         }
 
@@ -138,8 +138,8 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
                             checked = blocked,
                             onCheckedChange = { enable ->
                                 if (enable) {
-                                    if (!securityManager.isDeviceOwnerActive()) {
-                                        showMessage(R.string.extra_security_device_owner_required)
+                                    if (!securityManager.canEnableProtection()) {
+                                        showMessage(R.string.extra_security_accessibility_required)
                                     } else {
                                         showPreActivationGuide = true
                                     }
