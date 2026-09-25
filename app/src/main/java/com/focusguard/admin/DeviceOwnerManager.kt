@@ -65,7 +65,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             }
         }
 
-        private const val MAX_MANAGED_URLS = 1_000
         private const val ACTION_DEVICE_ADMIN_SETTINGS = "android.settings.DEVICE_ADMIN_SETTINGS"
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
         private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
@@ -1112,39 +1111,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }.onFailure { error ->
             FocusGuardLogger.logError("DeviceOwner", "Falha na política $name", error)
         }.getOrDefault(false)
-
-    /**
-     * Aplica bloqueio preventivo no renderer dos navegadores gerenciáveis.
-     *
-     * `URLBlocklist` é a camada mais forte disponível sem VPN para Chrome e
-     * Edge em um aparelho Device Owner. A navegação privada também é suspensa
-     * enquanto há regras ativas, evitando uma superfície de bypass. Os demais
-     * navegadores continuam protegidos pelo AccessibilityService.
-     */
-    suspend fun enforceWebsiteRestrictions(domains: List<String>) {
-        if (!isDeviceOwnerActive()) {
-            invalidateWebsitePolicyCache()
-            return
-        }
-        val configuredRules = if (AuthManager.isAdultFilterConfigured(context)) {
-            domains + PredefinedWebsites.PORNOGRAPHY_RULE
-        } else {
-            domains
-        }
-        val normalizedRules = WebsiteBlocker.normalizeRules(configuredRules).sorted()
-        val allManagedFilters = WebsiteBlocker.managedBrowserFiltersFor(normalizedRules).toList()
-        val managedFilters = allManagedFilters.take(MAX_MANAGED_URLS)
-        if (managedFilters.size < allManagedFilters.size) {
-            Log.w(
-                "FocusGuardNuclear",
-                "URLBlocklist limitada aos primeiros $MAX_MANAGED_URLS filtros"
-            )
-        }
-        applyWebsiteRestrictions(
-            domains = managedFilters,
-            requireSystemDns = isAdultDnsProtectionRequired()
-        )
-    }
 
     /** Remove somente as políticas de navegador controladas pelo FocusGuard. */
     suspend fun clearWebsiteRestrictions() {

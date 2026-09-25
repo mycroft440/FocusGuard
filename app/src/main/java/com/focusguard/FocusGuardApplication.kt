@@ -5,11 +5,6 @@ import android.os.UserManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
-import com.focusguard.accessibility.website.compatibility.BrowserDetector
-import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
-import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
-import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestinationStore
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
@@ -40,7 +35,6 @@ class FocusGuardApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        ClipboardPasteFallback.initialize(this)
         val userUnlocked = runCatching {
             getSystemService(UserManager::class.java).isUserUnlocked
         }.getOrDefault(true)
@@ -49,14 +43,7 @@ class FocusGuardApplication : Application() {
         } else {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
-        val browserCompatibilityContext = runCatching {
-            createDeviceProtectedStorageContext()
-        }.getOrDefault(startupContext)
-        BrowserDetector.initialize(browserCompatibilityContext)
-        BrowserCompatibilityStore.initialize(browserCompatibilityContext)
-        WebsiteRedirectDestinationStore.initialize(browserCompatibilityContext)
         FocusGuardLogger.init(startupContext)
-        WebsiteBlockingDiagnostics.initialize(startupContext)
 
         // A nova geração é criada apenas quando o PROCESSO do app volta ao
         // primeiro plano. Trocas internas de Activity e rotação não relockam a

@@ -35,8 +35,7 @@ import com.focusguard.R
 
 private enum class DeveloperModeDestination {
     MENU,
-    MAINTENANCE,
-    WEBSITE_DIAGNOSTICS
+    MAINTENANCE
 }
 
 /** Keeps developer-only diagnostics inside the existing Modo Dev entry point. */
@@ -48,10 +47,6 @@ internal fun DeveloperModeHostDialog(
 
     when (destination) {
         DeveloperModeDestination.MAINTENANCE -> DeveloperModeDialog(
-            onDismiss = { destination = DeveloperModeDestination.MENU }
-        )
-
-        DeveloperModeDestination.WEBSITE_DIAGNOSTICS -> WebsiteBlockingDiagnosticsDialog(
             onDismiss = { destination = DeveloperModeDestination.MENU }
         )
 
@@ -91,22 +86,6 @@ internal fun DeveloperModeHostDialog(
                     )
 
                     Spacer(Modifier.height(28.dp))
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { destination = DeveloperModeDestination.WEBSITE_DIAGNOSTICS }
-                    ) {
-                        Icon(Icons.Default.BugReport, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.dev_mode_website_diagnostics_title))
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(R.string.dev_mode_website_diagnostics_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(Modifier.height(24.dp))
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { destination = DeveloperModeDestination.MAINTENANCE }

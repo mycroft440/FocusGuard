@@ -1,0 +1,1047 @@
+package com.focusguard.sitesblocker;
+
+import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.accessibilityservice.InputMethod;
+import android.annotation.TargetApi;
+import android.content.pm.ApplicationInfo;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.util.Log;
+import android.widget.Toast;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
+
+/**
+ * Motor do Bloquear Sites, executado dentro do serviço de acessibilidade do FocusGuard
+ * (BlockingAccessibilityService), que repassa os eventos e o ciclo de vida.
+ */
+public final class SiteBlockEngine {
+    private static final long BLOCK_DEBOUNCE_MS = 1200L;
+    // Firefox: a primeira leitura sai logo após o evento, e a URL conta com o mesmo domínio em duas
+    // leituras seguidas (bloqueio em cerca de 180 ms). As leituras seguem por uns 3,5 s, porque a
+    // barra pode mudar depois do evento sem emitir outro.
+    private static final long FIREFOX_FIRST_READ_DELAY_MS = 60L;
+    private static final long FIREFOX_RETRY_DELAY_MS = 120L;
+    private static final int FIREFOX_RETRY_ATTEMPTS = 30;
+    private static final int FIREFOX_STABLE_READS_REQUIRED = 2;
+    private static final long REREAD_DELAY_MS = 250L;
+    private static final long UNSUPPORTED_BROWSER_DEBOUNCE_MS = 1500L;
+    private static final long UNSUPPORTED_BROWSER_GRACE_MS = 2000L;
+    // Com a confirmação da família em andamento, a checagem do navegador desconhecido se repete.
+    private static final int UNSUPPORTED_BROWSER_CHECKS = 3;
+    private static final long IDENTIFY_INTERVAL_MS = 400L;
+    // Prazo para achar a barra numa versão ainda não conferida do navegador, e o prazo curto depois
+    // de uma falha na mesma versão.
+    private static final long ADDRESS_BAR_CHECK_MS = 5000L;
+    private static final long ADDRESS_BAR_RECHECK_MS = 1500L;
+    // Filtro de pornografia: espera a página carregar antes de ler o texto dela, e só relê a
+    // mesma página depois de um intervalo (mais curto nos buscadores, onde a pesquisa muda sem
+    // mudar o domínio).
+    private static final long PAGE_SCAN_DELAY_MS = 700L;
+    private static final long SEARCH_PAGE_RESCAN_MS = 1500L;
+    private static final long PAGE_RESCAN_MS = 5000L;
+    // Opera GX: os eventos de uma rajada viram uma só leitura da barra, logo em seguida.
+    private static final long STRUCTURE_READ_DELAY_MS = 120L;
+    // O navegador em uso é conferido de novo nesse intervalo, mesmo sem eventos.
+    private static final long MONITOR_INTERVAL_MS = 2000L;
+    // Apps que não são navegadores: no máximo uma busca pela barra de endereço nesse intervalo.
+    private static final long OTHER_APP_READ_INTERVAL_MS = 300L;
+
+    private static final String FIREFOX_LOG_TAG = "BloquearSitesFirefox";
+    private static final String REREAD_LOG_TAG = "BloquearSitesReread";
+    private static final String ADULT_LOG_TAG = "BloquearSitesAdulto";
+
+    private static final int LEGACY_EVENT_TYPES =
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                    | AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    | AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                    | AccessibilityEvent.TYPE_VIEW_FOCUSED
+                    | AccessibilityEvent.TYPE_VIEW_CLICKED;
+
+    private final AccessibilityService service;
+    private final UrlExtractor urlExtractor = new UrlExtractor();
+    private BrowserDetector browserDetector;
+    private VerifiedBrowsers verifiedBrowsers;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private BlockedSitesStore store;
+    private BlockRedirectController redirectController;
+    private String lastBlockedKey = "";
+    private long lastBlockedAt = 0L;
+    private Runnable pendingFirefoxRetry;
+    private String pendingFirefoxPackage;
+    // A leitura pendente é só a confirmação da observação contínua, não a sequência de um evento.
+    private boolean pendingFirefoxIsCheck;
+    private Runnable pendingReread;
+    private Runnable pendingUnsupportedCheck;
+    private String pendingUnsupportedPackage;
+    private Runnable pendingAddressBarCheck;
+    private String pendingAddressBarPackage;
+    private Runnable pendingPageScan;
+    private String pendingPageScanPackage;
+    private String pendingPageScanKey = "";
+    private String lastPageScanKey = "";
+    private long lastPageScanAt = 0L;
+    private Runnable pendingStructureRead;
+    private Runnable pendingMonitorCheck;
+    private String monitoredPackage;
+    private String lastOtherAppPackage = "";
+    private long lastOtherAppReadAt = 0L;
+    private Runnable pendingOtherAppRead;
+    private String pendingOtherAppPackage;
+    private String lastIdentifyPackage = "";
+    private long lastIdentifyAt = 0L;
+    private String lastUnsupportedBrowser = "";
+    private long lastUnsupportedBrowserAt = 0L;
+
+    public SiteBlockEngine(AccessibilityService service) {
+        this.service = service;
+    }
+
+    /** Chamado pelo serviço em onServiceConnected. */
+    public void onServiceConnected() {
+        store = new BlockedSitesStore(service);
+        browserDetector = new BrowserDetector(service);
+        verifiedBrowsers = new VerifiedBrowsers(service);
+        IdentifiedBrowsers.load(service);
+        redirectController = new BlockRedirectController(
+                service, mainHandler, urlExtractor, this::scheduleReread);
+    }
+
+    /**
+     * Ajusta a configuração do serviço: todos os eventos, IDs das views, janelas interativas e,
+     * no Android 13+, o teclado do serviço (a tela de pesquisa do Mi Browser só navega com a ação
+     * "Ir" do teclado, enviada pela conexão de entrada do serviço).
+     */
+    public static void applyServiceInfo(AccessibilityServiceInfo info) {
+        info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
+        info.flags |= AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                | AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            info.flags |= AccessibilityServiceInfo.FLAG_INPUT_METHOD_EDITOR;
+        }
+    }
+
+    /** Teclado do serviço que registra quando um campo começa a receber texto (Opera GX). */
+    @TargetApi(Build.VERSION_CODES.TIRAMISU)
+    public static InputMethod createInputMethod(AccessibilityService service) {
+        return new ServiceInputMethod(service);
+    }
+
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event == null) return;
+
+        // O redirecionamento é um fluxo independente. Se acabou de confirmar google.com,
+        // descartamos este evento para não reutilizar uma árvore anterior ao redirecionamento.
+        if (redirectController != null && redirectController.refreshBeforeDetection()) {
+            return;
+        }
+
+        // Eventos do navegador em troca de site (e da própria cortina) são descartados antes de
+        // qualquer consulta à árvore: numa rajada, essas consultas atrasavam a cortina e a troca.
+        CharSequence eventPackage = event.getPackageName();
+        if (eventPackage != null) {
+            String name = eventPackage.toString();
+            if (service.getPackageName().equals(name)) return;
+            if (redirectController != null && redirectController.shouldIgnorePackage(name)) return;
+        }
+
+        if (store == null) store = new BlockedSitesStore(service);
+
+        // Opera GX: o evento só agenda a leitura da barra, sem nenhuma consulta ao navegador aqui.
+        // Enquanto a página carrega, o navegador demora a responder, e as consultas feitas a cada
+        // evento de uma rajada (fonte do evento e janela ativa) atrasavam a leitura em segundos.
+        if (eventPackage != null && readsByStructure(eventPackage.toString())) {
+            handleStructureBrowserEvent(eventPackage.toString());
+            return;
+        }
+
+        // Firefox: o mesmo vale. O evento só inicia a confirmação da URL exibida na barra.
+        if (eventPackage != null && BrowserProfiles.isFirefoxFamily(eventPackage.toString())) {
+            handleFirefoxEvent(eventPackage.toString());
+            return;
+        }
+
+        // App que não é navegador, lido há pouco: o evento não consulta o app.
+        if (eventPackage != null
+                && throttleOtherApp(eventPackage.toString(), event.getEventType())) {
+            return;
+        }
+
+        AccessibilityNodeInfo source = event.getSource();
+        AccessibilityNodeInfo root = service.getRootInActiveWindow();
+
+        String packageName = resolvePackageName(event, source, root);
+        if (packageName == null || service.getPackageName().equals(packageName)) return;
+
+        // Enquanto um navegador está sendo redirecionado, os eventos dele pertencem ao
+        // controlador de redirecionamento e não voltam para a lógica de detecção/bloqueio.
+        if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
+            return;
+        }
+
+        BrowserProfile profile = BrowserProfiles.forPackage(packageName);
+        boolean firefox = profile != null
+                && profile.getMethod() == BrowserProfile.Method.FIREFOX_TOOLBAR;
+        boolean rereads = profile != null && profile.rereadsAfterEvent();
+        if (!firefox) cancelFirefoxRetry();
+        if (!rereads) cancelReread();
+
+        // O Firefox e as famílias que releem a barra podem sinalizar a mudança com tipos de evento
+        // diferentes dos navegadores Chromium. Para eles, não descartamos eventos pelo tipo.
+        if (!rereads && !firefox && !isLegacyEventType(event.getEventType())) {
+            return;
+        }
+
+        boolean adultFilter = store.isAdultFilterEnabled();
+        if (!store.isBlockingActive()) {
+            cancelFirefoxRetry();
+            cancelReread();
+            cancelPageScan();
+            return;
+        }
+
+        // Navegadores sabidamente sem leitura confiável (Via, UC) são fechados assim que aparecem.
+        if (profile == null && BrowserProfiles.isKnownUnsupported(packageName)) {
+            closeUnsupportedBrowser(packageName);
+            return;
+        }
+
+        if (browserDetector == null) browserDetector = new BrowserDetector(service);
+        if (profile == null && browserDetector.isBrowser(packageName)) {
+            // Navegador fora da lista: é testado com o método de cada família. Encaixado, passa a
+            // usar a família; se nenhuma se encaixa, é bloqueado enquanto houver sites na lista,
+            // para não servir de desvio.
+            long now = SystemClock.elapsedRealtime();
+            if (packageName.equals(lastIdentifyPackage) && now - lastIdentifyAt < IDENTIFY_INTERVAL_MS) {
+                return;
+            }
+            lastIdentifyPackage = packageName;
+            lastIdentifyAt = now;
+
+            AccessibilityNodeInfo browserRoot = packageName.equals(packageNameOf(root))
+                    ? root
+                    : applicationRootForPackage(packageName);
+            profile = IdentifiedBrowsers.identify(service, urlExtractor, packageName, browserRoot);
+            if (profile == null) {
+                // Já recusado antes: é fechado assim que mostra uma página, sem o novo prazo. Só
+                // ganha o prazo se uma família acabou de ler a URL e aguarda a confirmação.
+                if (IdentifiedBrowsers.isRejected(service, packageName)
+                        && !IdentifiedBrowsers.isAwaitingConfirmation(packageName)
+                        && NodeSearch.containsWebContent(browserRoot)) {
+                    cancelUnsupportedBrowserCheck();
+                    closeUnsupportedBrowser(packageName);
+                    return;
+                }
+                scheduleUnsupportedBrowserCheck(packageName, browserRoot);
+                return;
+            }
+
+            firefox = profile.getMethod() == BrowserProfile.Method.FIREFOX_TOOLBAR;
+            rereads = profile.rereadsAfterEvent();
+        }
+
+        // A conferência da barra por versão só vale para navegadores com família. Num app que não é
+        // navegador ela percorria a tela a cada evento (em apps com página embutida, como
+        // propagandas) sem nunca ter efeito.
+        if (profile != null) {
+            verifyAddressBar(packageName, profile, root);
+            monitorBrowser(packageName);
+        }
+
+        // Opera GX (barra lida pela estrutura da tela): cada leitura percorre a árvore da barra,
+        // e o navegador dispara eventos sem parar. Uma rajada vira uma só leitura, logo em
+        // seguida, para a fila de eventos não atrasar a cortina e a troca.
+        if (profile != null && profile.getMethod() == BrowserProfile.Method.TOOLBAR_STRUCTURE) {
+            scheduleStructureRead(packageName);
+            return;
+        }
+
+        if (firefox) {
+            // Texto digitado e sugestões nunca contam como URL navegada. Todo evento do Firefox
+            // apenas inicia uma confirmação curta da URL exibida pela toolbar da janela ativa.
+            scheduleFirefoxRetry(packageName);
+            return;
+        }
+
+        // Sem família aqui, é um app que não é navegador (os navegadores sem família saíram acima):
+        // só a busca genérica pela barra, espaçada por throttleOtherApp.
+        if (profile == null
+                && eventPackage != null
+                && packageName.equals(eventPackage.toString())) {
+            noteOtherAppRead(packageName);
+        }
+
+        AccessibilityNodeInfo extractionRoot = root;
+        if (rereads && !sameWindow(event, root)) {
+            // Se o evento e a raiz apontam para janelas diferentes, a fonte do evento é mais
+            // confiável agora, e a releitura olha a janela do navegador depois.
+            extractionRoot = null;
+        }
+
+        String visibleUrl = urlExtractor.extract(extractionRoot, source, packageName);
+
+        if (visibleUrl != null) {
+            cancelReread();
+            handleVisibleUrl(packageName, visibleUrl);
+            return;
+        }
+
+        // A barra sem URL ainda pode mostrar a pesquisa (o Mi Browser mostra os termos buscados).
+        if (adultFilter && profile != null) {
+            AccessibilityNodeInfo browserRoot = packageName.equals(packageNameOf(root))
+                    ? root
+                    : applicationRootForPackage(packageName);
+            String barText = urlExtractor.extractBarText(browserRoot, packageName, profile);
+            if (AdultContentFilter.isExplicitText(barText)) {
+                logAdult(packageName, "pesquisa na barra");
+                blockWithDebounce(packageName, packageName + "|barra|" + barText);
+                return;
+            }
+            requestPageScan(packageName, barText);
+        }
+
+        if (rereads) {
+            scheduleReread(packageName);
+        }
+    }
+
+    /**
+     * Apps que não são navegadores passam só pela busca genérica de barra de endereço, que cobre
+     * navegadores embutidos em outros apps. Depois de uma leitura, os eventos do mesmo app pelos
+     * próximos OTHER_APP_READ_INTERVAL_MS não consultam o app: viram uma só leitura no fim do
+     * intervalo, com a tela já no estado final. Antes, cada evento de qualquer app fazia consultas
+     * e buscas na tela.
+     */
+    private boolean throttleOtherApp(String eventPackage, int eventType) {
+        if (!eventPackage.equals(lastOtherAppPackage)) return false;
+        long elapsed = SystemClock.elapsedRealtime() - lastOtherAppReadAt;
+        if (elapsed >= OTHER_APP_READ_INTERVAL_MS) return false;
+
+        // Os outros tipos de evento já eram descartados para apps que não são navegadores.
+        if (isLegacyEventType(eventType)) {
+            scheduleOtherAppRead(eventPackage, OTHER_APP_READ_INTERVAL_MS - elapsed);
+        }
+        return true;
+    }
+
+    private void noteOtherAppRead(String packageName) {
+        if (pendingOtherAppRead != null && !packageName.equals(pendingOtherAppPackage)) {
+            cancelOtherAppRead();
+        }
+        lastOtherAppPackage = packageName;
+        lastOtherAppReadAt = SystemClock.elapsedRealtime();
+    }
+
+    private void scheduleOtherAppRead(String packageName, long delayMs) {
+        if (pendingOtherAppRead != null) return;
+
+        pendingOtherAppPackage = packageName;
+        pendingOtherAppRead = () -> {
+            pendingOtherAppRead = null;
+            noteOtherAppRead(packageName);
+
+            if (store == null) store = new BlockedSitesStore(service);
+            if (!store.isBlockingActive()) return;
+            if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
+                return;
+            }
+
+            AccessibilityNodeInfo root = applicationRootForPackage(packageName);
+            if (root == null) return;
+
+            String visibleUrl = urlExtractor.extract(root, null, packageName);
+            if (visibleUrl != null) handleVisibleUrl(packageName, visibleUrl);
+        };
+        mainHandler.postDelayed(pendingOtherAppRead, Math.max(0L, delayMs));
+    }
+
+    private void cancelOtherAppRead() {
+        if (pendingOtherAppRead == null) return;
+        mainHandler.removeCallbacks(pendingOtherAppRead);
+        pendingOtherAppRead = null;
+    }
+
+    private String resolvePackageName(
+            AccessibilityEvent event,
+            AccessibilityNodeInfo source,
+            AccessibilityNodeInfo root
+    ) {
+        String eventPackage = event.getPackageName() == null
+                ? null
+                : event.getPackageName().toString();
+        String sourcePackage = packageNameOf(source);
+        String rootPackage = packageNameOf(root);
+
+        // Eventos podem vir de janelas auxiliares (teclado, pop-ups, a própria cortina). Se a fonte
+        // ou a janela ativa pertencem a um navegador conhecido, priorizamos esse navegador.
+        if (BrowserProfiles.forPackage(sourcePackage) != null) return sourcePackage;
+        if (BrowserProfiles.forPackage(rootPackage) != null) return rootPackage;
+
+        if (eventPackage != null) return eventPackage;
+        if (sourcePackage != null) return sourcePackage;
+        return rootPackage;
+    }
+
+    private void handleVisibleUrl(String packageName, String visibleUrl) {
+        if (store == null) store = new BlockedSitesStore(service);
+
+        // O destino do redirecionamento fica fora da lista para impedir loop. Uma busca explícita no
+        // Google não é o destino (isRedirectDestination); as demais páginas do Google, como o Google
+        // Imagens, ainda têm o texto conferido pelo filtro de pornografia.
+        if (redirectController != null && redirectController.isRedirectDestination(visibleUrl)) {
+            requestPageScan(packageName, visibleUrl);
+            return;
+        }
+
+        String matchedDomain = DomainMatcher.findMatchedDomainNormalized(
+                visibleUrl, store.getNormalizedDomains());
+        boolean adult = matchedDomain == null
+                && store.isAdultFilterEnabled()
+                && AdultContentFilter.blocksUrl(visibleUrl);
+        if (matchedDomain == null && !adult) {
+            requestPageScan(packageName, visibleUrl);
+            return;
+        }
+
+        if (adult) logAdult(packageName, "endereço");
+        String host = DomainMatcher.extractHost(visibleUrl);
+        blockWithDebounce(packageName, packageName + "|" + host);
+    }
+
+    private void blockWithDebounce(String packageName, String blockKey) {
+        long now = SystemClock.elapsedRealtime();
+        if (blockKey.equals(lastBlockedKey) && now - lastBlockedAt < BLOCK_DEBOUNCE_MS) {
+            return;
+        }
+
+        lastBlockedKey = blockKey;
+        lastBlockedAt = now;
+        blockCurrentPage(packageName);
+    }
+
+    /**
+     * Confere o texto da página aberta pelo filtro de pornografia (AdultContentFilter), um pouco
+     * depois do evento, com a página já carregada. A mesma página só é conferida de novo após um
+     * intervalo; nos buscadores o intervalo é curto, porque a pesquisa muda sem mudar o domínio.
+     */
+    private void requestPageScan(String packageName, String pageKey) {
+        if (store == null || !store.isAdultFilterEnabled()) return;
+
+        String key = packageName + "|" + (pageKey == null ? "" : pageKey);
+        long rescanAfter = AdultContentFilter.isSearchHost(DomainMatcher.extractHost(pageKey))
+                ? SEARCH_PAGE_RESCAN_MS
+                : PAGE_RESCAN_MS;
+        if (key.equals(lastPageScanKey)
+                && SystemClock.elapsedRealtime() - lastPageScanAt < rescanAfter) {
+            return;
+        }
+
+        pendingPageScanKey = key;
+        if (pendingPageScan != null && packageName.equals(pendingPageScanPackage)) return;
+
+        cancelPageScan();
+        pendingPageScanPackage = packageName;
+        pendingPageScan = () -> {
+            pendingPageScan = null;
+            lastPageScanKey = pendingPageScanKey;
+            lastPageScanAt = SystemClock.elapsedRealtime();
+
+            if (store == null || !store.isAdultFilterEnabled()) return;
+            if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
+                return;
+            }
+
+            AccessibilityNodeInfo root = applicationRootForPackage(packageName);
+            if (root == null) return;
+
+            PageText page = PageText.collect(root);
+            if (!AdultContentFilter.isAdultPage(page.texts, page.fields)) return;
+
+            logAdult(packageName, "texto da página");
+            blockWithDebounce(packageName, lastPageScanKey);
+        };
+        mainHandler.postDelayed(pendingPageScan, PAGE_SCAN_DELAY_MS);
+    }
+
+    private void cancelPageScan() {
+        if (pendingPageScan == null) return;
+        mainHandler.removeCallbacks(pendingPageScan);
+        pendingPageScan = null;
+    }
+
+    private void logAdult(String packageName, String reason) {
+        if (!isDebugBuild()) return;
+        Log.d(ADULT_LOG_TAG, packageName + ": conteúdo adulto (" + reason + ")");
+    }
+
+    /**
+     * Confere de novo, após um intervalo, um navegador que não se encaixou em nenhuma família. Só
+     * bloqueia se a página continua na tela e ainda nenhuma família se encaixa: um navegador pode
+     * mostrar a URL na barra depois do conteúdo.
+     */
+    private void scheduleUnsupportedBrowserCheck(
+            String packageName,
+            AccessibilityNodeInfo browserRoot
+    ) {
+        // Sem página web na tela o app ainda não está navegando, ou não é de fato um navegador
+        // (gerenciadores de download também abrem links).
+        if (!NodeSearch.containsWebContent(browserRoot)) return;
+        if (pendingUnsupportedCheck != null && packageName.equals(pendingUnsupportedPackage)) return;
+
+        cancelUnsupportedBrowserCheck();
+        postUnsupportedBrowserCheck(packageName, 1);
+    }
+
+    private void postUnsupportedBrowserCheck(String packageName, int check) {
+        pendingUnsupportedPackage = packageName;
+        pendingUnsupportedCheck = () -> {
+            pendingUnsupportedCheck = null;
+            if (BrowserProfiles.forPackage(packageName) != null) return;
+
+            if (store == null) store = new BlockedSitesStore(service);
+            if (!store.isBlockingActive()) return;
+
+            AccessibilityNodeInfo root = applicationRootForPackage(packageName);
+            if (root == null || !NodeSearch.containsWebContent(root)) return;
+
+            BrowserProfile family = IdentifiedBrowsers.identify(service, urlExtractor, packageName, root);
+            if (family != null) {
+                String url = urlExtractor.extract(root, null, packageName);
+                if (url != null) handleVisibleUrl(packageName, url);
+                return;
+            }
+
+            // Uma família leu a URL há pouco: a confirmação precisa de mais tempo.
+            if (IdentifiedBrowsers.isAwaitingConfirmation(packageName)
+                    && check < UNSUPPORTED_BROWSER_CHECKS) {
+                postUnsupportedBrowserCheck(packageName, check + 1);
+                return;
+            }
+
+            IdentifiedBrowsers.markRejected(service, packageName);
+            closeUnsupportedBrowser(packageName);
+        };
+        mainHandler.postDelayed(pendingUnsupportedCheck, UNSUPPORTED_BROWSER_GRACE_MS);
+    }
+
+    private void cancelUnsupportedBrowserCheck() {
+        if (pendingUnsupportedCheck == null) return;
+        mainHandler.removeCallbacks(pendingUnsupportedCheck);
+        pendingUnsupportedCheck = null;
+    }
+
+    /**
+     * Rede de segurança para navegadores suportados ou identificados: a cada versão do navegador
+     * (e do app), a barra da família precisa ser achada ao menos uma vez com uma página na tela.
+     * Se uma atualização muda a barra e o método deixa de achá-la, o navegador é fechado em vez de
+     * deixar os sites passarem.
+     *
+     * Basta a barra estar na tela, sem uma URL: nas páginas de resultado, o Mi Browser mostra os
+     * termos pesquisados. Depois de achada, a barra só é conferida de novo na próxima atualização,
+     * porque ela some de verdade ao rolar a página (Chrome) ou em tela cheia.
+     */
+    private void verifyAddressBar(
+            String packageName,
+            BrowserProfile profile,
+            AccessibilityNodeInfo root
+    ) {
+        if (verifiedBrowsers == null) verifiedBrowsers = new VerifiedBrowsers(service);
+        if (verifiedBrowsers.isVerified(packageName)) return;
+
+        AccessibilityNodeInfo browserRoot = packageName.equals(packageNameOf(root))
+                ? root
+                : applicationRootForPackage(packageName);
+        if (!NodeSearch.containsWebContent(browserRoot)) return;
+
+        if (urlExtractor.hasAddressBar(browserRoot, packageName, profile)) {
+            verifiedBrowsers.markVerified(packageName);
+            if (packageName.equals(pendingAddressBarPackage)) cancelAddressBarCheck();
+            return;
+        }
+
+        scheduleAddressBarCheck(
+                packageName,
+                verifiedBrowsers.hasFailed(packageName)
+                        ? ADDRESS_BAR_RECHECK_MS
+                        : ADDRESS_BAR_CHECK_MS
+        );
+    }
+
+    private void scheduleAddressBarCheck(String packageName, long delayMs) {
+        // Eventos seguidos não adiam o prazo, que conta desde a primeira página sem barra.
+        if (pendingAddressBarCheck != null && packageName.equals(pendingAddressBarPackage)) return;
+
+        cancelAddressBarCheck();
+        pendingAddressBarPackage = packageName;
+        pendingAddressBarCheck = () -> {
+            pendingAddressBarCheck = null;
+            if (verifiedBrowsers.isVerified(packageName)) return;
+
+            if (store == null) store = new BlockedSitesStore(service);
+            if (!store.isBlockingActive()) return;
+            if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
+                return;
+            }
+
+            BrowserProfile profile = BrowserProfiles.forPackage(packageName);
+            AccessibilityNodeInfo root = applicationRootForPackage(packageName);
+            if (profile == null || root == null || !NodeSearch.containsWebContent(root)) return;
+
+            if (urlExtractor.hasAddressBar(root, packageName, profile)) {
+                verifiedBrowsers.markVerified(packageName);
+                return;
+            }
+
+            verifiedBrowsers.markFailed(packageName);
+            closeBrowser(
+                    packageName,
+                    labelOf(packageName)
+                            + " foi fechado: o bloqueio de sites não conseguiu ler a barra de"
+                            + " endereço desta versão."
+            );
+        };
+        mainHandler.postDelayed(pendingAddressBarCheck, delayMs);
+    }
+
+    private void cancelAddressBarCheck() {
+        if (pendingAddressBarCheck == null) return;
+        mainHandler.removeCallbacks(pendingAddressBarCheck);
+        pendingAddressBarCheck = null;
+    }
+
+    private void closeUnsupportedBrowser(String packageName) {
+        closeBrowser(
+                packageName,
+                labelOf(packageName) + " não é suportado pelo bloqueio de sites e foi fechado."
+        );
+    }
+
+    private String labelOf(String packageName) {
+        if (browserDetector == null) browserDetector = new BrowserDetector(service);
+        return browserDetector.labelOf(packageName);
+    }
+
+    private void closeBrowser(String packageName, String message) {
+        long now = SystemClock.elapsedRealtime();
+        if (packageName.equals(lastUnsupportedBrowser)
+                && now - lastUnsupportedBrowserAt < UNSUPPORTED_BROWSER_DEBOUNCE_MS) {
+            return;
+        }
+        lastUnsupportedBrowser = packageName;
+        lastUnsupportedBrowserAt = now;
+
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+        Toast.makeText(service, message, Toast.LENGTH_LONG).show();
+    }
+
+    private void scheduleFirefoxRetry(String expectedPackage) {
+        // Eventos sucessivos do mesmo navegador não reiniciam a sequência. A URL precisa aparecer
+        // estável na toolbar de exibição antes de ser considerada realmente carregada.
+        // Uma confirmação da observação contínua dá lugar à sequência completa do evento.
+        if (pendingFirefoxRetry != null
+                && expectedPackage.equals(pendingFirefoxPackage)
+                && !pendingFirefoxIsCheck) {
+            return;
+        }
+
+        cancelFirefoxRetry();
+        pendingFirefoxPackage = expectedPackage;
+        pendingFirefoxIsCheck = false;
+        scheduleFirefoxRetryAttempt(
+                expectedPackage,
+                FIREFOX_RETRY_ATTEMPTS,
+                null,
+                0,
+                FIREFOX_FIRST_READ_DELAY_MS
+        );
+    }
+
+    private void scheduleFirefoxRetryAttempt(
+            String expectedPackage,
+            int attemptsRemaining,
+            String previousHost,
+            int stableReads,
+            long delayMs
+    ) {
+        pendingFirefoxRetry = () -> {
+            pendingFirefoxRetry = null;
+
+            int attemptNumber = FIREFOX_RETRY_ATTEMPTS - attemptsRemaining + 1;
+            String nextHost = previousHost;
+            int nextStableReads = stableReads;
+
+            if (redirectController != null
+                    && redirectController.shouldIgnorePackage(expectedPackage)) {
+                return;
+            }
+
+            AccessibilityNodeInfo root = applicationRootForPackage(expectedPackage);
+            if (root != null) {
+                if (store == null) store = new BlockedSitesStore(service);
+                if (!store.isBlockingActive()) return;
+
+                // A conferência da barra por versão, que o evento já não faz, usa a mesma janela.
+                if (attemptNumber == 1) {
+                    verifyAddressBar(
+                            expectedPackage, BrowserProfiles.forPackage(expectedPackage), root);
+                }
+
+                String loadedUrl = urlExtractor.extractFirefoxDisplayedUrl(root, expectedPackage);
+                String host = DomainMatcher.extractHost(loadedUrl);
+
+                if (host == null) {
+                    nextHost = null;
+                    nextStableReads = 0;
+                } else if (host.equals(previousHost)) {
+                    nextHost = host;
+                    nextStableReads = stableReads + 1;
+                } else {
+                    nextHost = host;
+                    nextStableReads = 1;
+                }
+
+                logFirefoxRetry(attemptNumber, attemptsRemaining, root, host, nextStableReads);
+
+                if (loadedUrl != null
+                        && nextStableReads >= FIREFOX_STABLE_READS_REQUIRED) {
+                    handleVisibleUrl(expectedPackage, loadedUrl);
+
+                    if (redirectController != null
+                            && redirectController.shouldIgnorePackage(expectedPackage)) {
+                        return;
+                    }
+                }
+            } else {
+                nextHost = null;
+                nextStableReads = 0;
+                logFirefoxRetry(attemptNumber, attemptsRemaining, null, null, 0);
+            }
+
+            if (attemptsRemaining > 1) {
+                scheduleFirefoxRetryAttempt(
+                        expectedPackage,
+                        attemptsRemaining - 1,
+                        nextHost,
+                        nextStableReads,
+                        FIREFOX_RETRY_DELAY_MS
+                );
+            }
+        };
+
+        mainHandler.postDelayed(pendingFirefoxRetry, delayMs);
+    }
+
+    private void cancelFirefoxRetry() {
+        if (pendingFirefoxRetry == null) return;
+        mainHandler.removeCallbacks(pendingFirefoxRetry);
+        pendingFirefoxRetry = null;
+    }
+
+    private void logFirefoxRetry(
+            int attemptNumber,
+            int attemptsRemaining,
+            AccessibilityNodeInfo root,
+            String host,
+            int stableReads
+    ) {
+        if (!isDebugBuild()) return;
+
+        Log.d(
+                FIREFOX_LOG_TAG,
+                "retry=" + attemptNumber + "/" + FIREFOX_RETRY_ATTEMPTS
+                        + " rootWindow=" + windowIdOf(root)
+                        + " rootPkg=" + packageNameOf(root)
+                        + " host=" + (host == null ? "<nao-detectado>" : host)
+                        + " stableReads=" + stableReads
+        );
+
+        // A árvore completa só é descrita no início e no fim da sequência, para não pesar
+        // na thread principal enquanto a página carrega.
+        if (host == null && root != null && (attemptNumber == 1 || attemptsRemaining == 1)) {
+            Log.d(
+                    FIREFOX_LOG_TAG,
+                    "toolbarCandidates=" + urlExtractor.describeFirefoxToolbarCandidates(root)
+            );
+        }
+    }
+
+    private static boolean readsByStructure(String packageName) {
+        BrowserProfile profile = BrowserProfiles.forPackage(packageName);
+        return profile != null && profile.getMethod() == BrowserProfile.Method.TOOLBAR_STRUCTURE;
+    }
+
+    /** Evento do Opera GX: agenda a leitura da barra e mantém o navegador sob observação. */
+    private void handleStructureBrowserEvent(String packageName) {
+        cancelFirefoxRetry();
+        if (!store.isBlockingActive()) {
+            cancelReread();
+            cancelPageScan();
+            return;
+        }
+
+        monitorBrowser(packageName);
+        scheduleStructureRead(packageName);
+    }
+
+    /** Evento do Firefox: inicia a confirmação da URL e mantém o navegador sob observação. */
+    private void handleFirefoxEvent(String packageName) {
+        cancelReread();
+        if (!store.isBlockingActive()) {
+            cancelFirefoxRetry();
+            cancelPageScan();
+            return;
+        }
+
+        monitorBrowser(packageName);
+        scheduleFirefoxRetry(packageName);
+    }
+
+    private void scheduleStructureRead(String expectedPackage) {
+        if (pendingStructureRead != null) return;
+
+        pendingStructureRead = () -> {
+            pendingStructureRead = null;
+            if (redirectController != null
+                    && redirectController.shouldIgnorePackage(expectedPackage)) {
+                return;
+            }
+
+            AccessibilityNodeInfo root = applicationRootForPackage(expectedPackage);
+            if (root == null) return;
+
+            // A conferência da barra por versão, que o evento já não faz, usa a mesma janela.
+            verifyAddressBar(expectedPackage, BrowserProfiles.forPackage(expectedPackage), root);
+            readBrowserRoot(expectedPackage, root);
+        };
+        mainHandler.postDelayed(pendingStructureRead, STRUCTURE_READ_DELAY_MS);
+    }
+
+    /** Lê a barra do navegador agora e bloqueia se o site estiver na lista. */
+    private void readBrowserRoot(String packageName, AccessibilityNodeInfo root) {
+        if (store == null) store = new BlockedSitesStore(service);
+        if (!store.isBlockingActive()) return;
+
+        String visibleUrl = urlExtractor.extract(root, null, packageName);
+        logReread(packageName, visibleUrl);
+        if (visibleUrl != null) handleVisibleUrl(packageName, visibleUrl);
+    }
+
+    /**
+     * Mantém o navegador em uso sob observação: a cada MONITOR_INTERVAL_MS, com algo a
+     * bloquear, a barra é lida de novo mesmo sem eventos. Um site bloqueado que escapou da troca
+     * (por exemplo, com Voltar) não fica liberado à espera de um novo evento. A observação para
+     * quando o navegador sai da tela.
+     */
+    private void monitorBrowser(String packageName) {
+        monitoredPackage = packageName;
+        if (pendingMonitorCheck != null) return;
+
+        pendingMonitorCheck = this::checkMonitoredBrowser;
+        mainHandler.postDelayed(pendingMonitorCheck, MONITOR_INTERVAL_MS);
+    }
+
+    private void checkMonitoredBrowser() {
+        pendingMonitorCheck = null;
+        String packageName = monitoredPackage;
+        if (packageName == null) return;
+
+        if (store == null) store = new BlockedSitesStore(service);
+        BrowserProfile profile = BrowserProfiles.forPackage(packageName);
+        if (!store.isBlockingActive() || profile == null) {
+            monitoredPackage = null;
+            return;
+        }
+
+        boolean redirecting = redirectController != null
+                && redirectController.shouldIgnorePackage(packageName);
+        if (!redirecting) {
+            AccessibilityNodeInfo root = applicationRootForPackage(packageName);
+            if (root == null) {
+                monitoredPackage = null;
+                return;
+            }
+            if (profile.getMethod() == BrowserProfile.Method.FIREFOX_TOOLBAR) {
+                readFirefoxWhileMonitoring(packageName, root);
+            } else {
+                readBrowserRoot(packageName, root);
+            }
+        }
+
+        pendingMonitorCheck = this::checkMonitoredBrowser;
+        mainHandler.postDelayed(pendingMonitorCheck, MONITOR_INTERVAL_MS);
+    }
+
+    /**
+     * Firefox: uma leitura por ciclo da observação. Como nas releituras após os eventos, a URL só
+     * conta estável, com o mesmo domínio numa segunda leitura logo em seguida
+     * (FIREFOX_RETRY_DELAY_MS). Antes, a segunda leitura era a do ciclo seguinte, e um site que
+     * escapou da troca levava até 4 s para ser pego.
+     */
+    private void readFirefoxWhileMonitoring(String packageName, AccessibilityNodeInfo root) {
+        // A sequência de um evento em andamento já lê a barra.
+        if (pendingFirefoxRetry != null) return;
+
+        String host = DomainMatcher.extractHost(
+                urlExtractor.extractFirefoxDisplayedUrl(root, packageName));
+        if (host == null) return;
+
+        pendingFirefoxPackage = packageName;
+        pendingFirefoxIsCheck = true;
+        scheduleFirefoxRetryAttempt(packageName, 1, host, 1, FIREFOX_RETRY_DELAY_MS);
+    }
+
+    private void cancelMonitoring() {
+        monitoredPackage = null;
+        if (pendingMonitorCheck != null) mainHandler.removeCallbacks(pendingMonitorCheck);
+        pendingMonitorCheck = null;
+        if (pendingStructureRead != null) mainHandler.removeCallbacks(pendingStructureRead);
+        pendingStructureRead = null;
+    }
+
+    private void scheduleReread(String expectedPackage) {
+        cancelReread();
+
+        pendingReread = () -> {
+            pendingReread = null;
+
+            AccessibilityNodeInfo root = applicationRootForPackage(expectedPackage);
+            if (root == null) {
+                logReread(expectedPackage, null);
+                return;
+            }
+
+            if (store == null) store = new BlockedSitesStore(service);
+            if (!store.isBlockingActive()) return;
+
+            String visibleUrl = urlExtractor.extract(root, null, expectedPackage);
+            logReread(expectedPackage, visibleUrl);
+
+            if (visibleUrl != null) {
+                handleVisibleUrl(expectedPackage, visibleUrl);
+            }
+        };
+
+        mainHandler.postDelayed(pendingReread, REREAD_DELAY_MS);
+    }
+
+    private void cancelReread() {
+        if (pendingReread == null) return;
+        mainHandler.removeCallbacks(pendingReread);
+        pendingReread = null;
+    }
+
+    private AccessibilityNodeInfo applicationRootForPackage(String packageName) {
+        if (packageName == null) return null;
+
+        AccessibilityNodeInfo focusedCandidate = null;
+
+        try {
+            for (AccessibilityWindowInfo window : service.getWindows()) {
+                if (window == null || window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    continue;
+                }
+
+                AccessibilityNodeInfo candidate = window.getRoot();
+                if (!packageName.equals(packageNameOf(candidate))) continue;
+
+                if (window.isActive()) {
+                    return candidate;
+                }
+
+                if (window.isFocused()) {
+                    focusedCandidate = candidate;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Algumas versões do Android podem invalidar uma janela enquanto percorremos a lista.
+        }
+
+        AccessibilityNodeInfo activeRoot = service.getRootInActiveWindow();
+        if (packageName.equals(packageNameOf(activeRoot))) {
+            return activeRoot;
+        }
+
+        return focusedCandidate;
+    }
+
+    private boolean sameWindow(AccessibilityEvent event, AccessibilityNodeInfo root) {
+        if (root == null) return false;
+
+        int eventWindowId = event.getWindowId();
+        int rootWindowId = root.getWindowId();
+
+        // IDs negativos representam janela indefinida; nesse caso não descartamos a raiz.
+        return eventWindowId < 0 || rootWindowId < 0 || eventWindowId == rootWindowId;
+    }
+
+    private boolean isLegacyEventType(int eventType) {
+        return (LEGACY_EVENT_TYPES & eventType) != 0;
+    }
+
+    private String packageNameOf(AccessibilityNodeInfo node) {
+        if (node == null || node.getPackageName() == null) return null;
+        return node.getPackageName().toString();
+    }
+
+    private int windowIdOf(AccessibilityNodeInfo node) {
+        return node == null ? -1 : node.getWindowId();
+    }
+
+    private boolean isDebugBuild() {
+        return (service.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
+    private void logReread(String packageName, String visibleUrl) {
+        if (!isDebugBuild()) return;
+
+        BrowserProfile profile = BrowserProfiles.forPackage(packageName);
+        String host = DomainMatcher.extractHost(visibleUrl);
+        Log.d(
+                REREAD_LOG_TAG,
+                "family=" + (profile == null ? "<desconhecida>" : profile.getFamily())
+                        + " pkg=" + packageName
+                        + " host=" + (host == null ? "<nao-detectado>" : host)
+        );
+    }
+
+    private void blockCurrentPage(String packageName) {
+        cancelFirefoxRetry();
+        cancelReread();
+
+        if (redirectController == null) {
+            redirectController = new BlockRedirectController(
+                service, mainHandler, urlExtractor, this::scheduleReread);
+        }
+        redirectController.start(packageName);
+    }
+
+    public void onInterrupt() {
+        cancelOtherAppRead();
+        cancelFirefoxRetry();
+        cancelReread();
+        cancelUnsupportedBrowserCheck();
+        cancelAddressBarCheck();
+        cancelPageScan();
+        cancelMonitoring();
+    }
+
+    public void onDestroy() {
+        cancelFirefoxRetry();
+        cancelReread();
+        cancelUnsupportedBrowserCheck();
+        cancelAddressBarCheck();
+        cancelPageScan();
+        cancelMonitoring();
+        if (redirectController != null) {
+            redirectController.destroy();
+            redirectController = null;
+        }
+        mainHandler.removeCallbacksAndMessages(null);
+    }
+}

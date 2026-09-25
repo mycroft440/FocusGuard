@@ -24,7 +24,7 @@ class AssociatedBlockTargetsTest {
     }
 
     @Test
-    fun `multiple apps expose stable website companion options`() {
+    fun `apps no longer offer website companions`() {
         val companions = AssociatedBlockTargets.websiteCompanionsForApps(
             listOf(
                 "com.google.android.youtube",
@@ -34,10 +34,8 @@ class AssociatedBlockTargetsTest {
             )
         )
 
-        assertThat(companions.map { it.packageName })
-            .containsExactly("com.instagram.android", "com.google.android.youtube")
-        assertThat(companions.map { it.domain })
-            .containsExactly("instagram.com", "youtube.com")
+        // Sites ficam só no bloqueio de sites (com.focusguard.sitesblocker).
+        assertThat(companions).isEmpty()
     }
 
     @Test

@@ -242,7 +242,6 @@ class BlockingAccessibilityServiceIntentTest {
         BlockingAccessibilityService.createRefreshBlockingIntent(
             context = context,
             blockedApps = listOf("com.example.blocked"),
-            blockedSites = listOf("Example.COM/path"),
             blockingActive = true,
             strictPomodoro = true
         )
@@ -250,7 +249,7 @@ class BlockingAccessibilityServiceIntentTest {
         val snapshot = SelfProtectionStateStore.read(context)
         assertThat(snapshot.armed).isTrue()
         assertThat(snapshot.blockedApps).containsExactly("com.example.blocked")
-        assertThat(snapshot.blockedSites).containsExactly("example.com")
+        assertThat(snapshot.blockedSites).isEmpty()
         assertThat(snapshot.strictPomodoro).isTrue()
     }
 

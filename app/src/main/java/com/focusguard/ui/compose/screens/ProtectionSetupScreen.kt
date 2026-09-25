@@ -104,7 +104,6 @@ import kotlinx.coroutines.launch
 private enum class ProtectionSetupPage {
     LIST,
     APP_PICKER,
-    WEBSITE_PICKER,
     MODE,
     DAILY_LIMIT,
     PASSWORD,
@@ -162,7 +161,6 @@ fun UnifiedProtectionSetupWizard(
         when (page) {
             ProtectionSetupPage.LIST -> onFinish()
             ProtectionSetupPage.APP_PICKER,
-            ProtectionSetupPage.WEBSITE_PICKER,
             ProtectionSetupPage.MODE -> returnToList()
             ProtectionSetupPage.DAILY_LIMIT,
             ProtectionSetupPage.PASSWORD,
@@ -185,10 +183,56 @@ fun UnifiedProtectionSetupWizard(
                         page = ProtectionSetupPage.APP_PICKER
                     }
                 },
-                onAddSites = {
+                onRemoveApp = { packageName ->
+                    selectedApps = selectedApps.filterNot { it.packageName == packageName }
+                },
+                onRemoveWebsite = { rule ->
+                    websiteRules = websiteRules.filterNot { it == rule }
+                },
+                onContinue = {
                     scope.launch {
                         refreshConfiguredBlockedTargets()
-                        page = ProtectionSetupPage.WEBSITE_PICKER
+                        if (selectedApps.isNotEmpty() || websiteRules.isNotEmpty()) {
+                            page = ProtectionSetupPage.MODE
+                        }
+                    }
+                },
+                onBack = onFinish
+            )
+
+            ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
+                onNext = { apps, companionRules ->
+                    selectedApps = apps
+                    websiteRules = companionRules
+                    returnToList()
+                },
+                onBack = ::returnToList,
+                initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
+                initialRules = websiteRules,
+                allowCompatibleProtection = true,
+                offerWebsiteCompanion = false
+            )
+
+            ProtectionSetupPage.MODE -> returnToList()
+            ProtectionSetupPage.DAILY_LIMIT,
+            ProtectionSetupPage.PASSWORD,
+            ProtectionSetupPage.DOPAMINE_FAST -> page = ProtectionSetupPage.MODE
+        }
+    }
+
+    AnimatedContent(
+        targetState = page,
+        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        label = "UnifiedProtectionSetup"
+    ) { currentPage ->
+        when (currentPage) {
+            ProtectionSetupPage.LIST -> ProtectionListBuilderScreen(
+                selectedApps = selectedApps,
+                websiteRules = websiteRules,
+                onAddApps = {
+                    scope.launch {
+                        refreshConfiguredBlockedTargets()
+                        page = ProtectionSetupPage.APP_PICKER
                     }
                 },
                 onRemoveApp = { packageName ->
@@ -208,9 +252,6 @@ fun UnifiedProtectionSetupWizard(
                 onBack = onFinish
             )
 
-            // Este assistente tem uma tela própria de sites (WEBSITE_PICKER).
-            // O seletor de apps continua visualmente focado em apps, mas pode devolver
-            // um site companheiro quando o usuário aceitar explicitamente a opção.
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
                 onNext = { apps, companionRules ->
                     selectedApps = apps
@@ -221,39 +262,7 @@ fun UnifiedProtectionSetupWizard(
                 initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
                 initialRules = websiteRules,
                 allowCompatibleProtection = true,
-                offerWebsiteCompanion = true
-            )
-
-            ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
-                initialRules = websiteRules,
-                configuredBlockedRules = emptySet(),
-                selectedAppPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
-                configuredBlockedPackages = emptySet(),
-                onSave = { rules, optedInCompanionPackages ->
-                    val companionApps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
-                        rules = rules,
-                        optedInPackages = optedInCompanionPackages
-                    )
-                    val companionRows = companionApps.map { appInfo ->
-                        SelectableAppUi(
-                            packageName = appInfo.packageName,
-                            appName = appInfo.appName,
-                            isSelected = true,
-                            isInstalled = context.packageManager
-                                .getLaunchIntentForPackage(appInfo.packageName) != null,
-                            category = appInfo.category,
-                            iconUrl = appInfo.domain?.let { domain ->
-                                "https://www.google.com/s2/favicons?domain=$domain&sz=128"
-                            }
-                        )
-                    }
-
-                    selectedApps = (selectedApps + companionRows)
-                        .distinctBy { it.packageName }
-                    websiteRules = rules
-                    returnToList()
-                },
-                onBack = ::returnToList
+                offerWebsiteCompanion = false
             )
 
             ProtectionSetupPage.MODE -> ProtectionModeSelectionScreen(
@@ -351,7 +360,6 @@ private fun ProtectionListBuilderScreen(
     selectedApps: List<SelectableAppUi>,
     websiteRules: List<String>,
     onAddApps: () -> Unit,
-    onAddSites: () -> Unit,
     onRemoveApp: (String) -> Unit,
     onRemoveWebsite: (String) -> Unit,
     onContinue: () -> Unit,
@@ -411,14 +419,6 @@ private fun ProtectionListBuilderScreen(
                     title = stringResource(R.string.protection_add_apps_title),
                     subtitle = stringResource(R.string.protection_add_apps_subtitle),
                     onClick = onAddApps
-                )
-            }
-            item {
-                ProtectionActionCard(
-                    icon = Icons.Default.Public,
-                    title = stringResource(R.string.protection_add_sites_title),
-                    subtitle = stringResource(R.string.protection_add_sites_subtitle),
-                    onClick = onAddSites
                 )
             }
             item {
@@ -549,391 +549,6 @@ internal fun ProtectionTargetRow(
             IconButton(onClick = onRemove) {
                 Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.remove_button), tint = DangerRed)
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WebsiteRuleSelectionScreen(
-    initialRules: List<String>,
-    configuredBlockedRules: Set<String>,
-    selectedAppPackages: Set<String>,
-    configuredBlockedPackages: Set<String>,
-    onSave: (List<String>, Set<String>) -> Unit,
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-    var input by remember { mutableStateOf("") }
-    var rules by remember(initialRules, configuredBlockedRules) {
-        mutableStateOf(
-            initialRules.distinct().filterNot {
-                isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
-            }
-        )
-    }
-    var invalidInput by remember { mutableStateOf(false) }
-    var pendingCompanionApp by remember {
-        mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
-    }
-    var optedInCompanionPackages by remember {
-        mutableStateOf<Set<String>>(emptySet())
-    }
-
-    fun removeRule(rule: String) {
-        val normalized = WebsiteBlocker.normalizeRule(rule)
-        rules = rules.filterNot { WebsiteBlocker.normalizeRule(it) == normalized }
-        AssociatedBlockTargets.appForWebsiteRule(normalized)?.let { appInfo ->
-            optedInCompanionPackages = optedInCompanionPackages - appInfo.packageName
-        }
-    }
-
-    fun maybeOfferCompanionApp(rule: String) {
-        val appInfo = AssociatedBlockTargets.appForWebsiteRule(rule) ?: return
-        if (appInfo.packageName in selectedAppPackages ||
-            appInfo.packageName in configuredBlockedPackages ||
-            appInfo.packageName in optedInCompanionPackages
-        ) return
-        pendingCompanionApp = WebsiteBlocker.normalizeRule(rule) to appInfo
-    }
-
-    fun addRule(value: String) {
-        val normalized = WebsiteBlocker.normalizeRule(value)
-        if (normalized.isEmpty()) {
-            invalidInput = true
-            return
-        }
-        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
-            removeRule(normalized)
-            input = ""
-            invalidInput = false
-            Toast.makeText(
-                context,
-                context.getString(R.string.site_already_blocked),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-        rules = (rules + normalized).distinct()
-        input = ""
-        invalidInput = false
-        maybeOfferCompanionApp(normalized)
-    }
-
-    fun togglePresetRule(rule: String) {
-        val normalized = WebsiteBlocker.normalizeRule(rule)
-        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
-            removeRule(normalized)
-            Toast.makeText(
-                context,
-                context.getString(R.string.site_already_blocked),
-                Toast.LENGTH_SHORT
-            ).show()
-        } else {
-            val wasSelected = normalized in rules
-            if (wasSelected) {
-                removeRule(normalized)
-            } else {
-                rules = (rules + normalized).distinct()
-                maybeOfferCompanionApp(normalized)
-            }
-        }
-    }
-
-    pendingCompanionApp?.let { (rule, appInfo) ->
-        AssociatedTargetOptionDialog(
-            title = stringResource(R.string.associated_target_block_app_title),
-            message = stringResource(
-                R.string.associated_target_block_app_message,
-                WebsiteBlocker.displayRule(rule),
-                appInfo.appName
-            ),
-            onDecision = { blockAlso ->
-                if (blockAlso) {
-                    optedInCompanionPackages = optedInCompanionPackages + appInfo.packageName
-                }
-                pendingCompanionApp = null
-            }
-        )
-    }
-
-    Scaffold(
-        containerColor = DarkBg,
-        topBar = {
-            ProtectionTopBar(
-                title = stringResource(R.string.protection_sites_title),
-                onBack = onBack
-            )
-        },
-        bottomBar = {
-            Surface(color = DarkBg, tonalElevation = 8.dp) {
-                Button(
-                    onClick = {
-                        val savableRules = rules.filterNot {
-                            isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
-                        }
-                        onSave(savableRules, optedInCompanionPackages)
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(20.dp, 12.dp).height(54.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text(stringResource(R.string.protection_save_list), color = DarkBg, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Text(
-                    stringResource(R.string.protection_sites_add_new).uppercase(),
-                    color = TextSecondary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            item {
-                Row(verticalAlignment = Alignment.Top) {
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { input = it; invalidInput = false },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text(stringResource(R.string.protection_sites_placeholder), color = TextHint) },
-                        leadingIcon = { Icon(Icons.Default.Public, contentDescription = null, tint = TextHint) },
-                        isError = invalidInput,
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentCyan,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Button(
-                        onClick = { addRule(input) },
-                        enabled = input.isNotBlank(),
-                        modifier = Modifier.height(56.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
-                    }
-                }
-            }
-            item {
-                Text(
-                    if (invalidInput) stringResource(R.string.website_rule_invalid)
-                    else stringResource(R.string.protection_sites_helper),
-                    color = if (invalidInput) DangerRed else TextHint,
-                    fontSize = 12.sp
-                )
-            }
-            item {
-                Text(
-                    stringResource(R.string.protection_sites_common).uppercase(),
-                    color = TextSecondary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-            }
-            item {
-                val pornographyRule = PredefinedWebsites.PORNOGRAPHY_RULE
-                PornographyPresetRow(
-                    selected = pornographyRule in rules,
-                    onToggle = { togglePresetRule(pornographyRule) }
-                )
-            }
-            items(PredefinedWebsites.POPULAR, key = { "preset_${it.domain}" }) { website ->
-                val normalized = WebsiteBlocker.normalizeRule(website.domain)
-                WebsitePresetRow(
-                    website = website,
-                    selected = normalized in rules,
-                    onToggle = { togglePresetRule(normalized) }
-                )
-            }
-            item {
-                HorizontalDivider(color = CardBorder, modifier = Modifier.padding(vertical = 8.dp))
-                Text(
-                    stringResource(R.string.protection_sites_selected).uppercase(),
-                    color = TextSecondary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            if (rules.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(R.string.protection_sites_none),
-                        color = TextHint,
-                        modifier = Modifier.padding(vertical = 20.dp)
-                    )
-                }
-            } else {
-                items(rules, key = { it }) { rule ->
-                    ProtectionTargetRow(
-                        icon = Icons.Default.Public,
-                        title = WebsiteBlocker.displayRule(rule),
-                        subtitle = stringResource(R.string.sessions_category_websites),
-                        onRemove = { removeRule(rule) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun PornographyPresetRow(
-    selected: Boolean,
-    onToggle: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) AccentCyan.copy(alpha = 0.08f) else DarkCard
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (selected) AccentCyan.copy(alpha = 0.42f) else CardBorder
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = DarkBg
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = AccentCyan,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.protection_sites_pornography),
-                    color = TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    stringResource(R.string.protection_sites_pornography_subtitle),
-                    color = TextHint,
-                    fontSize = 12.sp
-                )
-            }
-            Switch(
-                checked = selected,
-                onCheckedChange = { onToggle() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = DarkBg,
-                    checkedTrackColor = AccentCyan,
-                    uncheckedThumbColor = TextHint,
-                    uncheckedTrackColor = DarkCard,
-                    uncheckedBorderColor = CardBorder
-                )
-            )
-        }
-    }
-}
-
-@Composable
-internal fun WebsitePresetRow(
-    website: PredefinedWebsites.WebsiteInfo,
-    selected: Boolean,
-    onToggle: () -> Unit
-) {
-    val context = LocalContext.current
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) AccentCyan.copy(alpha = 0.08f) else DarkCard
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (selected) AccentCyan.copy(alpha = 0.42f) else CardBorder
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = DarkBg
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data("https://www.google.com/s2/favicons?domain=${website.iconDomain}&sz=128")
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = website.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        loading = {
-                            CircularProgressIndicator(
-                                color = AccentCyan,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        error = {
-                            Text(
-                                website.name.take(1),
-                                color = AccentCyan,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp
-                            )
-                        }
-                    )
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    website.name,
-                    color = TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(website.domain, color = TextHint, fontSize = 12.sp)
-            }
-            Switch(
-                checked = selected,
-                onCheckedChange = { onToggle() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = DarkBg,
-                    checkedTrackColor = AccentCyan,
-                    uncheckedThumbColor = TextHint,
-                    uncheckedTrackColor = DarkCard,
-                    uncheckedBorderColor = CardBorder
-                )
-            )
         }
     }
 }

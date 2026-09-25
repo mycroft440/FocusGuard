@@ -37,7 +37,6 @@ internal fun websiteSurfaceFor(
  * exactly one owner Activity:
  *
  *  - [PasswordUnlockActivity] for a plain PASSWORD-session app or website target;
- *  - [WebsiteBlockNoticeActivity] for a known non-password website target;
  *  - [GenericBlockNoticeActivity] for app targets and target-unknown fail-closed states.
  *
  * TIME commitments and active usage limits have a second invariant: on a Device
@@ -279,14 +278,9 @@ class BlockNoticeActivity : AppCompatActivity() {
             sourceIntent: Intent,
             surface: AppBlockSurfacePolicy.Surface
         ): Intent {
-            val blockedDomain = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
-            )?.takeIf(String::isNotBlank)
             val destination = when {
                 surface == AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK ->
                     PasswordUnlockActivity::class.java
-                blockedDomain != null ->
-                    WebsiteBlockNoticeActivity::class.java
                 else ->
                     GenericBlockNoticeActivity::class.java
             }

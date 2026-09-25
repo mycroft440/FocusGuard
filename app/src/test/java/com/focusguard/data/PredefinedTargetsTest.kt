@@ -108,18 +108,4 @@ class PredefinedTargetsTest {
             .isTrue()
         assertThat(WebsiteBlocker.isUrlBlocked("https://nhentai.example", category)).isTrue()
     }
-
-    @Test
-    fun managedBrowserFiltersCarryTheAdultDomainsAndSearchTerms() {
-        val filters = WebsiteBlocker.managedBrowserFiltersFor(
-            listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
-        )
-
-        // A política do Chromium não aceita curinga no host, então lá cada
-        // domínio precisa estar listado; as palavras entram como busca.
-        assertThat(filters).containsAtLeast("pornhub.com", "chaturbate.com", "nhentai.net")
-        assertThat(filters).contains("*?q=porn*")
-        assertThat(filters).contains("*?q=xvideo*")
-        assertThat(filters).contains("images.google.com")
-    }
 }
