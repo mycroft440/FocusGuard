@@ -118,14 +118,21 @@ object ImmediateInterceptionPolicy {
         !defaultLauncherPackage.isNullOrBlank() &&
         eventPackageName == defaultLauncherPackage
 
+    /**
+     * Launcher implementations are OEM-owned and their app-icon View class names
+     * are not an Android API contract. Treat this as a rejection filter instead
+     * of an allowlist: the caller still requires a click from the current launcher
+     * and an exact globally-unique app label before a package can be intercepted.
+     *
+     * In particular, some launchers use names such as ShortcutIcon for ordinary
+     * application icons, so the generic word "Shortcut" cannot safely identify a
+     * non-app surface. Only explicit folder/widget/deep-shortcut surfaces are
+     * rejected here.
+     */
     fun isLikelyLauncherAppIconClass(className: String): Boolean {
-        if (className.isBlank()) return false
-        if (className == "android.widget.TextView") return true
-        if (NON_APP_LAUNCHER_CLASS_MARKERS.any {
-                className.contains(it, ignoreCase = true)
-            }
-        ) return false
-        return APP_ICON_CLASS_MARKERS.any { className.contains(it, ignoreCase = true) }
+        return NON_APP_LAUNCHER_CLASS_MARKERS.none {
+            className.contains(it, ignoreCase = true)
+        }
     }
 
     fun isBlockedTargetWindow(
@@ -279,17 +286,9 @@ object ImmediateInterceptionPolicy {
     private val WHITESPACE_REGEX = "\\s+".toRegex()
     private val SAFE_LABEL_SUFFIXES = setOf(',', '\n', '•', '·', '(')
     private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
-    private val APP_ICON_CLASS_MARKERS = setOf(
-        "BubbleTextView",
-        "IconTextView",
-        "AppIcon",
-        "IconView",
-        "PagedViewIcon"
-    )
     private val NON_APP_LAUNCHER_CLASS_MARKERS = setOf(
         "Folder",
         "Widget",
-        "Shortcut",
         "DeepShortcut"
     )
 }
