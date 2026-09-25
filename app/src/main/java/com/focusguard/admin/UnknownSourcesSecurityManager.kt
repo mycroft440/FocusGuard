@@ -8,21 +8,32 @@ import android.os.Build
 import android.os.UserManager
 import android.provider.Settings
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.PermissionUtils
 
 /**
- * Optional Device Owner policy for blocking installation from unknown sources.
+ * Optional protection against enabling installation from unknown app sources.
  *
- * This policy intentionally stays separate from [DeviceOwnerManager]'s automatic
- * protection shield. It is enabled only after the user explicitly completes the
- * manual revocation flow in Android settings and confirms the action in FocusGuard.
+ * Device Owner keeps using Android's native user restriction when available. On
+ * regular consumer devices the enabled state is persisted independently and the
+ * Accessibility service protects the "Install unknown apps" settings surface after
+ * the user manually revokes grants that already existed.
  */
 class UnknownSourcesSecurityManager private constructor(context: Context) {
 
     private val appContext = context.applicationContext
     private val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val adminComponent = FocusGuardDeviceAdminReceiver.getComponentName(appContext)
+    private val preferences = appContext
+        .createDeviceProtectedStorageContext()
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    @Volatile
+    private var protectionEnabled = preferences.getBoolean(KEY_PROTECTION_ENABLED, false)
 
     companion object {
+        private const val PREFS_NAME = "unknown_sources_security"
+        private const val KEY_PROTECTION_ENABLED = "protection_enabled"
+
         @Volatile
         private var instance: UnknownSourcesSecurityManager? = null
 
@@ -44,11 +55,74 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
         dpm.isDeviceOwnerApp(appContext.packageName)
     }.getOrDefault(false)
 
+    fun canEnableProtection(): Boolean =
+        isDeviceOwnerActive() || PermissionUtils.isAccessibilityServiceEnabled(appContext)
+
     /**
-     * Returns true only when the strongest restriction available on this Android
-     * version is confirmed by DevicePolicyManager.
+     * True when the optional protection is enabled. Native Device Owner state is
+     * also recognized so installs made with the previous Device-Owner-only version
+     * migrate without silently turning the switch off.
      */
     fun isBlocked(): Boolean {
+        if (protectionEnabled) return true
+        if (!nativeRestrictionActive()) return false
+
+        // Migrate the old Device-Owner-only state into the independent preference.
+        if (preferences.edit().putBoolean(KEY_PROTECTION_ENABLED, true).commit()) {
+            protectionEnabled = true
+        }
+        return true
+    }
+
+    /**
+     * Accessibility is the consumer-mode enforcement layer. When Device Owner is
+     * active, Android's native user restriction remains the stronger implementation.
+     */
+    fun isAccessibilityFallbackEnabled(): Boolean =
+        isBlocked() && !isDeviceOwnerActive()
+
+    /**
+     * Enables the strongest available implementation.
+     *
+     * With Device Owner, Android's native restriction is applied and verified.
+     * Without Device Owner, FocusGuard requires its Accessibility service and stores
+     * the feature state so that service can prevent the permission from being
+     * enabled again in Android settings.
+     */
+    fun setBlocked(enabled: Boolean): Boolean {
+        val deviceOwnerActive = isDeviceOwnerActive()
+
+        if (enabled) {
+            if (!deviceOwnerActive && !PermissionUtils.isAccessibilityServiceEnabled(appContext)) {
+                return false
+            }
+            if (deviceOwnerActive && !setNativeRestriction(true)) return false
+
+            val stored = preferences.edit()
+                .putBoolean(KEY_PROTECTION_ENABLED, true)
+                .commit()
+            if (!stored) {
+                if (deviceOwnerActive) setNativeRestriction(false)
+                return false
+            }
+            protectionEnabled = true
+            return true
+        }
+
+        // Keep the feature logically enabled if Android refuses to remove an active
+        // native policy; reporting success while that restriction remained would make
+        // the switch lie about the device state.
+        if (deviceOwnerActive && !setNativeRestriction(false)) return false
+
+        val stored = preferences.edit()
+            .putBoolean(KEY_PROTECTION_ENABLED, false)
+            .commit()
+        if (!stored) return false
+        protectionEnabled = false
+        return true
+    }
+
+    private fun nativeRestrictionActive(): Boolean {
         if (!isDeviceOwnerActive()) return false
         val restriction = restrictionForSdk(Build.VERSION.SDK_INT)
         return runCatching {
@@ -56,20 +130,13 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "ExtraSecurity",
-                "Falha ao verificar bloqueio de fontes desconhecidas",
+                "Falha ao verificar bloqueio nativo de fontes desconhecidas",
                 error
             )
         }.getOrDefault(false)
     }
 
-    /**
-     * Applies or removes the optional policy and reads it back before reporting
-     * success. On Android 10+ disabling also clears the older per-user variant so
-     * a policy left by a previous build cannot remain active unexpectedly.
-     */
-    fun setBlocked(enabled: Boolean): Boolean {
-        if (!isDeviceOwnerActive()) return false
-
+    private fun setNativeRestriction(enabled: Boolean): Boolean {
         val requiredRestriction = restrictionForSdk(Build.VERSION.SDK_INT)
         return runCatching {
             if (enabled) {
@@ -96,7 +163,7 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "ExtraSecurity",
-                "Falha ao ${if (enabled) "ativar" else "desativar"} bloqueio de fontes desconhecidas",
+                "Falha ao ${if (enabled) "ativar" else "desativar"} bloqueio nativo de fontes desconhecidas",
                 error
             )
         }.getOrDefault(false)
