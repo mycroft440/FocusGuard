@@ -16,6 +16,14 @@ desfeitas na primeira reconciliação depois da atualização.
   eventos, o ciclo de vida e o teclado do serviço (`onCreateInputMethod`). O serviço
   declara `canPerformGestures` e `flagInputMethodEditor`, e recebe todos os tipos de
   evento, como o serviço original.
+- O motor recebe os eventos como o Bloquear Sites recebia (`SiteBlockEventDelivery`):
+  40 ms depois de acontecerem, com os de um mesmo tipo nesse intervalo juntados no último
+  (`notificationTimeout="40"` do app original). O resto do serviço continua recebendo os
+  eventos na hora (`notificationTimeout` 0, exigido pela autoproteção).
+- Os tipos de evento assinados só por causa do bloqueio de sites (rolagem, notificações,
+  avisos etc.) vão direto para o motor e não passam pelos outros bloqueios do HardBlock,
+  que continuam vendo só os tipos de antes. Eventos do teclado e de sobreposições não
+  chegam ao motor, para não segurar a thread principal que os bloqueios compartilham.
 - Os dados ficam nas mesmas preferências do app original (`blocked_sites`,
   `identified_browsers`, `rejected_browsers`, `verified_browsers`, `unreadable_browsers`).
 
@@ -59,7 +67,7 @@ Navegadores que expõem a barra de endereço do mesmo jeito ficam na mesma famí
 - A troca só começa depois que a cortina aparece na tela (primeiro quadro desenhado, ou até 400 ms). A cortina fica acima do teclado. Ela deixa toques passarem só até a barra do navegador ser tocada pela troca (no Firefox, um toque simulado); depois disso, o site bloqueado não recebe mais toques do usuário. Eventos do navegador em troca de site são descartados antes de qualquer consulta à árvore.
 - No Firefox, o evento não consulta o navegador: ele só inicia a confirmação da URL exibida na barra. A primeira leitura sai 60 ms depois do evento, e a URL conta com o mesmo domínio em duas leituras seguidas, 120 ms depois (o bloqueio começa em cerca de 180 ms). As leituras seguem por uns 3,5 segundos, porque a barra pode mudar sem outro evento.
 - Com algo a bloquear, o navegador em uso é lido de novo a cada 2 segundos, mesmo sem eventos, até sair da tela; no Firefox, o mesmo domínio precisa aparecer numa segunda leitura, 120 ms depois. Um site bloqueado que escapou da troca (por exemplo, com Voltar) não fica liberado à espera de um evento.
-- O serviço do FocusGuard recebe os eventos sem atraso (`notificationTimeout` 0, exigido pela autoproteção); os limites de leitura acima (Firefox, Opera GX, outros apps) evitam consultas repetidas numa rajada.
+- O motor recebe cada evento 40 ms depois de ele acontecer; os eventos de um mesmo tipo nesse intervalo chegam como um só (`SiteBlockEventDelivery`, que refaz o `notificationTimeout="40"` do app original).
 - Durante a troca, a chegada ao Google é conferida a cada 250 ms e pelos eventos, no máximo uma vez a cada 100 ms.
 - A lista de sites fica guardada já normalizada, e o domínio aberto é comparado consultando o host e cada domínio acima dele, sem percorrer a lista.
 - No Opera GX, a barra não tem IDs e é lida pela estrutura da tela, o que percorre a árvore. O evento não consulta o navegador (que demora a responder enquanto a página carrega): os eventos de uma rajada só agendam uma leitura, 120 ms depois, feita numa só passada pela árvore. Sem um campo do Opera GX conectado ao teclado do serviço (Android 13+), não há endereço em edição, e a leitura para no primeiro texto da barra com URL. A troca pela barra abre uma tela de pesquisa. A cortina fica na tela até a troca terminar (até 12 segundos), e não só os 3 segundos dos outros navegadores. No Android 13+, o destino é digitado pela conexão de entrada do serviço, como um teclado (seleciona tudo e escreve por cima): o `ACTION_SET_TEXT` às vezes não ficava no campo em Compose. A espera pela tela de pesquisa e a conferência do texto usam o teclado do serviço (`ServiceInputMethod`), sem percorrer a árvore. Se a tela de pesquisa for fechada no meio da troca (Voltar), a troca pela barra é tentada até 3 vezes antes da aba nova, e Voltar só é usado se a tela ainda estiver aberta. Se a troca desistir, o site é conferido de novo e bloqueado outra vez se continuar na tela.

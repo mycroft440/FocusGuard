@@ -1804,8 +1804,6 @@ private fun FocusModeStartError(outcome: FocusModeManager.StartOutcome?) {
             stringResource(R.string.focus_mode_accessibility_required)
         FocusModeManager.StartOutcome.NOTIFICATION_ACCESS_REQUIRED ->
             stringResource(R.string.focus_mode_notification_access_required)
-        FocusModeManager.StartOutcome.STRICT_POMODORO_ACTIVE ->
-            stringResource(R.string.focus_mode_pomodoro_conflict)
         FocusModeManager.StartOutcome.ENFORCEMENT_FAILED ->
             stringResource(R.string.focus_mode_start_failed)
         FocusModeManager.StartOutcome.STARTED,

@@ -37,38 +37,22 @@ internal class AppBlockSurfaceResolver(
 
     private val appContext = context.applicationContext
 
-    suspend fun resolve(
-        blockedPackage: String?,
-        strictPomodoroActive: Boolean
-    ): AppBlockSurfacePolicy.Surface = resolveAttempt(
-        blockedPackage = blockedPackage,
-        strictPomodoroActive = strictPomodoroActive
-    ).surface
+    suspend fun resolve(blockedPackage: String?): AppBlockSurfacePolicy.Surface =
+        resolveAttempt(blockedPackage).surface
 
-    suspend fun resolveAttempt(
-        blockedPackage: String?,
-        strictPomodoroActive: Boolean
-    ): Resolution {
+    suspend fun resolveAttempt(blockedPackage: String?): Resolution {
         val packageName = blockedPackage?.takeIf(String::isNotBlank)
             ?: return Resolution(
                 surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
                 closeTargetAfterInterception = false
             )
 
-        if (strictPomodoroActive) {
-            return Resolution(
-                surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
-                closeTargetAfterInterception = false
-            )
-        }
-
         // This lookup gives password-protected daily limits precedence over a
         // PASSWORD session for the same package. Only PASSWORD_SESSION may enter
         // the target-credential Activity.
         val credentialOrigin = sessionManager.credentialUnlockOrigin(
             blockedPackage = packageName,
-            blockedDomain = null,
-            strictPomodoroActive = false
+            blockedDomain = null
         )
 
         // This is the live, stateful check. It only reports a TIME session while
@@ -89,7 +73,6 @@ internal class AppBlockSurfaceResolver(
             return Resolution(
                 surface = AppBlockSurfacePolicy.decide(
                     AppBlockSurfacePolicy.Facts(
-                        strictPomodoro = false,
                         focusModeBlocksTarget = false,
                         dopamineFastBlocksTarget = false,
                         activeUsageLimitBlocksTarget = false,
@@ -119,7 +102,6 @@ internal class AppBlockSurfaceResolver(
         return Resolution(
             surface = AppBlockSurfacePolicy.decide(
                 AppBlockSurfacePolicy.Facts(
-                    strictPomodoro = false,
                     focusModeBlocksTarget = focusModeBlocksTarget,
                     dopamineFastBlocksTarget = false,
                     activeUsageLimitBlocksTarget = activeTimedOrUsageBlock,

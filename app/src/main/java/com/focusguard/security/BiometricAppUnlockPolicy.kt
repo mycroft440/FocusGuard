@@ -34,10 +34,7 @@ object BiometricAppUnlockPolicy {
         USAGE_LIMIT_TIME_HARDENED,
 
         /** Dopamine fast (`sessionType == "TIME"`). */
-        DOPAMINE_FAST,
-
-        /** Strict Pomodoro lock. */
-        STRICT_POMODORO
+        DOPAMINE_FAST
     }
 
     /**
@@ -52,8 +49,7 @@ object BiometricAppUnlockPolicy {
 
             BlockOrigin.USAGE_LIMIT_NO_UNLOCK,
             BlockOrigin.USAGE_LIMIT_TIME_HARDENED,
-            BlockOrigin.DOPAMINE_FAST,
-            BlockOrigin.STRICT_POMODORO -> false
+            BlockOrigin.DOPAMINE_FAST -> false
         }
     }
 
@@ -88,13 +84,12 @@ object BiometricAppUnlockPolicy {
     /**
      * Classifies what is blocking the app right now.
      *
-     * Precedence is deliberate: strict Pomodoro and the dopamine fast outrank
+     * Precedence is deliberate: the dopamine fast outranks
      * usage limits, because when several protections overlap the *strictest* one
      * must decide. Getting this backwards would let a permissive limit unseal a
      * fast.
      */
     fun classify(
-        strictPomodoroActive: Boolean,
         activeSessionType: String?,
         usageLimitExceeded: Boolean,
         limitLockMode: String?,
@@ -102,8 +97,6 @@ object BiometricAppUnlockPolicy {
         limitUnlockWithPassword: Boolean,
         nowMillis: Long = System.currentTimeMillis()
     ): BlockOrigin? {
-        if (strictPomodoroActive) return BlockOrigin.STRICT_POMODORO
-
         val sessionType = activeSessionType?.uppercase()
         if (sessionType != null && MasterCredentialPolicy.isIrreversibleSessionType(sessionType)) {
             return BlockOrigin.DOPAMINE_FAST

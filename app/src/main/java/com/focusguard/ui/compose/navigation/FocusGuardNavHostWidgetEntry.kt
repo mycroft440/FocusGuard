@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
-import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.theme.DarkBg
 
@@ -60,11 +59,6 @@ fun FocusGuardNavHost(
             PomodoroScreen(
                 pomodoroManager = pomodoroManager,
                 authManager = authManager,
-                onPermissionsRequired = {
-                    activity.startActivity(
-                        PermissionsActivity.createPendingProtectionIntent(activity)
-                    )
-                },
                 onBack = { directPomodoroVisible = false }
             )
         }

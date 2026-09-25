@@ -4,7 +4,7 @@ package com.focusguard.security
  * Chooses which blocking surface owns an app interception.
  *
  * PASSWORD is intentionally the weakest interactive route: any protection that
- * must keep the target closed (strict Pomodoro, Focus Mode, dopamine fast, or an
+ * must keep the target closed (Focus Mode, dopamine fast, or an
  * already-active usage limit) wins before a target credential can be offered.
  */
 object AppBlockSurfacePolicy {
@@ -14,7 +14,6 @@ object AppBlockSurfacePolicy {
     }
 
     data class Facts(
-        val strictPomodoro: Boolean,
         val focusModeBlocksTarget: Boolean,
         val dopamineFastBlocksTarget: Boolean,
         val activeUsageLimitBlocksTarget: Boolean,
@@ -23,7 +22,6 @@ object AppBlockSurfacePolicy {
 
     fun decide(facts: Facts): Surface {
         if (
-            facts.strictPomodoro ||
             facts.focusModeBlocksTarget ||
             facts.dopamineFastBlocksTarget ||
             facts.activeUsageLimitBlocksTarget

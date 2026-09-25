@@ -28,7 +28,6 @@ class RemoveAllBlocksAuthorizationPolicyTest {
             Summary(timeBlocks = 3),
             Summary(adultFilterActive = true),
             Summary(focusModeActive = true),
-            Summary(strictPomodoroActive = true),
             Summary(passwordBlocks = 2, timeBlocks = 3)
         ).forEach { summary ->
             assertEquals(

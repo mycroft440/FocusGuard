@@ -10,9 +10,6 @@ import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
-import com.focusguard.service.PomodoroForegroundService
-import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
@@ -64,34 +61,6 @@ class BootReceiver : BroadcastReceiver() {
         deviceOwnerManager.applyNuclearShield()
         AccessibilityStateMonitor.start(context)
         UsageAccessStateMonitor.start(context)
-
-        // Após BOOT_COMPLETED, os dois armazenamentos estão disponíveis.
-        val isPomodoroStrictActive = StrictPomodoroLock.isActive(storageContext)
-
-        if (isPomodoroStrictActive) {
-            FocusGuardLogger.log("BootReceiver", "Pomodoro rigoroso ativo detectado! Restaurando imediatamente...")
-
-            // 1. Iniciar serviço foreground watchdog
-            PomodoroForegroundService.start(context)
-
-            // 2. Agendar alarme watchdog como failsafe
-            PomodoroForegroundService.scheduleWatchdogAlarm(context)
-
-            // 3. Lançar tela de bloqueio
-            try {
-                val lockIntent = Intent(context, PomodoroLockActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    )
-                }
-                context.startActivity(lockIntent)
-                FocusGuardLogger.log("BootReceiver", "PomodoroLockActivity lançada após boot")
-            } catch (e: Exception) {
-                FocusGuardLogger.logError("BootReceiver", "Falha ao lançar LockActivity pós-boot", e)
-            }
-        }
 
         // Processamento completo em background
         val pendingResult = goAsync()

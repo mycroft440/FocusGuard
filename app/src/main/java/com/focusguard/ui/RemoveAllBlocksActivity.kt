@@ -33,7 +33,6 @@ import androidx.compose.material.icons.outlined.CenterFocusStrong
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -89,7 +88,6 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -144,12 +142,6 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                 suspend fun readSummary(): Summary = withContext(Dispatchers.IO) {
                     val now = System.currentTimeMillis()
                     val overview = blockingManager.getBlockOverview()
-                    val strictPomodoro = blockingManager.activeSessionsFlow.first().any {
-                        it.isActive &&
-                            it.sessionType == "POMODORO" &&
-                            it.isBlockingEnabled &&
-                            (it.endTime == null || it.endTime > now)
-                    }
                     Summary(
                         passwordBlocks = overview.passwordEntries.size,
                         dailyLimits = overview.dailyLimitEntries.size,
@@ -158,8 +150,7 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                         adultFilterActive = AuthManager.isAdultFilterConfigured(
                             applicationContext
                         ),
-                        focusModeActive = FocusModeStore.isActive(applicationContext, now),
-                        strictPomodoroActive = strictPomodoro
+                        focusModeActive = FocusModeStore.isActive(applicationContext, now)
                     )
                 }
 
@@ -456,13 +447,6 @@ private fun summaryLines(summary: Summary): List<SummaryLine> = buildList {
             stringResource(R.string.remove_all_blocks_focus_mode),
             Icons.Outlined.CenterFocusStrong,
             AccentCyan
-        )
-    )
-    if (summary.strictPomodoroActive) add(
-        SummaryLine(
-            stringResource(R.string.remove_all_blocks_strict_pomodoro),
-            Icons.Outlined.Timer,
-            WarningAmber
         )
     )
 }

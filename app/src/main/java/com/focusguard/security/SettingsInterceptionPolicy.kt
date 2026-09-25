@@ -35,7 +35,6 @@ object SettingsInterceptionPolicy {
 
     enum class Decision {
         IGNORE,
-        POMODORO_LOCK,
         PROTECT_AND_ARM_GUARD,
         PROTECT
     }
@@ -88,7 +87,6 @@ object SettingsInterceptionPolicy {
     fun decide(
         signals: EventSignals,
         selfProtectionEngaged: Boolean,
-        strictPomodoroActive: Boolean,
         deviceAdminActivationAuthorized: Boolean,
         maintenanceActive: Boolean = false,
         rootSignals: RootSignals
@@ -122,12 +120,6 @@ object SettingsInterceptionPolicy {
             } else {
                 Decision.IGNORE
             }
-        }
-
-        if (strictPomodoroActive &&
-            (!signals.isViewClickedEvent || deviceAdminActivationAuthorized)
-        ) {
-            return Decision.POMODORO_LOCK
         }
 
         // ACTION_ADD_DEVICE_ADMIN is a short app-initiated enrollment window.
@@ -168,8 +160,6 @@ object SettingsInterceptionPolicy {
         if (signals.isViewClickedEvent && signals.textMentionsFocusGuard) {
             return Decision.PROTECT
         }
-
-        if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
         if (signals.guardArmed &&
             !signals.isViewClickedEvent &&

@@ -143,14 +143,12 @@ internal fun AuthenticatedUninstallDialog(
                     val origin = if (entry.isWebsite) {
                         sessionManager.credentialUnlockOrigin(
                             blockedPackage = null,
-                            blockedDomain = entry.identifier,
-                            strictPomodoroActive = false
+                            blockedDomain = entry.identifier
                         )
                     } else {
                         sessionManager.credentialUnlockOrigin(
                             blockedPackage = entry.identifier,
-                            blockedDomain = null,
-                            strictPomodoroActive = false
+                            blockedDomain = null
                         )
                     }
                     origin == BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION

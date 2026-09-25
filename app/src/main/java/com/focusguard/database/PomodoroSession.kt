@@ -17,7 +17,8 @@ data class PomodoroSession(
     val isActive: Boolean,
     val isBreak: Boolean = false,
     val lastTickTime: Long = System.currentTimeMillis(),
-    val isBlockingEnabled: Boolean = true
+    // Coluna do antigo Pomodoro rigoroso, mantida só para não mudar o banco. Não é mais lida.
+    val isBlockingEnabled: Boolean = false
 )
 
 @Dao

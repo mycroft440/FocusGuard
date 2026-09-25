@@ -136,8 +136,6 @@ object FocusModePolicy {
         notificationPackage != focusGuardPackage &&
         notificationPackage in blockedPackages &&
         notificationPackage !in exemptPackages
-
-    fun canPomodoroReleaseKiosk(focusModeActive: Boolean): Boolean = !focusModeActive
 }
 
 data class FocusModeSession(

@@ -95,11 +95,10 @@ class BlockNoticeActivity : AppCompatActivity() {
         activeRouteKey = incomingKey
         latestRouteIntent = Intent(sourceIntent)
 
-        val strictBlock = incomingKey.strictBlock
         val blockedPackage = incomingKey.blockedPackage
         val blockedDomain = incomingKey.blockedDomain
 
-        if (strictBlock || (blockedDomain == null && blockedPackage == null)) {
+        if (blockedDomain == null && blockedPackage == null) {
             launchDestination(
                 sourceIntent = latestRouteIntent ?: sourceIntent,
                 surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
@@ -119,10 +118,7 @@ class BlockNoticeActivity : AppCompatActivity() {
                     val appResolution = AppBlockSurfaceResolver(
                         context = applicationContext,
                         sessionManager = blockingSessionManager
-                    ).resolveAttempt(
-                        blockedPackage = packageName,
-                        strictPomodoroActive = false
-                    )
+                    ).resolveAttempt(blockedPackage = packageName)
                     WebsiteRouteResolution(
                         surface = appResolution.surface,
                         closeTargetAfterInterception = appResolution.closeTargetAfterInterception
@@ -249,16 +245,11 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     companion object {
         internal data class RouteKey(
-            val strictBlock: Boolean,
             val blockedPackage: String?,
             val blockedDomain: String?
         )
 
         internal fun routeKey(sourceIntent: Intent): RouteKey = RouteKey(
-            strictBlock = sourceIntent.getBooleanExtra(
-                BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
-                false
-            ),
             blockedPackage = sourceIntent.getStringExtra(
                 BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
             )?.takeIf(String::isNotBlank),

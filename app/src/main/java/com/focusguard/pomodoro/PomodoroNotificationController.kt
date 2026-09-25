@@ -45,13 +45,8 @@ class PomodoroNotificationController(context: Context) {
             .any { it == component }
     }
 
-    /**
-     * Guarda uma única vez o filtro que existia antes do plano. O snapshot é
-     * usado também quando o modo rigoroso está ativo com o toggle "silenciar"
-     * desligado, pois o bloqueador legado muda o DND para PRIORITY por conta
-     * própria e precisamos desfazer essa mudança sem perder a escolha do usuário.
-     */
-    fun captureCurrentFilter(): Boolean {
+    /** Guarda uma única vez o filtro que existia antes do plano. */
+    private fun captureCurrentFilter(): Boolean {
         val notificationManager = manager ?: return false
         if (!notificationManager.isNotificationPolicyAccessGranted) return false
         if (prefs.contains(KEY_PREVIOUS_FILTER)) return true
@@ -75,15 +70,6 @@ class PomodoroNotificationController(context: Context) {
     }
 
     /**
-     * Reaplica temporariamente o estado anterior sem apagar o snapshot. É usado
-     * entre fases de um mesmo plano quando "Silenciar notificações" está
-     * desligado, para neutralizar o DND automático do bloqueio rigoroso.
-     */
-    fun restoreForActivePlan() {
-        restoreInternal(clearSnapshot = false)
-    }
-
-    /**
      * Restaura o estado anterior e encerra a posse do Pomodoro sobre o DND.
      *
      * Em Android 15+ para apps target 35+, setInterruptionFilter() controla uma
@@ -93,10 +79,6 @@ class PomodoroNotificationController(context: Context) {
      * filtro global que existia antes de o Pomodoro assumir o controle.
      */
     fun restore() {
-        restoreInternal(clearSnapshot = true)
-    }
-
-    private fun restoreInternal(clearSnapshot: Boolean) {
         val hadPreviousFilter = prefs.contains(KEY_PREVIOUS_FILTER)
         val notificationManager = manager
 
@@ -124,7 +106,7 @@ class PomodoroNotificationController(context: Context) {
                 }
             }
         } finally {
-            if (clearSnapshot && hadPreviousFilter) {
+            if (hadPreviousFilter) {
                 prefs.edit().remove(KEY_PREVIOUS_FILTER).commit()
             }
         }

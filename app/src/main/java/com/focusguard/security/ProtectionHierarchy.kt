@@ -13,12 +13,11 @@ import java.util.TimeZone
  *
  * 1. [Layer.FOCUS_MODE] — Modo Foco: sua lista de permitidos é uma exceção
  *    temporária explícita e fica acima de tudo.
- * 2. [Layer.STRICT_POMODORO] — Pomodoro rigoroso: segura todos os apps.
- * 3. [Layer.TIME] — Jejum de dopamina (contínuo) e períodos agendados, estes
+ * 2. [Layer.TIME] — Jejum de dopamina (contínuo) e períodos agendados, estes
  *    apenas dentro da faixa diária.
- * 4. [Layer.DAILY_LIMIT] — Limite de uso: só bloqueia depois de esgotado, e o
+ * 3. [Layer.DAILY_LIMIT] — Limite de uso: só bloqueia depois de esgotado, e o
  *    relógio dele só anda enquanto nenhuma camada acima segura o alvo.
- * 5. [Layer.PASSWORD] — Senha: pede credencial apenas quando nada acima bloqueia.
+ * 4. [Layer.PASSWORD] — Senha: pede credencial apenas quando nada acima bloqueia.
  *
  * "Aguardar" tem consequência concreta para o limite: se o usuário tem 5 minutos
  * de limite e um período agendado que só libera das 19h às 21h, os 5 minutos são
@@ -28,7 +27,6 @@ object ProtectionHierarchy {
 
     enum class Layer {
         FOCUS_MODE,
-        STRICT_POMODORO,
         TIME,
         DAILY_LIMIT,
         PASSWORD;
@@ -47,8 +45,8 @@ object ProtectionHierarchy {
     fun layerOf(session: BlockSession): Layer? = when {
         session.sessionType.equals(BlockTargetPolicy.SESSION_TYPE_PASSWORD, true) ->
             Layer.PASSWORD
-        session.sessionType.equals(BlockTargetPolicy.SESSION_TYPE_POMODORO, true) ->
-            if (session.isBlockingEnabled) Layer.STRICT_POMODORO else null
+        // Sessões POMODORO vêm do antigo Pomodoro rigoroso, que foi removido.
+        session.sessionType.equals(BlockTargetPolicy.SESSION_TYPE_POMODORO, true) -> null
         else -> Layer.TIME
     }
 
@@ -67,9 +65,7 @@ object ProtectionHierarchy {
         sessions.flatMap { targets ->
             val layer = layerOf(targets.session) ?: return@flatMap emptyList()
             if (!layer.outranks(Layer.DAILY_LIMIT)) return@flatMap emptyList()
-            val holdsTarget = layer == Layer.STRICT_POMODORO ||
-                packageName in targets.appPackages
-            if (!holdsTarget) return@flatMap emptyList()
+            if (packageName !in targets.appPackages) return@flatMap emptyList()
             BlockingScheduleCalculator.blockingIntervals(
                 session = targets.session,
                 rangeStartMillis = rangeStartMillis,

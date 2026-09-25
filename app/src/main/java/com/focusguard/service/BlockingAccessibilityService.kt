@@ -43,7 +43,6 @@ import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.AuthManager
@@ -61,11 +60,10 @@ import com.focusguard.security.ProtectionHierarchy
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.security.UsageAccessPausePolicy
-import com.focusguard.sitesblocker.BrowserProfiles
 import com.focusguard.sitesblocker.SiteBlockEngine
+import com.focusguard.sitesblocker.SiteBlockEventDelivery
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
-import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -122,16 +120,26 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val lastSlowCallbackLogElapsed = AtomicLong(0L)
     // Bloqueio de sites e de navegadores não suportados (antigo app Bloquear Sites).
     private val siteBlockEngine = SiteBlockEngine(this)
+    // O motor recebe os eventos com o atraso de 40 ms do Bloquear Sites; o resto do serviço, na hora.
+    private val siteBlockEvents = SiteBlockEventDelivery { event ->
+        try {
+            siteBlockEngine.onAccessibilityEvent(event)
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError("SitesBlocker", "Erro no evento do bloqueio de sites", error)
+        }
+    }
+    // Classifica teclado e sobreposições nos tipos de evento que só o bloqueio de sites recebe,
+    // sem mexer no estado do filtro usado pelo resto do serviço.
+    private val siteBlockOnlyInputFilter = AccessibilityInputEventFilter()
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     /**
-     * Sessões acima do limite diário (jejum, período agendado, Pomodoro rigoroso)
+     * Sessões acima do limite diário (jejum, período agendado)
      * com seus apps. Enquanto uma delas segura o app, o limite aguarda.
      */
     @Volatile private var appLimitWaitingSessions:
         List<ProtectionHierarchy.SessionTargets> = emptyList()
     @Volatile private var isBlockingSessionActive = false
-    @Volatile private var isPomodoroStrictActive = false
     @Volatile private var focusModeSessionActive = false
     @Volatile private var focusModeFallbackActive = false
     @Volatile private var focusModeBlockedAppsSet: Set<String> = emptySet()
@@ -197,17 +205,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         SimpleDateFormat("yyyy-MM-dd", Locale.US)
     }
 
-    private val phonePackages = setOf(
-        "com.android.dialer",
-        "com.google.android.dialer",
-        "com.android.phone",
-        "com.android.server.telecom",
-        "com.samsung.android.dialer",
-        "com.samsung.android.incallui"
-    )
-
     // Fonte única em SettingsInterceptionPolicy — estas listas estavam duplicadas aqui.
-    private val settingsPackages = SettingsInterceptionPolicy.settingsPackages
     private val interceptionPackages = SettingsInterceptionPolicy.interceptionPackages
     // Locator terms only. Full classification still uses the richer policy
     // dictionaries after a node is found. Keeping this list tiny matters because
@@ -605,6 +603,13 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
+            // O serviço assina todos os tipos de evento por causa do bloqueio de sites. Os tipos
+            // a mais vão só para o motor de sites: o resto do serviço continua recebendo apenas
+            // os tipos de antes (requestedAccessibilityEventTypes).
+            if (!isHardBlockEventType(event.eventType)) {
+                forwardSiteBlockOnlyEvent(event, directPackage)
+                return
+            }
             val windowResolutionEvent =
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                     event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
@@ -663,7 +668,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             // Bloqueio de sites e de navegadores não suportados (Bloquear Sites). O motor
             // descarta sozinho os eventos que não são de navegador ou que são do próprio app.
-            siteBlockEngine.onAccessibilityEvent(event)
+            siteBlockEvents.post(event)
 
             // Window events can arrive without packageName, and TYPE_WINDOWS_CHANGED can
             // carry the package of a different window. Resolve the package from the
@@ -715,16 +720,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                     refreshFocusModeFallbackState()
                 }
                 foregroundPackageName = packageName.takeIf(String::isNotBlank)
-            }
-
-            if (shouldApplyStrictPomodoroToWindow(
-                    strictActive = isPomodoroStrictActive,
-                    isWindowTransition = isWindowTransition,
-                    isBrowserWindow = BrowserProfiles.forPackage(packageName) != null
-                )
-            ) {
-                handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
-                return
             }
 
             val focusLauncherMustReturn = focusModeSessionActive &&
@@ -794,6 +789,27 @@ class BlockingAccessibilityService : AccessibilityService() {
         AccessibilityInputEventFilter.Decision.INSPECT -> false
     }
 
+    /**
+     * Evento de um tipo que só o bloqueio de sites assina. Como nos demais, os do teclado, das
+     * sobreposições e do próprio app não chegam ao motor: ler a árvore do teclado segura a thread
+     * principal, que é a mesma dos outros bloqueios.
+     */
+    private fun forwardSiteBlockOnlyEvent(event: AccessibilityEvent, directPackage: String) {
+        val decision = siteBlockOnlyInputFilter.classify(
+            ownPackageName = packageName,
+            eventPackageName = directPackage,
+            windowId = event.windowId,
+            windowsChanged = false,
+            allowWindowLookup = true,
+            readWindows = {
+                windows.map { AccessibilityInputEventFilter.Window(it.id, it.type) }
+            }
+        )
+        if (decision == AccessibilityInputEventFilter.Decision.INSPECT) {
+            siteBlockEvents.post(event)
+        }
+    }
+
     private fun observeOwnUiEvent(event: AccessibilityEvent) {
         foregroundPackageName = packageName
     }
@@ -807,10 +823,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             .filter(String::isNotBlank)
             .toSet()
         blockedAppsSet = apps
-        isPomodoroStrictActive = intent.getBooleanExtra(
-            EXTRA_STRICT_POMODORO_SNAPSHOT,
-            false
-        )
         isBlockingSessionActive = intent.getBooleanExtra(
             EXTRA_BLOCKING_ACTIVE_SNAPSHOT,
             apps.isNotEmpty()
@@ -850,9 +862,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             focusModeBlockedAppsSet = emptySet()
             focusModeAllowedAppsSet = emptySet()
             SelfProtectionStateStore.setArmed(applicationContext, false)
-            isPomodoroStrictActive = false
             pendingSettingsProtectionUntilElapsed = 0L
-            StrictPomodoroLock.clear(applicationContext)
             PomodoroForegroundService.stop(applicationContext)
             foregroundPackageName = null
             protectedPowerMenuController?.onProtectionStateChanged(false)
@@ -1011,9 +1021,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                         } == true
 
                         withContext(Dispatchers.Main) {
-                            isPomodoroStrictActive = enforcingSessions.any {
-                                it.sessionType == "POMODORO" && it.isBlockingEnabled
-                            }
                             focusModeSessionActive = focusModeSession != null
                             focusModeFallbackActive = focusFallbackActive
                             focusModeBlockedAppsSet = focusFallbackApps
@@ -1085,7 +1092,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val now = System.currentTimeMillis()
         // Só primeiro plano real conta, e só enquanto nenhuma camada acima do
-        // limite (período agendado, jejum, Pomodoro rigoroso) segura o app.
+        // limite (período agendado, jejum) segura o app.
         val usedMillisByPackage = AppUsageLimitMeter.usedMillisByPackage(
             usageStatsManager = manager,
             limits = limits,
@@ -1272,31 +1279,6 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun isSelfProtectionEngagedNow(): Boolean =
         isBlockingSessionActive || focusModeSessionActive
 
-    private fun handleStrictPomodoro(packageName: String, className: String) {
-        if (packageName.isBlank() || packageName == this.packageName || packageName in phonePackages) {
-            return
-        }
-
-        if (packageName == "com.android.systemui") {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            launchPomodoroLockScreen()
-            return
-        }
-
-        if (packageName == defaultLauncherPackage || packageName in settingsPackages) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            launchPomodoroLockScreen()
-            return
-        }
-
-        FocusGuardLogger.log(
-            "FocusMode",
-            "Pomodoro rigoroso bloqueou $packageName ($className)"
-        )
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        blockApp(packageName)
-    }
-
     /**
      * @param packageName o app já resolvido pelo chamador. Reler
      *   `event.packageName` aqui anulava a segunda chance: ela existe justamente
@@ -1362,17 +1344,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                 nowElapsed = nowElapsed
             )
         ) return true
-
-        // Strict Pomodoro keeps ownership of Settings. System UI clicks still need
-        // their dedicated disclosure/admin classifier, matching the policy order.
-        if (!isSystemUi &&
-            isPomodoroStrictActive &&
-            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
-        ) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            launchPomodoroLockScreen()
-            return true
-        }
 
         // A click already classified as protected arms a short transition guard.
         // Follow-up window/focus/content events need no class, text, source or root
@@ -1468,7 +1439,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 launchMasterRemovalGate(target, generation)
                 return true
             }
-            if (direct.decision == DirectDecision.IGNORE && !isPomodoroStrictActive) {
+            if (direct.decision == DirectDecision.IGNORE) {
                 return false
             }
             // System UI is intentionally limited to two exact deep links. An
@@ -1558,7 +1529,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             // Já confirmado pelas guardas acima; a política revalida por conta
             // própria porque é testada isoladamente.
             selfProtectionEngaged = true,
-            strictPomodoroActive = isPomodoroStrictActive,
             deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
             maintenanceActive = deviceOwnerMaintenanceActive,
             rootSignals = SettingsInterceptionPolicy.RootSignals(
@@ -1572,12 +1542,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         return when (decision) {
             SettingsInterceptionPolicy.Decision.IGNORE -> false
-
-            SettingsInterceptionPolicy.Decision.POMODORO_LOCK -> {
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                launchPomodoroLockScreen()
-                true
-            }
 
             SettingsInterceptionPolicy.Decision.PROTECT -> {
                 val generation = executeProtectionAction(
@@ -1744,7 +1708,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         refreshFocusModeFallbackState()
         val snapshot = SelfProtectionStateStore.read(applicationContext)
         blockedAppsSet = snapshot.blockedApps
-        isPomodoroStrictActive = snapshot.strictPomodoro
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
             persistedActive = snapshot.armed,
@@ -2075,7 +2038,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             startActivity(
                 createBlockNoticeIntent(
                     context = this,
-                    strictBlock = isPomodoroStrictActive,
                     blockedPackage = blockedPackage,
                     blockedDomain = blockedDomain,
                     curtainGeneration = generation,
@@ -2460,23 +2422,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         protectedPowerMenuController?.onProtectionStateChanged(active)
     }
 
-    private fun launchPomodoroLockScreen() {
-        try {
-            startActivity(
-                Intent(this, PomodoroLockActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    )
-                }
-            )
-        } catch (error: RuntimeException) {
-            FocusGuardLogger.logError("A11y", "Falha ao abrir Pomodoro", error)
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
-    }
-
     private fun showToastThrottled(message: String) {
         val now = System.currentTimeMillis()
         if (now - lastToastTime < 3_000L) return
@@ -2498,6 +2443,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         accessibilityServiceConnected = false
+        siteBlockEvents.clear()
         siteBlockEngine.onDestroy()
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         protectionActionUntilElapsed = 0L
@@ -2511,21 +2457,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         scope.cancel()
         super.onDestroy()
 
-        if (StrictPomodoroLock.isActive(applicationContext)) {
-            FocusGuardLogger.log(
-                "A11y",
-                "Serviço destruído durante Pomodoro; reativando watchdog"
-            )
-            PomodoroForegroundService.start(applicationContext)
-            PomodoroForegroundService.scheduleWatchdogAlarm(applicationContext)
-        } else {
-            runCatching {
-                Toast.makeText(
-                    this,
-                    getString(R.string.servico_focusguard_parado),
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
+        runCatching {
+            Toast.makeText(
+                this,
+                getString(R.string.servico_focusguard_parado),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -2571,11 +2508,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_CLICKED
         )
-        internal const val STRICT_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         internal const val ACTION_DEV_RELINQUISH_ACCESSIBILITY =
             "com.focusguard.ACTION_DEV_RELINQUISH_ACCESSIBILITY"
-        const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"
         const val EXTRA_BLOCKED_PACKAGE = "BLOCKED_PACKAGE"
         const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
         const val EXTRA_BLOCK_EVENT_UPTIME_MILLIS = "BLOCK_EVENT_UPTIME_MILLIS"
@@ -2583,7 +2518,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
-        internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
 
         internal fun confirmAccessibilityContextForInstalledEntry(
             directAccessibility: Boolean,
@@ -2594,12 +2528,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
             settingsInterceptionEventTypes
-
-        internal fun shouldApplyStrictPomodoroToWindow(
-            strictActive: Boolean,
-            isWindowTransition: Boolean,
-            isBrowserWindow: Boolean
-        ): Boolean = strictActive && isWindowTransition && !isBrowserWindow
 
         internal fun settingsTransitionGuardMillisForTest(): Long =
             SETTINGS_TRANSITION_GUARD_MILLIS
@@ -2639,6 +2567,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_CLICKED or
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
+
+        /**
+         * Tipos que os bloqueios do HardBlock tratam. Os demais (rolagem, notificações, avisos
+         * etc.) só existem para o bloqueio de sites e não passam pelo resto do serviço: um Toast
+         * do próprio app, por exemplo, não pode marcar o HardBlock como app em primeiro plano.
+         */
+        internal fun isHardBlockEventType(eventType: Int): Boolean =
+            eventType and requestedAccessibilityEventTypes() != 0
 
         internal fun shouldDismissCurtain(
             currentGeneration: Long,
@@ -2730,16 +2666,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal fun createRefreshBlockingIntent(
             context: Context,
             blockedApps: Collection<String>,
-            blockingActive: Boolean,
-            strictPomodoro: Boolean
+            blockingActive: Boolean
         ): Intent {
             val normalizedApps = blockedApps.filter(String::isNotBlank).distinct()
             SelfProtectionStateStore.setSnapshot(
                 context = context,
                 armed = blockingActive,
                 blockedApps = normalizedApps,
-                blockedSites = emptyList(),
-                strictPomodoro = strictPomodoro
+                blockedSites = emptyList()
             )
 
             return Intent(ACTION_REFRESH_BLOCKING).apply {
@@ -2750,7 +2684,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                     ArrayList(normalizedApps)
                 )
                 putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
-                putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
             }
         }
 
@@ -2762,7 +2695,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         internal fun createBlockNoticeIntent(
             context: Context,
-            strictBlock: Boolean,
             blockedPackage: String?,
             blockedDomain: String?,
             curtainGeneration: Long = 0L,
@@ -2774,7 +2706,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
             )
-            putExtra(EXTRA_STRICT_BLOCK, strictBlock)
             putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
             putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
             putExtra(EXTRA_BLOCK_EVENT_UPTIME_MILLIS, eventUptimeMillis)

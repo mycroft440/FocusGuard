@@ -218,9 +218,10 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `time and pomodoro are irreversible while password is not`() {
+    fun `only time is irreversible`() {
         assertThat(MasterCredentialPolicy.isIrreversibleSessionType("TIME")).isTrue()
-        assertThat(MasterCredentialPolicy.isIrreversibleSessionType("POMODORO")).isTrue()
+        // POMODORO só sobra do antigo Pomodoro rigoroso, que foi removido.
+        assertThat(MasterCredentialPolicy.isIrreversibleSessionType("POMODORO")).isFalse()
         assertThat(MasterCredentialPolicy.isIrreversibleSessionType("PASSWORD")).isFalse()
     }
 

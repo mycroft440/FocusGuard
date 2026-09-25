@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.receiver.FocusModeReceiver
 import com.focusguard.service.FocusModeForegroundService
 import com.focusguard.service.FocusModeNotificationService
@@ -33,7 +32,6 @@ class FocusModeManager @Inject constructor(
         INVALID_DURATION,
         ACCESSIBILITY_REQUIRED,
         NOTIFICATION_ACCESS_REQUIRED,
-        STRICT_POMODORO_ACTIVE,
         ENFORCEMENT_FAILED
     }
 
@@ -121,9 +119,6 @@ class FocusModeManager @Inject constructor(
         }
         if (!isNotificationAccessEnabled()) {
             return@withLock StartResult(StartOutcome.NOTIFICATION_ACCESS_REQUIRED)
-        }
-        if (StrictPomodoroLock.isActive(context)) {
-            return@withLock StartResult(StartOutcome.STRICT_POMODORO_ACTIVE)
         }
 
         val launchableApps = withContext(Dispatchers.IO) {

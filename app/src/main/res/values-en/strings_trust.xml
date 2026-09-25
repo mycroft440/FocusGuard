@@ -19,7 +19,7 @@
     <string name="self_protection_term_title">Self-protection commitment</string>
     <string name="self_protection_term_intro">FocusGuard is a voluntary tool that supports habit control. Protection is only activated by a choice made on this device.</string>
     <string name="self_protection_term_scope_title">What will be protected</string>
-    <string name="self_protection_term_scope_body">While a block, limit or filter you chose is active, attempts to disable protection or remove FocusGuard itself will be interrupted. Self-protection will not block uninstall or controls for other apps. In strict Pomodoro, all navigation outside the focus screen remains unavailable for the chosen duration.</string>
+    <string name="self_protection_term_scope_body">While a block, limit or filter you chose is active, attempts to disable protection or remove FocusGuard itself will be interrupted. Self-protection will not block uninstall or controls for other apps.</string>
     <string name="self_protection_term_modes_title">Technical limits</string>
     <string name="self_protection_term_modes_body">In standard mode, Accessibility reacts to Android screens and cannot absolutely guarantee blocking the first attempt. In Device Owner mode, Android blocks only FocusGuard uninstall from the first attempt and, on supported versions, force stop and data clearing; other reinforced restrictions are shown before provisioning.</string>
     <string name="self_protection_term_exit_title">How protection ends</string>

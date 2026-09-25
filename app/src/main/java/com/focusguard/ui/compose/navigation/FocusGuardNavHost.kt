@@ -243,11 +243,6 @@ fun FocusGuardNavHost(
             PomodoroScreen(
                 pomodoroManager = pomodoroManager,
                 authManager = authManager,
-                onPermissionsRequired = {
-                    activity.startActivity(
-                        PermissionsActivity.createPendingProtectionIntent(activity)
-                    )
-                },
                 onBack = { }
             )
         }
@@ -328,11 +323,6 @@ fun FocusGuardNavHost(
                         PomodoroScreen(
                             pomodoroManager = pomodoroManager,
                             authManager = authManager,
-                            onPermissionsRequired = {
-                                activity.startActivity(
-                                    PermissionsActivity.createPendingProtectionIntent(activity)
-                                )
-                            },
                             onBack = { currentRoute = FocusGuardRoute.Home },
                             compactLayout = focusModeActive
                         )
@@ -400,11 +390,6 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.Pomodoro -> PomodoroScreen(
                     pomodoroManager = pomodoroManager,
                     authManager = authManager,
-                    onPermissionsRequired = {
-                        activity.startActivity(
-                            PermissionsActivity.createPendingProtectionIntent(activity)
-                        )
-                    },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Limits -> LimitsSecurityScreen(

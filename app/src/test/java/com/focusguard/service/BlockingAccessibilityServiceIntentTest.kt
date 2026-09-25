@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.graphics.Rect
+import android.view.accessibility.AccessibilityEvent
 import androidx.core.content.ContextCompat
 import com.focusguard.security.SelfProtectionStateStore
 import com.google.common.truth.Truth.assertThat
@@ -224,7 +225,6 @@ class BlockingAccessibilityServiceIntentTest {
         val context = RuntimeEnvironment.getApplication().applicationContext
         val intent = BlockingAccessibilityService.createBlockNoticeIntent(
             context = context,
-            strictBlock = false,
             blockedPackage = "com.example.blocked",
             blockedDomain = null,
             curtainGeneration = 42L
@@ -242,15 +242,13 @@ class BlockingAccessibilityServiceIntentTest {
         BlockingAccessibilityService.createRefreshBlockingIntent(
             context = context,
             blockedApps = listOf("com.example.blocked"),
-            blockingActive = true,
-            strictPomodoro = true
+            blockingActive = true
         )
 
         val snapshot = SelfProtectionStateStore.read(context)
         assertThat(snapshot.armed).isTrue()
         assertThat(snapshot.blockedApps).containsExactly("com.example.blocked")
         assertThat(snapshot.blockedSites).isEmpty()
-        assertThat(snapshot.strictPomodoro).isTrue()
     }
 
     @Test
@@ -355,5 +353,28 @@ class BlockingAccessibilityServiceIntentTest {
                 root = wholeScreen
             )
         ).isFalse()
+    }
+
+    @Test
+    fun `event types added for the site blocker stay out of the HardBlock blocks`() {
+        listOf(
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED
+        ).forEach { type ->
+            assertThat(BlockingAccessibilityService.isHardBlockEventType(type)).isTrue()
+        }
+        listOf(
+            AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_ANNOUNCEMENT,
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START
+        ).forEach { type ->
+            assertThat(BlockingAccessibilityService.isHardBlockEventType(type)).isFalse()
+        }
     }
 }

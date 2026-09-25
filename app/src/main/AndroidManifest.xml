@@ -101,16 +101,6 @@
         </activity-alias>
 
         <activity
-            android:name=".ui.PomodoroLockActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:showWhenLocked="true"
-            android:taskAffinity="com.focusguard.pomodorolock"
-            android:theme="@style/Theme.FocusGuard"
-            android:turnScreenOn="true" />
-
-        <activity
             android:name=".widget.PomodoroWidgetDialActivity"
             android:excludeFromRecents="true"
             android:exported="false"
@@ -285,7 +275,7 @@
             android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Maintains a user-started Pomodoro focus and break cycle, its visible timer status, and optional strict focus enforcement until the user-selected plan ends" />
+                android:value="Maintains a user-started Pomodoro focus and break cycle and its visible timer status until the user-selected plan ends" />
         </service>
 
         <service

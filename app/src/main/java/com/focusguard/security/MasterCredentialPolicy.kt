@@ -13,8 +13,7 @@ import com.focusguard.database.BlockSession
  * boundaries.
  *
  * Two protection invariants remain load-bearing:
- *  1. Dopamine Fast (`TIME`) and strict Pomodoro cannot be ended early by a
- *     credential.
+ *  1. Dopamine Fast (`TIME`) cannot be ended early by a credential.
  *  2. A time-hardened usage limit and Safety Mode cannot be mutated before their
  *     own protection rules permit it.
  */
@@ -25,7 +24,6 @@ object MasterCredentialPolicy {
     const val LOCK_MODE_TIME = "TIME"
 
     private const val SESSION_TYPE_TIME = "TIME"
-    private const val SESSION_TYPE_POMODORO = "POMODORO"
 
     // ---------------------------------------------------------------- creation
 
@@ -167,7 +165,7 @@ object MasterCredentialPolicy {
     }
 
     fun isIrreversibleSessionType(sessionType: String): Boolean = when (sessionType.uppercase()) {
-        SESSION_TYPE_TIME, SESSION_TYPE_POMODORO -> true
+        SESSION_TYPE_TIME -> true
         else -> false
     }
 

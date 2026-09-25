@@ -136,8 +136,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
             try {
                 val origin = sessionManager.credentialUnlockOrigin(
                     blockedPackage = blockedPackage,
-                    blockedDomain = blockedDomain,
-                    strictPomodoroActive = false
+                    blockedDomain = blockedDomain
                 )
                 if (origin != BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION) {
                     error = failureMessage
@@ -153,10 +152,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     val resolution = AppBlockSurfaceResolver(
                         context = context,
                         sessionManager = sessionManager
-                    ).resolveAttempt(
-                        blockedPackage = blockedPackage,
-                        strictPomodoroActive = false
-                    )
+                    ).resolveAttempt(blockedPackage = blockedPackage)
                     if (!resolution.allowsPasswordVisit) {
                         error = failureMessage
                         onInvalid?.invoke()

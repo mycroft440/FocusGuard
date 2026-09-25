@@ -293,9 +293,6 @@
     <!-- Pomodoro -->
     <string name="pomodoro_cancel_btn">Cancelar</string>
     <string name="pomodoro_status_focus">HardBlock</string>
-    <string name="pomodoro_enable_block_switch">Bloqueio Rigoroso</string>
-    <string name="pomodoro_enable_block_subtitle">Ative antes de iniciar para bloquear saídas e distrações.</string>
-    <string name="pomodoro_phone_btn">Chamada de Emergência</string>
     <string name="pomodoro_cancel_timer_btn">Cancelar sessão</string>
 
     <!-- Sessions Screen -->
@@ -528,17 +525,14 @@
     <string name="focusguard_device_admin_habilitado">HardBlock Device Admin habilitado</string>
     <string name="focusguard_device_admin_desabilitado">HardBlock Device Admin desabilitado</string>
     <string name="erro_ao_iniciar_sessao">Erro ao iniciar sessão</string>
-    <string name="modo_pomodoro_ativado_foco_total">MODO POMODORO ATIVADO: Foco Total.</string>
     <string name="bloqueios_por_senha_encerrados">Bloqueios por Senha encerrados</string>
     <string name="senha_count_1">Senha %1$d</string>
     <string name="mantem_o_focusguard_ativo_para_garantir_">Mantém o HardBlock ativo para garantir seus bloqueios</string>
     <string name="servico_focusguard_parado">Serviço HardBlock parado</string>
-    <string name="garante_que_o_bloqueio_rigoroso_do_pomod">Garante que o bloqueio rigoroso do Pomodoro permaneça ativo</string>
     <string name="criar_senha">Criar senha</string>
     <string name="confirmar_senha">Confirmar senha</string>
     <string name="bloqueio_ativado_com_sucesso">Bloqueio ativado com sucesso</string>
     <string name="senha_criada_com_sucesso">Senha criada com sucesso!</string>
-    <string name="abrir_telefone_para_emergencia">Abrir telefone para emergência</string>
     <string name="sessoes_ativas">Sessões Ativas</string>
     <string name="personalizar_bloqueio">Personalizar Bloqueio</string>
     <string name="salvar_configuracoes">Salvar Configurações</string>
@@ -548,8 +542,6 @@
     <string name="digite_sua_senha">Digite sua senha</string>
     <string name="senha_incorreta">Senha incorreta!</string>
     <string name="editar">Editar</string>
-    <string name="aviso_de_bloqueio_rigoroso">Aviso de Bloqueio Rigoroso</string>
-    <string name="o_bloqueio_rigoroso_ira_impedir_que_voce">O Bloqueio Rigoroso irá impedir que você feche o aplicativo ou desative as restrições durante a sessão. Só será possível usar o atalho de telefone para ligações. Deseja continuar?</string>
     <string name="ativar">Ativar</string>
     <string name="bloqueio_por_tempo">Bloqueio por tempo</string>
     <string name="bloqueio_por_tempo_ativado">Jejum de Dopamina ativado</string>
@@ -576,7 +568,6 @@
     <string name="block_notice_unlock_title">Digite a senha para desbloquear</string>
     <string name="block_notice_unlock_desc">Encerre a sessão de bloqueio atual digitando sua senha.</string>
     <string name="block_notice_unlock_success">Sessão encerrada com sucesso</string>
-    <string name="block_notice_pomodoro_cannot_stop">O Pomodoro rigoroso não pode ser interrompido. Aguarde o tempo acabar.</string>
     <string name="block_notice_time_cannot_revoke">O bloqueio por tempo não pode ser revogado durante a janela ativa. Aguarde o tempo acabar.</string>
     <string name="block_notice_no_active_session">Nenhuma sessão ativa encontrada para encerrar.</string>
     <string name="block_notice_unlock_failed">Não foi possível encerrar o bloqueio.</string>
@@ -589,7 +580,6 @@
     <string name="block_customization_description">Personalize a mensagem e a imagem que aparecem quando um app é bloqueado.</string>
     <string name="limits_intrusion_security_title">Segurança Anti-Invasão</string>
     <string name="limits_intrusion_security_description">Configure o que acontece quando alguém erra a senha do aplicativo repetidamente.</string>
-    <string name="pomodoro_strict_calls_only_notice">Você só poderá usar o telefone para ligações até o tempo acabar.</string>
     <string name="usage_block_daily_limit_question">Deseja limitar o tempo de uso do(s) aplicativo(s) em quanto tempo por dia?</string>
     <string name="usage_block_daily_limit_warning">! Aviso: você poderá usar o app somente a quantidade de tempo que você definir acima.</string>
     <string name="usage_block_type_question">Que tipo de limite deseja?</string>
@@ -605,8 +595,6 @@
     <string name="usage_block_warning_heading">Com um aviso, no qual diz que:</string>
     <string name="usage_block_irreversible_warning">Caso concorde será impossível utilizar o app mais do que o especificado diariamente e o bloqueio durará até os dias determinados acabarem, sendo impossível burlar.</string>
     <string name="usage_block_agreement_instruction">Escreva abaixo: eu concordo e entendo os riscos.</string>
-    <string name="pomodoro_lock_kiosk_active">Modo kiosk ativo. A sessão termina automaticamente no horário definido.</string>
-    <string name="pomodoro_lock_no_device_owner">Sem Device Owner, algumas telas do sistema ainda podem aparecer.</string>
 
     <!-- Senha mestre -->
     <string name="master_credential_required_to_block">Defina a senha mestre antes de ativar um bloqueio. Ela é a única forma autenticada de gerenciar limites e desinstalar o app depois.</string>
@@ -712,7 +700,6 @@
     <string name="focus_mode_notification_access_required">Permita o acesso às notificações antes de iniciar o Modo Foco.</string>
     <string name="focus_mode_start_failed">O Android não confirmou todas as regras do Modo Foco. Nenhuma sessão foi mantida; revise as permissões e tente novamente.</string>
     <string name="focus_mode_conflict_title">Outro modo de foco está ativo</string>
-    <string name="focus_mode_pomodoro_conflict">O Modo Foco e o Pomodoro rigoroso usam o mesmo modo quiosque do Android e não podem funcionar ao mesmo tempo. Aguarde a sessão atual terminar.</string>
     <string name="focus_mode_notification_title">Modo Foco ativo</string>
     <string name="focus_mode_notification_time">Tempo restante: %1$s</string>
     <string name="focus_mode_notification_channel">Temporizador do Modo Foco</string>

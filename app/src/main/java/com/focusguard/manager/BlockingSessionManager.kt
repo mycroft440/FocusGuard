@@ -4,7 +4,6 @@ import android.app.NotificationManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
@@ -254,7 +253,6 @@ class BlockingSessionManager @Inject constructor(
     enum class EndSessionResult {
         ENDED,
         NOT_FOUND,
-        POMODORO_NOT_REVOCABLE,
         TIME_NOT_REVOCABLE,
         FAILED
     }
@@ -364,8 +362,9 @@ class BlockingSessionManager @Inject constructor(
             }
         }
 
+        /** Sessões POMODORO vêm do antigo Pomodoro rigoroso, que foi removido, e não bloqueiam. */
         internal fun participatesInBlocking(session: BlockSession): Boolean {
-            return session.sessionType != "POMODORO" || session.isBlockingEnabled
+            return session.sessionType != BlockTargetPolicy.SESSION_TYPE_POMODORO
         }
 
         internal fun matchesBlockedTarget(
@@ -402,11 +401,9 @@ class BlockingSessionManager @Inject constructor(
         internal fun packagesForDeviceOwnerSuspension(
             enforcedPackages: Collection<String>,
             passwordSessionPackages: Collection<String>,
-            strongerProtectionPackages: Collection<String>,
-            strictPomodoro: Boolean = false
+            strongerProtectionPackages: Collection<String>
         ): List<String> {
             val enforced = enforcedPackages.filter(String::isNotBlank).distinct()
-            if (strictPomodoro) return enforced
 
             val passwordTargets = passwordSessionPackages
                 .filter(String::isNotBlank)
@@ -838,62 +835,6 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean = true) {
-        scope.launch {
-            runCatching {
-                require(durationMs > 0L) { "A duração do Pomodoro deve ser positiva" }
-                if (isBlockingEnabled) ensureBlockingPermissionsReady()
-                database.withTransaction {
-                    database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
-                    if (isBlockingEnabled) {
-                        val startMillis = System.currentTimeMillis()
-                        database.blockSessionDao().insertNewSession(
-                            BlockSession(
-                                startTime = startMillis,
-                                endTime = startMillis + durationMs,
-                                isActive = true,
-                                sessionType = "POMODORO",
-                                isFixed24h = true,
-                                isBlockingEnabled = true
-                            )
-                        )
-                    }
-                }
-                if (isBlockingEnabled) armSelfProtectionBeforeFirstExposure()
-                checkAndEnforce()
-            }.onSuccess {
-                showToast(R.string.modo_pomodoro_ativado_foco_total, Toast.LENGTH_LONG)
-            }.onFailure {
-                FocusGuardLogger.logError(
-                    "BlockingSessionManager",
-                    "Erro ao iniciar Pomodoro",
-                    it
-                )
-            }
-        }
-    }
-
-    fun endPomodoroSession() {
-        scope.launch { endPomodoroSessionAndWait() }
-    }
-
-    suspend fun endPomodoroSessionAndWait(): Boolean {
-        return runCatching {
-            val changed = database.blockSessionDao()
-                .deactivateActiveSessionsByType("POMODORO") > 0
-            StrictPomodoroLock.clear(context)
-            PomodoroForegroundService.stop(context)
-            checkAndEnforce()
-            changed
-        }.onFailure {
-            FocusGuardLogger.logError(
-                "BlockingSessionManager",
-                "Erro ao encerrar Pomodoro",
-                it
-            )
-        }.getOrDefault(false)
-    }
-
     /** Permanently removes every local source that can re-arm a block. */
     internal suspend fun removeAllBlocksForDevelopmentExit(): Boolean {
         return enforcementMutex.withLock {
@@ -912,7 +853,6 @@ class BlockingSessionManager @Inject constructor(
                 }
                 PasswordTargetAccessGrant.updateStrongerAppPackages(emptyList())
                 PasswordTargetAccessGrant.updateStrongerWebsiteRules(emptyList())
-                StrictPomodoroLock.clear(context)
                 PomodoroForegroundService.stop(context)
                 check(SelfProtectionStateStore.setArmed(context, false)) {
                     "Não foi possível desarmar o estado síncrono de autoproteção"
@@ -922,7 +862,7 @@ class BlockingSessionManager @Inject constructor(
                     sessions = emptyList(),
                     additionalBoundaries = emptyList()
                 )
-                setDoNotDisturbMode(enabled = false)
+                restoreLegacyDoNotDisturb()
                 true
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1043,7 +983,6 @@ class BlockingSessionManager @Inject constructor(
             val session = database.blockSessionDao().getActiveSessionById(sessionId)
                 ?: return EndSessionResult.NOT_FOUND
             when {
-                session.sessionType == "POMODORO" -> EndSessionResult.POMODORO_NOT_REVOCABLE
                 MasterCredentialPolicy.isTimeCommitmentActive(
                     sessionType = session.sessionType,
                     isActive = session.isActive,
@@ -1179,10 +1118,8 @@ class BlockingSessionManager @Inject constructor(
      */
     suspend fun credentialUnlockOrigin(
         blockedPackage: String?,
-        blockedDomain: String?,
-        strictPomodoroActive: Boolean
+        blockedDomain: String?
     ): BiometricAppUnlockPolicy.BlockOrigin? {
-        if (strictPomodoroActive) return BiometricAppUnlockPolicy.BlockOrigin.STRICT_POMODORO
         if (hasCredentialUnlockableLimit(blockedPackage, blockedDomain)) {
             return BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK
         }
@@ -1365,15 +1302,7 @@ class BlockingSessionManager @Inject constructor(
                 val focusModeSession = FocusModeStore.readSession(context)
                     ?.takeIf { it.isActive(now) }
                 val focusModeApps = focusModeSession?.blockedPackages.orEmpty()
-                val beforeExpiration = database.blockSessionDao().getAllActiveSessionsStatic()
-                val expiredPomodoro = beforeExpiration.any {
-                    it.sessionType == "POMODORO" && it.endTime != null && it.endTime <= now
-                }
                 database.blockSessionDao().deactivateExpiredSessions(now)
-                if (expiredPomodoro) {
-                    StrictPomodoroLock.clear(context)
-                    PomodoroForegroundService.stop(context)
-                }
 
                 val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
                 val activeTimeCommitment = activeSessions.any { session ->
@@ -1394,23 +1323,12 @@ class BlockingSessionManager @Inject constructor(
                 val strongerSessionIds = enforcingSessions
                     .filter { it.sessionType != "PASSWORD" }
                     .map { it.id }
-                val strictPomodoro = enforcingSessions.any {
-                    it.sessionType == "POMODORO" && it.isBlockingEnabled
-                }
+                // Desfaz o Não Perturbe que o antigo Pomodoro rigoroso ligava, se ficou ligado.
+                restoreLegacyDoNotDisturb()
 
-                setDoNotDisturbMode(strictPomodoro)
-
-                val sessionApps = if (strictPomodoro) {
-                    getInstalledUserAppsExceptPhone()
-                } else {
-                    getAppsForSessions(enforcingIds)
-                }
+                val sessionApps = getAppsForSessions(enforcingIds)
                 val passwordSessionApps = getAppsForSessions(passwordSessionIds)
-                val strongerSessionApps = if (strictPomodoro) {
-                    sessionApps
-                } else {
-                    getAppsForSessions(strongerSessionIds)
-                }
+                val strongerSessionApps = getAppsForSessions(strongerSessionIds)
 
                 val activeAppLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
                 val limitApps = getExceededAppLimits(
@@ -1471,8 +1389,7 @@ class BlockingSessionManager @Inject constructor(
                 val deviceOwnerAppsToSuspend = packagesForDeviceOwnerSuspension(
                     enforcedPackages = appsToBlock,
                     passwordSessionPackages = passwordSessionApps,
-                    strongerProtectionPackages = strongerAppPackages,
-                    strictPomodoro = strictPomodoro
+                    strongerProtectionPackages = strongerAppPackages
                 )
                 val nativeFocusLockdownActive = focusModeSession != null &&
                     FocusModePolicy.usesNativeFocusLockdown(
@@ -1540,8 +1457,7 @@ class BlockingSessionManager @Inject constructor(
                     BlockingAccessibilityService.createRefreshBlockingIntent(
                         context = context,
                         blockedApps = accessibilityAppsToBlock,
-                        blockingActive = selfProtectionRequired,
-                        strictPomodoro = strictPomodoro
+                        blockingActive = selfProtectionRequired
                     )
                 )
         }
@@ -1626,7 +1542,7 @@ class BlockingSessionManager @Inject constructor(
     /**
      * Uso já contado de cada limite de app, pelos mesmos critérios que decidem o
      * bloqueio: só primeiro plano e só enquanto nenhuma camada acima do limite
-     * (período agendado, jejum, Pomodoro rigoroso) segurava o app.
+     * (período agendado, jejum) segurava o app.
      */
     suspend fun appLimitUsageMillis(
         limits: List<AppUsageLimit>,
@@ -1691,34 +1607,6 @@ class BlockingSessionManager @Inject constructor(
         WebsiteBlocker.matchesRuleIgnoringGrants(candidate, rule)
     }
 
-    private fun getInstalledUserAppsExceptPhone(): List<String> {
-        val phoneWhitelist = setOf(
-            "com.android.dialer",
-            "com.google.android.dialer",
-            "com.android.phone",
-            "com.android.server.telecom",
-            "com.samsung.android.dialer",
-            "com.samsung.android.incallui"
-        )
-        return try {
-            context.packageManager
-                .getInstalledApplications(PackageManager.GET_META_DATA)
-                .filter { app ->
-                    app.packageName != context.packageName &&
-                        app.packageName !in phoneWhitelist &&
-                        app.flags and ApplicationInfo.FLAG_SYSTEM == 0
-                }
-                .map { it.packageName }
-        } catch (error: RuntimeException) {
-            FocusGuardLogger.logError(
-                "BlockingSessionManager",
-                "Falha ao listar aplicativos instalados",
-                error
-            )
-            emptyList()
-        }
-    }
-
     @Suppress("DEPRECATION")
     private fun isPackageInstalled(packageName: String): Boolean {
         return try {
@@ -1753,33 +1641,29 @@ class BlockingSessionManager @Inject constructor(
         else database.sessionWebsiteCrossRefDao().getWebsitesForSessions(ids)
     }
 
-    private fun setDoNotDisturbMode(enabled: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+    /**
+     * O antigo Pomodoro rigoroso ligava o Não Perturbe e guardava o filtro anterior. Se esse
+     * filtro ficou salvo (a sessão rigorosa não terminou antes da atualização), ele é
+     * restaurado uma vez.
+     */
+    private fun restoreLegacyDoNotDisturb() {
+        if (!statePreferences.contains(PREVIOUS_DND_FILTER_KEY)) return
         try {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
                 as NotificationManager
             if (manager.isNotificationPolicyAccessGranted) {
-                if (enabled) {
-                    if (!statePreferences.contains(PREVIOUS_DND_FILTER_KEY)) {
-                        statePreferences.edit()
-                            .putInt(PREVIOUS_DND_FILTER_KEY, manager.currentInterruptionFilter)
-                            .apply()
-                    }
-                    manager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
-                } else if (statePreferences.contains(PREVIOUS_DND_FILTER_KEY)) {
-                    val savedFilter = statePreferences.getInt(
-                        PREVIOUS_DND_FILTER_KEY,
-                        NotificationManager.INTERRUPTION_FILTER_ALL
-                    )
-                    val previousFilter = savedFilter.takeIf {
-                        it == NotificationManager.INTERRUPTION_FILTER_ALL ||
-                            it == NotificationManager.INTERRUPTION_FILTER_PRIORITY ||
-                            it == NotificationManager.INTERRUPTION_FILTER_NONE ||
-                            it == NotificationManager.INTERRUPTION_FILTER_ALARMS
-                    } ?: NotificationManager.INTERRUPTION_FILTER_ALL
-                    manager.setInterruptionFilter(previousFilter)
-                    statePreferences.edit().remove(PREVIOUS_DND_FILTER_KEY).apply()
-                }
+                val savedFilter = statePreferences.getInt(
+                    PREVIOUS_DND_FILTER_KEY,
+                    NotificationManager.INTERRUPTION_FILTER_ALL
+                )
+                val previousFilter = savedFilter.takeIf {
+                    it == NotificationManager.INTERRUPTION_FILTER_ALL ||
+                        it == NotificationManager.INTERRUPTION_FILTER_PRIORITY ||
+                        it == NotificationManager.INTERRUPTION_FILTER_NONE ||
+                        it == NotificationManager.INTERRUPTION_FILTER_ALARMS
+                } ?: NotificationManager.INTERRUPTION_FILTER_ALL
+                manager.setInterruptionFilter(previousFilter)
+                statePreferences.edit().remove(PREVIOUS_DND_FILTER_KEY).apply()
             }
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(

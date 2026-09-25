@@ -19,7 +19,6 @@ class ProtectionHierarchyTest {
         val order = ProtectionHierarchy.Layer.entries
         assertThat(order).containsExactly(
             ProtectionHierarchy.Layer.FOCUS_MODE,
-            ProtectionHierarchy.Layer.STRICT_POMODORO,
             ProtectionHierarchy.Layer.TIME,
             ProtectionHierarchy.Layer.DAILY_LIMIT,
             ProtectionHierarchy.Layer.PASSWORD
@@ -41,11 +40,12 @@ class ProtectionHierarchyTest {
             .isEqualTo(ProtectionHierarchy.Layer.PASSWORD)
         assertThat(ProtectionHierarchy.layerOf(BlockSession(sessionType = "TIME")))
             .isEqualTo(ProtectionHierarchy.Layer.TIME)
+        // Sessões POMODORO sobram do antigo Pomodoro rigoroso e não bloqueiam.
         assertThat(
             ProtectionHierarchy.layerOf(
                 BlockSession(sessionType = "POMODORO", isBlockingEnabled = true)
             )
-        ).isEqualTo(ProtectionHierarchy.Layer.STRICT_POMODORO)
+        ).isNull()
         assertThat(
             ProtectionHierarchy.layerOf(
                 BlockSession(sessionType = "POMODORO", isBlockingEnabled = false)
@@ -130,7 +130,7 @@ class ProtectionHierarchyTest {
     }
 
     @Test
-    fun `strict pomodoro pauses every app limit while it runs`() {
+    fun `leftover strict pomodoro session never pauses an app limit`() {
         val pomodoro = ProtectionHierarchy.SessionTargets(
             session = BlockSession(
                 sessionType = "POMODORO",
@@ -149,7 +149,7 @@ class ProtectionHierarchyTest {
             timeZone = utc
         )
 
-        assertThat(waiting).containsExactly(at(9, 0) until at(9, 25))
+        assertThat(waiting).isEmpty()
     }
 
     @Test

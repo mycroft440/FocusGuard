@@ -293,9 +293,6 @@
     <!-- Pomodoro -->
     <string name="pomodoro_cancel_btn">Cancel</string>
     <string name="pomodoro_status_focus">HardBlock</string>
-    <string name="pomodoro_enable_block_switch">Strict Block</string>
-    <string name="pomodoro_enable_block_subtitle">Turn it on before starting to block exits and distractions.</string>
-    <string name="pomodoro_phone_btn">Emergency Call</string>
     <string name="pomodoro_cancel_timer_btn">Cancel session</string>
 
     <!-- Sessions Screen -->
@@ -528,17 +525,14 @@
     <string name="focusguard_device_admin_habilitado">HardBlock Device Admin enabled</string>
     <string name="focusguard_device_admin_desabilitado">HardBlock Device Admin disabled</string>
     <string name="erro_ao_iniciar_sessao">Error starting session</string>
-    <string name="modo_pomodoro_ativado_foco_total">POMODORO MODE ENABLED: Total Focus.</string>
     <string name="bloqueios_por_senha_encerrados">Password Blocks ended</string>
     <string name="senha_count_1">Password %1$d</string>
     <string name="mantem_o_focusguard_ativo_para_garantir_">Keeps HardBlock active to enforce your blocks</string>
     <string name="servico_focusguard_parado">HardBlock service stopped</string>
-    <string name="garante_que_o_bloqueio_rigoroso_do_pomod">Ensures the strict Pomodoro block stays active</string>
     <string name="criar_senha">Create password</string>
     <string name="confirmar_senha">Confirm password</string>
     <string name="bloqueio_ativado_com_sucesso">Block enabled successfully</string>
     <string name="senha_criada_com_sucesso">Password created successfully!</string>
-    <string name="abrir_telefone_para_emergencia">Open phone for emergency</string>
     <string name="sessoes_ativas">Active Sessions</string>
     <string name="personalizar_bloqueio">Customize Block</string>
     <string name="salvar_configuracoes">Save Settings</string>
@@ -548,8 +542,6 @@
     <string name="digite_sua_senha">Enter your password</string>
     <string name="senha_incorreta">Wrong password!</string>
     <string name="editar">Edit</string>
-    <string name="aviso_de_bloqueio_rigoroso">Strict Block Warning</string>
-    <string name="o_bloqueio_rigoroso_ira_impedir_que_voce">Strict Block will prevent you from closing the app or disabling restrictions during the session. Only the phone shortcut for calls will be available. Do you want to continue?</string>
     <string name="ativar">Enable</string>
     <string name="bloqueio_por_tempo">Time block</string>
     <string name="bloqueio_por_tempo_ativado">Dopamine Fast enabled</string>
@@ -576,7 +568,6 @@
     <string name="block_notice_unlock_title">Enter the password to unlock</string>
     <string name="block_notice_unlock_desc">End the current block session by entering your password.</string>
     <string name="block_notice_unlock_success">Session ended successfully</string>
-    <string name="block_notice_pomodoro_cannot_stop">The strict Pomodoro cannot be interrupted. Wait for the time to run out.</string>
     <string name="block_notice_time_cannot_revoke">The time block cannot be revoked during the active window. Wait for the time to run out.</string>
     <string name="block_notice_no_active_session">No active session found to end.</string>
     <string name="block_notice_unlock_failed">Could not end the block.</string>
@@ -589,7 +580,6 @@
     <string name="block_customization_description">Customize the message and image shown when an app is blocked.</string>
     <string name="limits_intrusion_security_title">Anti-Intrusion Security</string>
     <string name="limits_intrusion_security_description">Set what happens when someone enters the app password wrong repeatedly.</string>
-    <string name="pomodoro_strict_calls_only_notice">You will only be able to use the phone for calls until the time runs out.</string>
     <string name="usage_block_daily_limit_question">How much time per day do you want to allow for the selected app(s)?</string>
     <string name="usage_block_daily_limit_warning">! Warning: you will only be able to use the app for the amount of time you set above.</string>
     <string name="usage_block_type_question">What kind of limit do you want?</string>
@@ -605,8 +595,6 @@
     <string name="usage_block_warning_heading">With a warning stating that:</string>
     <string name="usage_block_irreversible_warning">If you agree, it will be impossible to use the app for more than the daily amount specified, and the block will last until the chosen days are over, with no way around it.</string>
     <string name="usage_block_agreement_instruction">Type below: i agree and understand the risks.</string>
-    <string name="pomodoro_lock_kiosk_active">Kiosk mode active. The session ends automatically at the scheduled time.</string>
-    <string name="pomodoro_lock_no_device_owner">Without Device Owner, some system screens can still appear.</string>
 
     <!-- Master password -->
     <string name="master_credential_required_to_block">Set the master password before activating a block. It is the only authenticated way to manage limits and uninstall the app afterwards.</string>
@@ -712,7 +700,6 @@
     <string name="focus_mode_notification_access_required">Allow notification access before starting Focus Mode.</string>
     <string name="focus_mode_start_failed">Android did not confirm every Focus Mode rule. No session was kept; review permissions and try again.</string>
     <string name="focus_mode_conflict_title">Another focus mode is active</string>
-    <string name="focus_mode_pomodoro_conflict">Focus Mode and strict Pomodoro use the same Android kiosk mode and cannot run at the same time. Wait for the current session to end.</string>
     <string name="focus_mode_notification_title">Focus Mode active</string>
     <string name="focus_mode_notification_time">Time remaining: %1$s</string>
     <string name="focus_mode_notification_channel">Focus Mode timer</string>

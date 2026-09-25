@@ -226,12 +226,6 @@ class FocusModePolicyTest {
     }
 
     @Test
-    fun `pomodoro cleanup never releases an active focus mode kiosk`() {
-        assertThat(FocusModePolicy.canPomodoroReleaseKiosk(focusModeActive = true)).isFalse()
-        assertThat(FocusModePolicy.canPomodoroReleaseKiosk(focusModeActive = false)).isTrue()
-    }
-
-    @Test
     fun `newly installed launchable app is blocked when it is not allowlisted`() {
         val allowed = setOf("com.focusguard", "com.example.allowed")
         val beforeInstall = FocusModePolicy.packagesToBlock(

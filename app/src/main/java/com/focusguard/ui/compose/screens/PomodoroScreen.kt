@@ -1,8 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.app.Activity
-import android.content.Intent
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -29,7 +26,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -77,8 +73,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
-import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.pomodoro.PomodoroAlarmController
@@ -88,7 +82,6 @@ import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.pomodoro.PomodoroUiSignal
 import com.focusguard.security.AuthManager
-import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -112,38 +105,29 @@ private val PomodoroText = Color(0xFFEDF2F7)
 private val PomodoroTextDim = Color(0xFF93A1AD)
 private val PomodoroTextFaint = Color(0xFF64717D)
 private val PomodoroAccent = Color(0xFF5CCFE6)
-private val PomodoroAccentInk = Color(0xFF04222A)
 private val PomodoroAccentTint = Color(0x1F5CCFE6)
 private val PomodoroAccentLine = Color(0x475CCFE6)
 private val PomodoroFocus = Color(0xFFE9BA5C)
 private val PomodoroFocusTint = Color(0x1FE9BA5C)
-private val PomodoroFocusLine = Color(0x42E9BA5C)
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
 fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
     authManager: AuthManager,
-    onPermissionsRequired: () -> Unit,
     onBack: () -> Unit,
     compactLayout: Boolean = false
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val planStore = remember(context) { PomodoroPlanStore(context) }
     val notificationController = remember(context) { PomodoroNotificationController(context) }
-    val deviceOwnerManager = remember(context) {
-        DeviceOwnerManager.getInstance(context.applicationContext)
-    }
 
     val currentSession by pomodoroManager.currentSession.collectAsState()
     val cycleState by pomodoroManager.cycleState.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
     val isRunning = currentSession?.isActive == true && cycleState?.active == true
-    val isStrictBlockingActive = currentSession?.isBlockingEnabled == true &&
-        currentSession?.endTime?.let { it > System.currentTimeMillis() } == true
     val focusModeActive = compactLayout || FocusModeStore.isActive(context)
 
     var config by remember { mutableStateOf(planStore.loadConfig()) }
@@ -164,20 +148,6 @@ fun PomodoroScreen(
         PomodoroUiSignal.configRequests.collect {
             showConfig = true
         }
-    }
-
-    LaunchedEffect(isStrictBlockingActive) {
-        if (isStrictBlockingActive) {
-            deviceOwnerManager.prepareStrictPomodoroLockTaskPackages()
-            runCatching { activity?.startLockTask() }
-        } else if (FocusModePolicy.canPomodoroReleaseKiosk(FocusModeStore.isActive(context))) {
-            runCatching { activity?.stopLockTask() }
-            deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
-        }
-    }
-
-    BackHandler(enabled = isStrictBlockingActive) {
-        // No foco rigoroso, voltar não encerra nem contorna o período.
     }
 
     val hasDndAccess = remember(permissionRevision) {
@@ -201,12 +171,6 @@ fun PomodoroScreen(
 
     fun startConfiguredPlan() {
         when {
-            config.strictBlocking && focusModeActive -> {
-                setMessage(context.getString(R.string.fg_pomodoro_disable_focus_for_strict))
-            }
-            config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
-                onPermissionsRequired()
-            }
             config.silenceNotifications && !hasDndAccess -> {
                 setMessage(context.getString(R.string.fg_pomodoro_authorize_dnd_start))
                 runCatching { context.startActivity(notificationController.policyAccessIntent()) }
@@ -307,22 +271,10 @@ fun PomodoroScreen(
                     targetSessions = cycleState?.config?.targetSessions ?: 0,
                     timeLeftMillis = timeLeftMillis,
                     durationMillis = currentSession?.durationMillis ?: 1L,
-                    isStrict = isStrictBlockingActive,
-                    onStop = { scope.launch { pomodoroManager.stopSession() } },
-                    onPhone = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_DIAL)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        }
-                    }
+                    onStop = { scope.launch { pomodoroManager.stopSession() } }
                 )
             } else {
-                ReadyPomodoroHeader(
-                    strictBlocking = config.strictBlocking,
-                    compact = tightHeight
-                )
+                ReadyPomodoroHeader(compact = tightHeight)
 
                 PomodoroReferenceClock(
                     minutes = config.focusMinutes.coerceIn(1, 180),
@@ -362,10 +314,7 @@ fun PomodoroScreen(
 }
 
 @Composable
-private fun ReadyPomodoroHeader(
-    strictBlocking: Boolean,
-    compact: Boolean
-) {
+private fun ReadyPomodoroHeader(compact: Boolean) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 6.dp),
@@ -392,10 +341,7 @@ private fun ReadyPomodoroHeader(
             )
         }
         Text(
-            text = stringResource(
-                if (strictBlocking) R.string.pomodoro_enable_block_subtitle
-                else R.string.focus_subtitle
-            ),
+            text = stringResource(R.string.focus_subtitle),
             color = PomodoroTextDim,
             fontSize = if (compact) 11.5.sp else 13.sp,
             textAlign = TextAlign.Center,
@@ -698,9 +644,7 @@ private fun ActivePomodoroPanel(
     targetSessions: Int,
     timeLeftMillis: Long,
     durationMillis: Long,
-    isStrict: Boolean,
-    onStop: () -> Unit,
-    onPhone: () -> Unit
+    onStop: () -> Unit
 ) {
     val totalSeconds = (timeLeftMillis / 1_000L).coerceAtLeast(0L)
     val minutes = totalSeconds / 60L
@@ -763,44 +707,13 @@ private fun ActivePomodoroPanel(
 
     Spacer(Modifier.height(12.dp))
 
-    if (isStrict) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = PomodoroFocusTint),
-            border = BorderStroke(1.dp, PomodoroFocusLine)
-        ) {
-            Text(
-                stringResource(R.string.fg_pomodoro_strict_active_hint),
-                color = PomodoroFocus,
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
-            )
-        }
-        Button(
-            onClick = onPhone,
-            modifier = Modifier.height(50.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = PomodoroAccent)
-        ) {
-            Icon(Icons.Default.Phone, contentDescription = null, tint = PomodoroAccentInk)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                stringResource(R.string.fg_phone),
-                color = PomodoroAccentInk,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    } else {
-        Button(
-            onClick = onStop,
-            modifier = Modifier.height(50.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.8f))
-        ) {
-            Text(stringResource(R.string.fg_pomodoro_stop), fontWeight = FontWeight.SemiBold)
-        }
+    Button(
+        onClick = onStop,
+        modifier = Modifier.height(50.dp),
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.8f))
+    ) {
+        Text(stringResource(R.string.fg_pomodoro_stop), fontWeight = FontWeight.SemiBold)
     }
 }
 

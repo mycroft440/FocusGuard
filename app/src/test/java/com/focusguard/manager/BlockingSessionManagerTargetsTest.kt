@@ -123,7 +123,7 @@ class BlockingSessionManagerTargetsTest {
     }
 
     @Test
-    fun `non-blocking pomodoro does not participate in blocking policies`() {
+    fun `leftover sessions of the removed strict pomodoro never block`() {
         assertThat(
             BlockingSessionManager.participatesInBlocking(
                 BlockSession(sessionType = "POMODORO", isBlockingEnabled = false)
@@ -133,7 +133,7 @@ class BlockingSessionManagerTargetsTest {
             BlockingSessionManager.participatesInBlocking(
                 BlockSession(sessionType = "POMODORO", isBlockingEnabled = true)
             )
-        ).isTrue()
+        ).isFalse()
         assertThat(
             BlockingSessionManager.participatesInBlocking(
                 BlockSession(sessionType = "PASSWORD", isBlockingEnabled = false)
@@ -229,17 +229,5 @@ class BlockingSessionManagerTargetsTest {
                 strongerProtectionPackages = listOf("com.example.time")
             )
         ).containsExactly("com.example.time")
-    }
-
-    @Test
-    fun `strict pomodoro suspends password target too`() {
-        assertThat(
-            BlockingSessionManager.packagesForDeviceOwnerSuspension(
-                enforcedPackages = listOf("com.example.password", "com.example.other"),
-                passwordSessionPackages = listOf("com.example.password"),
-                strongerProtectionPackages = emptyList(),
-                strictPomodoro = true
-            )
-        ).containsExactly("com.example.password", "com.example.other").inOrder()
     }
 }

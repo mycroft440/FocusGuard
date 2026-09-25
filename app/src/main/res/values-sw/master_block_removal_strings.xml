@@ -20,7 +20,6 @@
     <string name="remove_all_blocks_master_reason">Required because some of these blocks are not password blocks. This password does not unlock individual apps or sites.</string>
     <string name="remove_all_blocks_adult_filter">Adult content filter</string>
     <string name="remove_all_blocks_focus_mode">Focus Mode session</string>
-    <string name="remove_all_blocks_strict_pomodoro">Strict Pomodoro session</string>
     <plurals name="remove_all_blocks_password_count">
         <item quantity="one">%1$d password block</item>
         <item quantity="other">%1$d password blocks</item>

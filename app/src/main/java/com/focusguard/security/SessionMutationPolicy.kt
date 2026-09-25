@@ -13,7 +13,7 @@ object SessionMutationPolicy {
         if (session.endTime != null && session.endTime <= nowMillis) return true
 
         return when (session.sessionType.uppercase()) {
-            "TIME", "POMODORO" -> false
+            "TIME" -> false
             else -> true
         }
     }

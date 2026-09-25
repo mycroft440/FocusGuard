@@ -16,13 +16,13 @@ object SelfProtectionStateStore {
     private const val KEY_ARMED = "armed"
     private const val KEY_BLOCKED_APPS = "blocked_apps"
     private const val KEY_BLOCKED_SITES = "blocked_sites"
-    private const val KEY_STRICT_POMODORO = "strict_pomodoro"
+    // Chave do antigo Pomodoro rigoroso: só é apagada.
+    private const val LEGACY_KEY_STRICT_POMODORO = "strict_pomodoro"
 
     data class Snapshot(
         val armed: Boolean,
         val blockedApps: Set<String>,
-        val blockedSites: Set<String>,
-        val strictPomodoro: Boolean
+        val blockedSites: Set<String>
     )
 
     fun isArmed(context: Context): Boolean =
@@ -35,8 +35,7 @@ object SelfProtectionStateStore {
             return Snapshot(
                 armed = false,
                 blockedApps = emptySet(),
-                blockedSites = emptySet(),
-                strictPomodoro = false
+                blockedSites = emptySet()
             )
         }
         return Snapshot(
@@ -48,8 +47,7 @@ object SelfProtectionStateStore {
             blockedSites = preferences.getStringSet(KEY_BLOCKED_SITES, emptySet())
                 .orEmpty()
                 .filter(String::isNotBlank)
-                .toSet(),
-            strictPomodoro = preferences.getBoolean(KEY_STRICT_POMODORO, false)
+                .toSet()
         )
     }
 
@@ -58,8 +56,7 @@ object SelfProtectionStateStore {
         context: Context,
         armed: Boolean,
         blockedApps: Collection<String>,
-        blockedSites: Collection<String>,
-        strictPomodoro: Boolean
+        blockedSites: Collection<String>
     ): Boolean {
         val effectiveApps = if (armed) {
             blockedApps.filter(String::isNotBlank).toSet()
@@ -75,7 +72,7 @@ object SelfProtectionStateStore {
             .putBoolean(KEY_ARMED, armed)
             .putStringSet(KEY_BLOCKED_APPS, effectiveApps)
             .putStringSet(KEY_BLOCKED_SITES, effectiveSites)
-            .putBoolean(KEY_STRICT_POMODORO, armed && strictPomodoro)
+            .remove(LEGACY_KEY_STRICT_POMODORO)
             .commit()
     }
 
@@ -89,7 +86,7 @@ object SelfProtectionStateStore {
         if (!armed) {
             editor.remove(KEY_BLOCKED_APPS)
             editor.remove(KEY_BLOCKED_SITES)
-            editor.remove(KEY_STRICT_POMODORO)
+            editor.remove(LEGACY_KEY_STRICT_POMODORO)
         }
         return editor.commit()
     }

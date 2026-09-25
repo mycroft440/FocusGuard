@@ -2,10 +2,8 @@ package com.focusguard.manager
 
 import com.focusguard.monetization.MonetizationStateStore
 import android.content.Context
-import android.content.Intent
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession
-import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroCyclePolicy
 import com.focusguard.pomodoro.PomodoroCycleRuntime
@@ -13,11 +11,9 @@ import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.security.ProtectionPermissionGate
-import com.focusguard.service.BlockingAccessibilityService
+import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.service.PomodoroForegroundService
-import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -43,8 +39,8 @@ class PomodoroManager @Inject constructor(
 ) {
 
     companion object {
-        private const val STRICT_ARM_TIMEOUT_MILLIS = 3_000L
-        private const val STRICT_ARM_POLL_MILLIS = 25L
+        /** Estado da tela de bloqueio do antigo Pomodoro rigoroso. */
+        private const val LEGACY_STRICT_LOCK_PREFS = "focusguard_strict_pomodoro_lock"
 
         @Volatile
         private var legacyInstance: PomodoroManager? = null
@@ -117,6 +113,7 @@ class PomodoroManager @Inject constructor(
         scope.launch {
             try {
                 finishMutex.withLock {
+                    discardLegacyStrictPomodoro()
                     val now = System.currentTimeMillis()
                     val session = dao.getPomodoroSessionSync()
                     val runtime = planStore.readRuntime()?.takeIf { it.active }
@@ -138,9 +135,7 @@ class PomodoroManager @Inject constructor(
                                     endTime = runtime.intervalEndTime,
                                     durationMillis = runtime.intervalDurationMillis,
                                     isActive = true,
-                                    isBreak = runtime.phase != PomodoroPhase.FOCUS,
-                                    isBlockingEnabled = runtime.phase == PomodoroPhase.FOCUS &&
-                                        runtime.config.strictBlocking
+                                    isBreak = runtime.phase != PomodoroPhase.FOCUS
                                 )
                                 dao.insertOrUpdate(restored)
                                 restoreSessionLocked(restored, runtime)
@@ -151,9 +146,7 @@ class PomodoroManager @Inject constructor(
                                     endTime = runtime.intervalEndTime,
                                     durationMillis = runtime.intervalDurationMillis,
                                     isActive = true,
-                                    isBreak = runtime.phase != PomodoroPhase.FOCUS,
-                                    isBlockingEnabled = runtime.phase == PomodoroPhase.FOCUS &&
-                                        runtime.config.strictBlocking
+                                    isBreak = runtime.phase != PomodoroPhase.FOCUS
                                 )
                                 finishCurrentIntervalLocked(playAlarm = false)
                             }
@@ -170,8 +163,7 @@ class PomodoroManager @Inject constructor(
                             focusMinutes = ((session.durationMillis + 59_999L) / 60_000L)
                                 .toInt()
                                 .coerceAtLeast(1),
-                            targetSessions = 1,
-                            strictBlocking = session.isBlockingEnabled
+                            targetSessions = 1
                         ).normalized()
                         val legacyRuntime = PomodoroCycleRuntime(
                             active = true,
@@ -188,34 +180,6 @@ class PomodoroManager @Inject constructor(
                         planStore.saveRuntime(legacyRuntime)
                         _cycleState.value = legacyRuntime
                         restoreSessionLocked(session, legacyRuntime)
-                    } else if (StrictPomodoroLock.getEndTime(context) > now) {
-                        val endTime = StrictPomodoroLock.getEndTime(context)
-                        val remaining = endTime - now
-                        val config = planStore.loadConfig().copy(
-                            focusMinutes = ((remaining + 59_999L) / 60_000L).toInt().coerceAtLeast(1),
-                            targetSessions = 1,
-                            strictBlocking = true
-                        ).normalized()
-                        val restored = PomodoroSession(
-                            id = 1,
-                            endTime = endTime,
-                            durationMillis = remaining,
-                            isActive = true,
-                            isBreak = false,
-                            isBlockingEnabled = true
-                        )
-                        val restoredRuntime = PomodoroCycleRuntime(
-                            active = true,
-                            phase = PomodoroPhase.FOCUS,
-                            completedFocusSessions = 0,
-                            config = config,
-                            intervalEndTime = endTime,
-                            intervalDurationMillis = remaining
-                        )
-                        dao.insertOrUpdate(restored)
-                        planStore.saveRuntime(restoredRuntime)
-                        _cycleState.value = restoredRuntime
-                        restoreSessionLocked(restored, restoredRuntime)
                     } else {
                         cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
                     }
@@ -246,91 +210,47 @@ class PomodoroManager @Inject constructor(
             intervalDurationMillis = session.durationMillis
         ).also(planStore::saveRuntime)
 
-        if (runtime.config.strictBlocking && !runtime.config.silenceNotifications) {
-            notificationController.captureCurrentFilter()
-        }
-        reconcileRestoredBlockingState(session)
         applyNotificationPolicyForInterval(runtime.config)
 
         PomodoroForegroundService.start(context)
-        if (session.isBlockingEnabled) {
-            StrictPomodoroLock.save(context, session.endTime, session.durationMillis)
-            launchStrictLockActivity()
-        } else {
-            StrictPomodoroLock.clear(context)
-        }
         PomodoroForegroundService.scheduleWatchdogAlarm(context)
         startTicker()
     }
 
-    private suspend fun reconcileRestoredBlockingState(session: PomodoroSession) {
-        if (!session.isBlockingEnabled) {
-            clearLegacyPomodoroBlockingLocked()
-            return
-        }
-
-        val now = System.currentTimeMillis()
-        val existingStrictSession = database.blockSessionDao()
-            .getAllActiveSessionsStatic()
-            .any { blockSession ->
-                blockSession.sessionType == "POMODORO" &&
-                    blockSession.isBlockingEnabled &&
-                    (blockSession.endTime ?: 0L) > now
-            }
-
-        if (!existingStrictSession) {
-            clearLegacyPomodoroBlockingLocked()
-            val remaining = (session.endTime - now).coerceAtLeast(1L)
-            sessionManager.startPomodoroSession(remaining, true)
-            awaitStrictPomodoroEnforcement()
-        } else {
-            sessionManager.checkAndEnforceStrict()
-        }
-    }
-
     /**
-     * Remove somente o registro de bloqueio POMODORO do motor legado e reconcilia
-     * as políticas. Não toca no PomodoroForegroundService: ele pertence ao plano
-     * inteiro e deve sobreviver continuamente às transições foco/pausa.
+     * O Pomodoro rigoroso foi removido. Versões antigas podiam deixar um bloqueio POMODORO
+     * ativo no banco e o estado da tela de bloqueio salvo; os dois são descartados aqui, e os
+     * bloqueios são reconciliados se algum bloqueio antigo estava ativo.
      */
-    private suspend fun clearLegacyPomodoroBlockingLocked() {
-        database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
-        StrictPomodoroLock.clear(context)
-        sessionManager.checkAndEnforceStrict()
-    }
-
-    private suspend fun awaitStrictPomodoroEnforcement() {
-        val deadline = android.os.SystemClock.elapsedRealtime() + STRICT_ARM_TIMEOUT_MILLIS
-        while (true) {
-            val now = System.currentTimeMillis()
-            val armed = database.blockSessionDao()
-                .getAllActiveSessionsStatic()
-                .any { blockSession ->
-                    blockSession.sessionType == "POMODORO" &&
-                    blockSession.isBlockingEnabled &&
-                    (blockSession.endTime ?: 0L) > now
-                }
-            if (armed) {
-                sessionManager.checkAndEnforceStrict()
-                return
-            }
-            check(android.os.SystemClock.elapsedRealtime() < deadline) {
-                "O bloqueio rigoroso não pôde ser armado a tempo"
-            }
-            delay(STRICT_ARM_POLL_MILLIS)
+    private suspend fun discardLegacyStrictPomodoro() {
+        runCatching {
+            context.deleteSharedPreferences(LEGACY_STRICT_LOCK_PREFS)
+            context.createDeviceProtectedStorageContext()
+                .deleteSharedPreferences(LEGACY_STRICT_LOCK_PREFS)
+        }
+        // Uma falha aqui não pode derrubar a restauração do Pomodoro em andamento. As sessões
+        // POMODORO que sobrarem já não bloqueiam (BlockingSessionManager.participatesInBlocking).
+        try {
+            val deactivated = database.blockSessionDao()
+                .deactivateActiveSessionsByType(BlockTargetPolicy.SESSION_TYPE_POMODORO)
+            if (deactivated > 0) sessionManager.checkAndEnforce()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "PomodoroManager",
+                "Falha ao descartar o antigo Pomodoro rigoroso",
+                error
+            )
         }
     }
 
     private fun applyNotificationPolicyForInterval(config: PomodoroPlanConfig) {
-        if (config.silenceNotifications) {
-            if (!notificationController.apply(config)) {
-                FocusGuardLogger.log(
-                    "PomodoroManager",
-                    "Não Perturbe não pôde ser reaplicado neste intervalo"
-                )
-            }
-        } else if (config.strictBlocking) {
-            notificationController.restoreForActivePlan()
+        if (config.silenceNotifications && !notificationController.apply(config)) {
+            FocusGuardLogger.log(
+                "PomodoroManager",
+                "Não Perturbe não pôde ser reaplicado neste intervalo"
+            )
         }
     }
 
@@ -349,9 +269,6 @@ class PomodoroManager @Inject constructor(
                     break
                 }
                 _timeLeftMillis.value = remaining
-                if (session.isBlockingEnabled) {
-                    StrictPomodoroLock.save(context, session.endTime, session.durationMillis)
-                }
                 delay(1_000L)
             }
         }
@@ -373,12 +290,6 @@ class PomodoroManager @Inject constructor(
 
     suspend fun startPlan(config: PomodoroPlanConfig) {
         val normalized = config.normalized()
-        check(!normalized.strictBlocking || !FocusModeStore.isActive(context)) {
-            "O Pomodoro rigoroso não pode substituir um Modo Foco ativo"
-        }
-        check(!normalized.strictBlocking || ProtectionPermissionGate.read(context).isReady) {
-            "Todas as permissões de proteção são necessárias para o Pomodoro com bloqueio"
-        }
         check(!normalized.silenceNotifications || notificationController.hasPolicyAccess()) {
             "Acesso ao Não Perturbe é necessário para silenciar notificações"
         }
@@ -417,52 +328,6 @@ class PomodoroManager @Inject constructor(
         }
     }
 
-    suspend fun startSession(
-        durationMinutes: Int,
-        isBreak: Boolean = false,
-        isBlockingEnabled: Boolean = true
-    ) {
-        require(durationMinutes in 1..24 * 60) { "Duração do Pomodoro inválida" }
-        val base = planStore.loadConfig()
-        val config = if (isBreak) {
-            base.copy(
-                shortBreakMinutes = durationMinutes,
-                targetSessions = 1,
-                strictBlocking = false
-            )
-        } else {
-            base.copy(
-                focusMinutes = durationMinutes,
-                targetSessions = 1,
-                strictBlocking = isBlockingEnabled
-            )
-        }.normalized()
-
-        if (!isBreak) {
-            startPlan(config)
-            return
-        }
-
-        finishMutex.withLock {
-            cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
-            val runtime = PomodoroCycleRuntime(
-                active = true,
-                phase = PomodoroPhase.SHORT_BREAK,
-                completedFocusSessions = 0,
-                config = config,
-                intervalEndTime = 0L,
-                intervalDurationMillis = 0L
-            )
-            planStore.saveRuntime(runtime)
-            _cycleState.value = runtime
-            startIntervalLocked(
-                phase = PomodoroPhase.SHORT_BREAK,
-                config = config,
-                ensureForegroundService = true
-            )
-        }
-    }
-
     private suspend fun startIntervalLocked(
         phase: PomodoroPhase,
         config: PomodoroPlanConfig,
@@ -471,15 +336,13 @@ class PomodoroManager @Inject constructor(
         val durationMinutes = PomodoroCyclePolicy.durationMinutes(config, phase)
         val durationMillis = durationMinutes * 60_000L
         val endTime = System.currentTimeMillis() + durationMillis
-        val blocking = phase == PomodoroPhase.FOCUS && config.strictBlocking
 
         val session = PomodoroSession(
             id = 1,
             endTime = endTime,
             durationMillis = durationMillis,
             isActive = true,
-            isBreak = phase != PomodoroPhase.FOCUS,
-            isBlockingEnabled = blocking
+            isBreak = phase != PomodoroPhase.FOCUS
         )
         dao.insertOrUpdate(session)
         _currentSession.value = session
@@ -496,32 +359,15 @@ class PomodoroManager @Inject constructor(
         planStore.saveRuntime(updatedRuntime)
         _cycleState.value = updatedRuntime
 
-        if (config.strictBlocking && !config.silenceNotifications) {
-            notificationController.captureCurrentFilter()
-        }
-
-        clearLegacyPomodoroBlockingLocked()
-        if (blocking) {
-            sessionManager.startPomodoroSession(durationMillis, true)
-            awaitStrictPomodoroEnforcement()
-        }
-
         applyNotificationPolicyForInterval(config)
 
         if (ensureForegroundService) {
             PomodoroForegroundService.start(context)
         }
-        if (blocking) {
-            StrictPomodoroLock.save(context, endTime, durationMillis)
-        } else {
-            StrictPomodoroLock.clear(context)
-        }
         PomodoroForegroundService.scheduleWatchdogAlarm(context)
 
-        notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
         startTicker()
-        if (blocking) launchStrictLockActivity()
     }
 
     private suspend fun finishCurrentIntervalLocked(playAlarm: Boolean) {
@@ -534,12 +380,9 @@ class PomodoroManager @Inject constructor(
 
         stopTicker()
         dao.deleteSession()
-        StrictPomodoroLock.clear(context)
         PomodoroForegroundService.cancelWatchdogAlarm(context)
         _currentSession.value = null
         _timeLeftMillis.value = 0L
-        clearLegacyPomodoroBlockingLocked()
-        notifyBlockingChanged()
 
         if (playAlarm) {
             alarmJob?.cancel()
@@ -630,15 +473,12 @@ class PomodoroManager @Inject constructor(
             alarmJob = null
         }
         dao.deleteSession()
-        StrictPomodoroLock.clear(context)
         _currentSession.value = null
         _timeLeftMillis.value = 0L
         _cycleState.value = null
         planStore.clearRuntime()
-        clearLegacyPomodoroBlockingLocked()
         PomodoroForegroundService.stop(context)
         notificationController.restore()
-        notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
         if (emitFinished) {
             MonetizationStateStore.markPomodoroCompletionAdPending(context)
@@ -650,32 +490,6 @@ class PomodoroManager @Inject constructor(
         val runtime = _cycleState.value ?: planStore.readRuntime()
         return runtime?.active == true ||
             (_currentSession.value?.isActive == true &&
-                (_currentSession.value?.endTime ?: 0L) > System.currentTimeMillis()) ||
-            StrictPomodoroLock.isActive(context)
-    }
-
-    private fun notifyBlockingChanged() {
-        context.sendBroadcast(
-            Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
-                .setPackage(context.packageName)
-        )
-    }
-
-    private fun launchStrictLockActivity() {
-        val intent = Intent(context, PomodoroLockActivity::class.java).apply {
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-            )
-        }
-        runCatching { context.startActivity(intent) }
-            .onFailure {
-                FocusGuardLogger.logError(
-                    "PomodoroManager",
-                    "Falha ao abrir bloqueio rigoroso",
-                    it
-                )
-            }
+                (_currentSession.value?.endTime ?: 0L) > System.currentTimeMillis())
     }
 }

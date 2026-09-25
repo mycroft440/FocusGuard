@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -46,7 +45,6 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -59,7 +57,6 @@ import kotlinx.coroutines.launch
  */
 class GenericBlockNoticeActivity : AppCompatActivity() {
 
-    private var strictBlock = false
     private var noticeDrawn = false
     private var activityResumed = false
     private var windowFocused = false
@@ -74,7 +71,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
     private var usageImpactJob: Job? = null
 
     private data class NoticePayload(
-        val strictBlock: Boolean,
         val blockedPackage: String?
     )
 
@@ -82,7 +78,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (!strictBlock) goHome()
+                goHome()
             }
         })
         showBlockNotice(intent)
@@ -127,16 +123,11 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
             0L
         )
         val payload = NoticePayload(
-            strictBlock = sourceIntent.getBooleanExtra(
-                BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
-                false
-            ),
             blockedPackage = sourceIntent.getStringExtra(
                 BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
             )?.takeIf(String::isNotBlank)
         )
 
-        strictBlock = payload.strictBlock
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
 
@@ -146,11 +137,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 
         setContent {
             FocusGuardTheme {
-                GenericBlockNoticeContent(
-                    strictBlock = payload.strictBlock,
-                    blockedPackage = payload.blockedPackage,
-                    onGoToPomodoroLock = ::goToPomodoroLock
-                )
+                GenericBlockNoticeContent(blockedPackage = payload.blockedPackage)
             }
         }
 
@@ -191,7 +178,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         pendingUsageImpactPackage = null
 
         val packageName = payload.blockedPackage
-        if (payload.strictBlock || packageName.isNullOrBlank()) return
+        if (packageName.isNullOrBlank()) return
 
         usageImpactJob = lifecycleScope.launch {
             val shouldShow = UsageImpactRouter.shouldShowForBlockedApp(
@@ -251,19 +238,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         return true
     }
 
-    private fun goToPomodoroLock() {
-        startActivity(
-            Intent(this, PomodoroLockActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                )
-            }
-        )
-        finish()
-    }
-
     private fun goToUsageImpact(packageName: String) {
         startActivity(UsageImpactActivity.createIntent(this, packageName))
         finish()
@@ -281,18 +255,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 }
 
 @Composable
-private fun GenericBlockNoticeContent(
-    strictBlock: Boolean,
-    blockedPackage: String?,
-    onGoToPomodoroLock: () -> Unit
-) {
-    LaunchedEffect(strictBlock) {
-        if (strictBlock) {
-            delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
-            onGoToPomodoroLock()
-        }
-    }
-
+private fun GenericBlockNoticeContent(blockedPackage: String?) {
     Box(
         modifier = Modifier.fillMaxSize().background(DarkBg),
         contentAlignment = Alignment.Center
@@ -340,13 +303,7 @@ private fun GenericBlockNoticeContent(
             Spacer(Modifier.height(28.dp))
 
             Text(
-                text = stringResource(
-                    if (strictBlock) {
-                        R.string.block_notice_pomodoro_cannot_stop
-                    } else {
-                        R.string.block_notice_no_password_unlock
-                    }
-                ),
+                text = stringResource(R.string.block_notice_no_password_unlock),
                 color = TextHint,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center

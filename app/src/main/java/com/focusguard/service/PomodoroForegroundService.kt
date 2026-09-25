@@ -15,10 +15,8 @@ import androidx.core.app.NotificationCompat
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.widget.PomodoroWidgetProvider
 import java.util.Locale
@@ -33,9 +31,8 @@ import kotlinx.coroutines.launch
 /**
  * Serviço foreground do Pomodoro.
  *
- * Mantém ciclos normais e rigorosos (foco/pausa/foco) vivos em segundo plano.
- * O watchdog também cobre ciclos normais para recuperar o serviço se o Android
- * matar o processo; a LockActivity continua exclusiva do modo rigoroso.
+ * Mantém os ciclos (foco/pausa/foco) vivos em segundo plano. O watchdog
+ * recupera o serviço se o Android matar o processo.
  */
 class PomodoroForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -47,8 +44,7 @@ class PomodoroForegroundService : Service() {
         private const val CHANNEL_ID = "focusguard_pomodoro_watchdog"
         private const val NOTIFICATION_ID = 201
         private const val WATCHDOG_ALARM_REQUEST_CODE = 3001
-        private const val STRICT_WATCHDOG_INTERVAL_MS = 30_000L
-        private const val NORMAL_WATCHDOG_INTERVAL_MS = 60_000L
+        private const val WATCHDOG_INTERVAL_MS = 60_000L
 
         fun start(context: Context) {
             val intent = Intent(context, PomodoroForegroundService::class.java)
@@ -73,8 +69,7 @@ class PomodoroForegroundService : Service() {
         fun scheduleWatchdogAlarm(context: Context) {
             val appContext = context.applicationContext
             val runtime = PomodoroPlanStore(appContext).readRuntime()?.takeIf { it.active }
-            val strict = StrictPomodoroLock.isActive(appContext)
-            if (runtime == null && !strict) {
+            if (runtime == null) {
                 cancelWatchdogAlarm(appContext)
                 return
             }
@@ -88,16 +83,11 @@ class PomodoroForegroundService : Service() {
             }
             val pendingIntent = watchdogPendingIntent(appContext)
             val now = System.currentTimeMillis()
-            val safetyInterval = if (strict) {
-                STRICT_WATCHDOG_INTERVAL_MS
-            } else {
-                NORMAL_WATCHDOG_INTERVAL_MS
-            }
-            val intervalEndTime = runtime?.intervalEndTime ?: 0L
+            val intervalEndTime = runtime.intervalEndTime
             val triggerAt = when {
                 intervalEndTime in 1..now -> now + 1_000L
-                intervalEndTime > now -> minOf(now + safetyInterval, intervalEndTime)
-                else -> now + safetyInterval
+                intervalEndTime > now -> minOf(now + WATCHDOG_INTERVAL_MS, intervalEndTime)
+                else -> now + WATCHDOG_INTERVAL_MS
             }
 
             try {
@@ -201,7 +191,7 @@ class PomodoroForegroundService : Service() {
 
     private fun hasActivePlan(): Boolean {
         val runtime = PomodoroPlanStore(applicationContext).readRuntime()
-        return runtime?.active == true || StrictPomodoroLock.isActive(applicationContext)
+        return runtime?.active == true
     }
 
     private fun startWatchdogLoop() {
@@ -218,9 +208,6 @@ class PomodoroForegroundService : Service() {
 
                     updateNotification()
                     updateWidgetIfNeeded()
-                    if (StrictPomodoroLock.isActive(applicationContext)) {
-                        ensureLockActivityOnTop()
-                    }
                     // O watchdog já é armado no início, nas transições de fase,
                     // em onTaskRemoved() e onDestroy(). Evite regravar o AlarmManager
                     // a cada 2 segundos: reduz trabalho sem perder recuperação.
@@ -253,41 +240,15 @@ class PomodoroForegroundService : Service() {
         PomodoroWidgetProvider.requestUpdate(applicationContext)
     }
 
-    private fun ensureLockActivityOnTop() {
-        try {
-            val intent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                )
-            }
-            PendingIntent.getActivity(
-                applicationContext,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            ).send()
-        } catch (error: Exception) {
-            FocusGuardLogger.logError(
-                "PomodoroFGService",
-                "Falha ao manter LockActivity no topo",
-                error
-            )
-        }
-    }
-
     private fun buildNotification(): Notification {
         val runtime = PomodoroPlanStore(applicationContext).readRuntime()
         val remaining = runtime?.intervalEndTime
             ?.minus(System.currentTimeMillis())
             ?.coerceAtLeast(0L)
-            ?: StrictPomodoroLock.remainingMillis(applicationContext)
+            ?: 0L
         val minutes = remaining / 60_000L
         val seconds = (remaining % 60_000L) / 1_000L
         val timeText = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-        val strict = StrictPomodoroLock.isActive(applicationContext)
         val phase = runtime?.phase ?: PomodoroPhase.FOCUS
         val phaseText = getString(
             when (phase) {
@@ -297,21 +258,16 @@ class PomodoroForegroundService : Service() {
             }
         )
 
-        val targetActivity = if (strict) PomodoroLockActivity::class.java else MainActivity::class.java
         val contentIntent = PendingIntent.getActivity(
             applicationContext,
             0,
-            Intent(applicationContext, targetActivity).apply {
+            Intent(applicationContext, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = if (strict) {
-            getString(R.string.fg_pomodoro_strict_title)
-        } else {
-            getString(R.string.fg_pomodoro_notification_title_phase, phaseText)
-        }
+        val title = getString(R.string.fg_pomodoro_notification_title_phase, phaseText)
 
         return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle(title)

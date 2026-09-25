@@ -6,14 +6,12 @@ import org.junit.Test
 class AppBlockSurfacePolicyTest {
 
     private fun facts(
-        strictPomodoro: Boolean = false,
         focusModeBlocksTarget: Boolean = false,
         dopamineFastBlocksTarget: Boolean = false,
         activeUsageLimitBlocksTarget: Boolean = false,
         credentialOrigin: BiometricAppUnlockPolicy.BlockOrigin? =
             BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION
     ) = AppBlockSurfacePolicy.Facts(
-        strictPomodoro = strictPomodoro,
         focusModeBlocksTarget = focusModeBlocksTarget,
         dopamineFastBlocksTarget = dopamineFastBlocksTarget,
         activeUsageLimitBlocksTarget = activeUsageLimitBlocksTarget,
@@ -24,12 +22,6 @@ class AppBlockSurfacePolicyTest {
     fun `plain password session owns dedicated unlock surface`() {
         assertThat(AppBlockSurfacePolicy.decide(facts()))
             .isEqualTo(AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK)
-    }
-
-    @Test
-    fun `strict pomodoro always keeps generic hard block`() {
-        assertThat(AppBlockSurfacePolicy.decide(facts(strictPomodoro = true)))
-            .isEqualTo(AppBlockSurfacePolicy.Surface.GENERIC_BLOCK)
     }
 
     @Test
