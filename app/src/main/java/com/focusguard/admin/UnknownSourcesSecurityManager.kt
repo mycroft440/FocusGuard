@@ -77,10 +77,13 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
     /**
      * Accessibility is the consumer-mode enforcement layer. This intentionally
      * reads the cached preference first so ordinary Settings events do not trigger
-     * DevicePolicyManager work when the optional feature is disabled.
+     * native-policy work while the optional feature is disabled.
      */
     fun isAccessibilityFallbackEnabled(): Boolean =
-        protectionEnabled && !isDeviceOwnerActive()
+        isAccessibilityFallbackEnabled(isDeviceOwnerActive())
+
+    internal fun isAccessibilityFallbackEnabled(deviceOwnerActive: Boolean): Boolean =
+        protectionEnabled && !deviceOwnerActive
 
     /**
      * Enables the strongest available implementation.
