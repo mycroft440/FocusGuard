@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.analytics.*
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
+import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -232,6 +233,10 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             PhoneUsageChartSection(phoneUsage)
                         }
 
+                        item(key = "banner_after_phone_usage") {
+                            FocusGuardBannerAd()
+                        }
+
                         item(key = "most_used_apps") {
                             MostUsedAppsSection(
                                 apps = mostUsedApps,
@@ -245,6 +250,10 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             )
                         }
 
+                        item(key = "banner_after_most_used") {
+                            FocusGuardBannerAd()
+                        }
+
                         item(key = "most_used_today_apps") {
                             MostUsedTodayAppsSection(
                                 apps = mostUsedTodayApps,
@@ -252,6 +261,10 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                                 expanded = expandMostUsedToday,
                                 onToggleExpand = { expandMostUsedToday = it }
                             )
+                        }
+
+                        item(key = "banner_after_most_used_today") {
+                            FocusGuardBannerAd()
                         }
 
                         item(key = "most_opened_apps") {
@@ -263,6 +276,10 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             )
                         }
 
+                        item(key = "banner_after_most_opened") {
+                            FocusGuardBannerAd()
+                        }
+
                         item(key = "never_used_apps") {
                             NeverUsedAppsSection(
                                 apps = neverUsedApps,
@@ -270,6 +287,10 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                                 expanded = expandNeverUsed,
                                 onToggleExpand = { expandNeverUsed = it }
                             )
+                        }
+
+                        item(key = "metrics_footer_banner") {
+                            FocusGuardBannerAd()
                         }
 
                         item(key = "footer_spacer") { Spacer(Modifier.height(32.dp)) }
