@@ -151,7 +151,8 @@ enum class BlockTypeUi(
 }
 
 internal fun shouldShowBlockTypeBanner(type: BlockTypeUi): Boolean =
-    type == BlockTypeUi.DAILY_LIMIT ||
+    type == BlockTypeUi.PASSWORD ||
+        type == BlockTypeUi.DAILY_LIMIT ||
         type == BlockTypeUi.DAILY_PERIODS ||
         type == BlockTypeUi.DOPAMINE_FAST
 
