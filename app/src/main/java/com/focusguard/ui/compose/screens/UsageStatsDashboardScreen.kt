@@ -691,7 +691,8 @@ private fun DailyUsageBarChart(dailyUsage: List<DailyPhoneUsage>) {
     if (dailyUsage.isEmpty()) {
         Text(
             text = stringResource(R.string.dashboard_no_data),
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         return
     }
 
