@@ -746,12 +746,12 @@ class BlockingSessionManager @Inject constructor(
             // que ele exige é consentimento informado, coletado na UI antes de
             // chegar até aqui — ver MasterCredentialPolicy.
             //
-            // O jejum é o único bloqueio que aceita palavras além de apps e
-            // sites: é o mais rígido e o que as pessoas armam contra um hábito
-            // inteiro, então leva a rede mais larga.
+            // O bloqueio sem senha por tempo (contínuo) é o único que aceita
+            // palavras além de apps e sites; o de períodos do dia leva apps e sites.
             val normalizedSites = BlockTargetPolicy.acceptedRulesForSessionType(
                 sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
-                rules = sites
+                rules = sites,
+                continuousTime = isFixed24h
             )
             val normalizedApps = apps.filter(String::isNotBlank).distinct()
             require(normalizedApps.isNotEmpty() || normalizedSites.isNotEmpty()) {
@@ -1405,12 +1405,14 @@ class BlockingSessionManager @Inject constructor(
                 } else {
                     getAppsForSessions(enforcingIds)
                 }
+                val sessionSites = getSitesForSessions(enforcingIds)
                 val passwordSessionApps = getAppsForSessions(passwordSessionIds)
                 val strongerSessionApps = if (strictPomodoro) {
                     sessionApps
                 } else {
                     getAppsForSessions(strongerSessionIds)
                 }
+                val strongerSessionSites = getSitesForSessions(strongerSessionIds)
 
                 val activeAppLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
                 val limitApps = getExceededAppLimits(
@@ -1419,17 +1421,28 @@ class BlockingSessionManager @Inject constructor(
                     now = now
                 )
 
-                val policyExpirations = activeAppLimits.mapNotNull { limit ->
-                    if (limit.lockMode.equals("TIME", ignoreCase = true)) {
-                        limit.lockUntilTimestamp?.takeIf { it > now }
-                    } else null
-                }
-                val nextDailyReset = if (activeAppLimits.isNotEmpty()) {
+                val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
+                    .filter { it.isEnabled }
+                val policyExpirations = (
+                    activeAppLimits.mapNotNull { limit ->
+                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                            limit.lockUntilTimestamp?.takeIf { it > now }
+                        } else null
+                    } + activeWebsiteLimits.mapNotNull { limit ->
+                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                            limit.lockUntilTimestamp?.takeIf { it > now }
+                        } else null
+                    }
+                )
+                val nextDailyReset = if (
+                    activeAppLimits.isNotEmpty() || activeWebsiteLimits.isNotEmpty()
+                ) {
                     BlockingScheduleCalculator.nextLocalMidnight(now)
                 } else null
                 val nextReconciliation = if (
                     activeSessions.isNotEmpty() ||
                     activeAppLimits.isNotEmpty() ||
+                    activeWebsiteLimits.isNotEmpty() ||
                     focusModeSession != null
                 ) {
                     now + POLICY_RECONCILIATION_INTERVAL_MILLIS
@@ -1445,10 +1458,19 @@ class BlockingSessionManager @Inject constructor(
                         ),
                     nowMillis = now
                 )
-                // O bloqueio de sites é todo do SiteBlockEngine (com.focusguard.sitesblocker).
+                val limitSites = getBlockingWebsiteLimitRules(activeWebsiteLimits, now)
+                // Publish website ownership before deriving associated native-app
+                // packages. A PASSWORD visit grant for the same site must not hide
+                // a TIME/limit rule from that derivation.
+                PasswordTargetAccessGrant.updateStrongerWebsiteRules(
+                    WebsiteBlocker.normalizeRules(strongerSessionSites + limitSites)
+                )
+                val sitesToBlock = WebsiteBlocker.normalizeRules(sessionSites + limitSites)
+
+                // Os sites são bloqueados pelo SiteBlockEngine (com.focusguard.sitesblocker),
+                // que lê as regras das sessões e dos limites no serviço de acessibilidade.
                 // As políticas antigas de sites (URLBlocklist do Chrome/Edge e o DNS da
                 // categoria Pornografia) são sempre desfeitas aqui.
-                PasswordTargetAccessGrant.updateStrongerWebsiteRules(emptyList())
                 deviceOwnerManager.setPornographyCategoryActive(false)
                 if (AuthManager.isAdultFilterConfigured(context)) {
                     AuthManager.disableAdultFilterForDevelopmentExit(context)
@@ -1507,7 +1529,7 @@ class BlockingSessionManager @Inject constructor(
                 val selfProtectionRequired = shouldArmSelfProtection(
                     hasEnforcingSessions = enforcingSessions.isNotEmpty(),
                     hasBlockedApps = appsToBlock.isNotEmpty(),
-                    hasBlockedSites = false,
+                    hasBlockedSites = sitesToBlock.isNotEmpty(),
                     adultFilterEnabled = false,
                     focusModeActive = focusModeSession != null
                 ) || activeTimeCommitment

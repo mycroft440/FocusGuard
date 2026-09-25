@@ -98,8 +98,51 @@ public final class SiteBlockEngine {
     private String lastUnsupportedBrowser = "";
     private long lastUnsupportedBrowserAt = 0L;
 
-    public SiteBlockEngine(AccessibilityService service) {
+    /**
+     * Regras dos bloqueios do FocusGuard (sessões, senha e limites), somadas à lista própria
+     * do bloqueio de sites.
+     */
+    public interface ExternalRules {
+        int NONE = 0;
+        int BLOCK = 1;
+        int PASSWORD = 2;
+
+        /** Se há alguma regra de site ativa (a lista e os navegadores sem suporte passam a valer). */
+        boolean hasActiveRules();
+
+        /** Decide a página aberta: NONE, BLOCK (troca pelo Google) ou PASSWORD. */
+        int decide(String packageName, String visibleUrl);
+
+        /** Se um bloqueio ativo usa a categoria Pornografia (liga o filtro de pornografia). */
+        boolean blocksAdultContent();
+
+        /** Página que exige a senha do bloqueio: o FocusGuard mostra a tela de senha. */
+        void onPasswordSite(String packageName, String visibleUrl);
+
+        /** Cada URL lida da barra, para contar o tempo dos limites de uso. */
+        void onVisibleUrl(String packageName, String visibleUrl);
+    }
+
+    private static final long PASSWORD_DEBOUNCE_MS = 1500L;
+    private final ExternalRules externalRules;
+    private String lastPasswordKey = "";
+    private long lastPasswordAt = 0L;
+
+    public SiteBlockEngine(AccessibilityService service, ExternalRules externalRules) {
         this.service = service;
+        this.externalRules = externalRules;
+    }
+
+    private boolean isAdultFilterActive() {
+        if (store == null) store = new BlockedSitesStore(service);
+        return store.isAdultFilterEnabled()
+                || (externalRules != null && externalRules.blocksAdultContent());
+    }
+
+    private boolean isBlockingActive() {
+        if (store == null) store = new BlockedSitesStore(service);
+        return store.isBlockingActive()
+                || (externalRules != null && externalRules.hasActiveRules());
     }
 
     /** Chamado pelo serviço em onServiceConnected. */
@@ -198,8 +241,8 @@ public final class SiteBlockEngine {
             return;
         }
 
-        boolean adultFilter = store.isAdultFilterEnabled();
-        if (!store.isBlockingActive()) {
+        boolean adultFilter = isAdultFilterActive();
+        if (!isBlockingActive()) {
             cancelFirefoxRetry();
             cancelReread();
             cancelPageScan();
@@ -347,7 +390,7 @@ public final class SiteBlockEngine {
             noteOtherAppRead(packageName);
 
             if (store == null) store = new BlockedSitesStore(service);
-            if (!store.isBlockingActive()) return;
+            if (!isBlockingActive()) return;
             if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
                 return;
             }
@@ -399,10 +442,30 @@ public final class SiteBlockEngine {
             return;
         }
 
+        if (externalRules != null) {
+            externalRules.onVisibleUrl(packageName, visibleUrl);
+            int decision = externalRules.decide(packageName, visibleUrl);
+            if (decision == ExternalRules.BLOCK) {
+                String blockedHost = DomainMatcher.extractHost(visibleUrl);
+                blockWithDebounce(packageName, packageName + "|" + blockedHost);
+                return;
+            }
+            if (decision == ExternalRules.PASSWORD) {
+                String key = packageName + "|" + DomainMatcher.extractHost(visibleUrl);
+                long now = SystemClock.elapsedRealtime();
+                if (!key.equals(lastPasswordKey) || now - lastPasswordAt >= PASSWORD_DEBOUNCE_MS) {
+                    lastPasswordKey = key;
+                    lastPasswordAt = now;
+                    externalRules.onPasswordSite(packageName, visibleUrl);
+                }
+                return;
+            }
+        }
+
         String matchedDomain = DomainMatcher.findMatchedDomainNormalized(
                 visibleUrl, store.getNormalizedDomains());
         boolean adult = matchedDomain == null
-                && store.isAdultFilterEnabled()
+                && isAdultFilterActive()
                 && AdultContentFilter.blocksUrl(visibleUrl);
         if (matchedDomain == null && !adult) {
             requestPageScan(packageName, visibleUrl);
@@ -431,7 +494,7 @@ public final class SiteBlockEngine {
      * intervalo; nos buscadores o intervalo é curto, porque a pesquisa muda sem mudar o domínio.
      */
     private void requestPageScan(String packageName, String pageKey) {
-        if (store == null || !store.isAdultFilterEnabled()) return;
+        if (store == null || !isAdultFilterActive()) return;
 
         String key = packageName + "|" + (pageKey == null ? "" : pageKey);
         long rescanAfter = AdultContentFilter.isSearchHost(DomainMatcher.extractHost(pageKey))
@@ -452,7 +515,7 @@ public final class SiteBlockEngine {
             lastPageScanKey = pendingPageScanKey;
             lastPageScanAt = SystemClock.elapsedRealtime();
 
-            if (store == null || !store.isAdultFilterEnabled()) return;
+            if (store == null || !isAdultFilterActive()) return;
             if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
                 return;
             }
@@ -505,7 +568,7 @@ public final class SiteBlockEngine {
             if (BrowserProfiles.forPackage(packageName) != null) return;
 
             if (store == null) store = new BlockedSitesStore(service);
-            if (!store.isBlockingActive()) return;
+            if (!isBlockingActive()) return;
 
             AccessibilityNodeInfo root = applicationRootForPackage(packageName);
             if (root == null || !NodeSearch.containsWebContent(root)) return;
@@ -584,7 +647,7 @@ public final class SiteBlockEngine {
             if (verifiedBrowsers.isVerified(packageName)) return;
 
             if (store == null) store = new BlockedSitesStore(service);
-            if (!store.isBlockingActive()) return;
+            if (!isBlockingActive()) return;
             if (redirectController != null && redirectController.shouldIgnorePackage(packageName)) {
                 return;
             }
@@ -684,7 +747,7 @@ public final class SiteBlockEngine {
             AccessibilityNodeInfo root = applicationRootForPackage(expectedPackage);
             if (root != null) {
                 if (store == null) store = new BlockedSitesStore(service);
-                if (!store.isBlockingActive()) return;
+                if (!isBlockingActive()) return;
 
                 // A conferência da barra por versão, que o evento já não faz, usa a mesma janela.
                 if (attemptNumber == 1) {
@@ -779,7 +842,7 @@ public final class SiteBlockEngine {
     /** Evento do Opera GX: agenda a leitura da barra e mantém o navegador sob observação. */
     private void handleStructureBrowserEvent(String packageName) {
         cancelFirefoxRetry();
-        if (!store.isBlockingActive()) {
+        if (!isBlockingActive()) {
             cancelReread();
             cancelPageScan();
             return;
@@ -792,7 +855,7 @@ public final class SiteBlockEngine {
     /** Evento do Firefox: inicia a confirmação da URL e mantém o navegador sob observação. */
     private void handleFirefoxEvent(String packageName) {
         cancelReread();
-        if (!store.isBlockingActive()) {
+        if (!isBlockingActive()) {
             cancelFirefoxRetry();
             cancelPageScan();
             return;
@@ -825,7 +888,7 @@ public final class SiteBlockEngine {
     /** Lê a barra do navegador agora e bloqueia se o site estiver na lista. */
     private void readBrowserRoot(String packageName, AccessibilityNodeInfo root) {
         if (store == null) store = new BlockedSitesStore(service);
-        if (!store.isBlockingActive()) return;
+        if (!isBlockingActive()) return;
 
         String visibleUrl = urlExtractor.extract(root, null, packageName);
         logReread(packageName, visibleUrl);
@@ -853,7 +916,7 @@ public final class SiteBlockEngine {
 
         if (store == null) store = new BlockedSitesStore(service);
         BrowserProfile profile = BrowserProfiles.forPackage(packageName);
-        if (!store.isBlockingActive() || profile == null) {
+        if (!isBlockingActive() || profile == null) {
             monitoredPackage = null;
             return;
         }
@@ -917,7 +980,7 @@ public final class SiteBlockEngine {
             }
 
             if (store == null) store = new BlockedSitesStore(service);
-            if (!store.isBlockingActive()) return;
+            if (!isBlockingActive()) return;
 
             String visibleUrl = urlExtractor.extract(root, null, expectedPackage);
             logReread(expectedPackage, visibleUrl);

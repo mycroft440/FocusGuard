@@ -5,10 +5,11 @@ import com.focusguard.utils.WebsiteBlocker
 /**
  * What each kind of protection is allowed to target.
  *
- * Password blocks, daily limits and time blocks target apps only. Website blocking
- * lives entirely in the site blocker (com.focusguard.sitesblocker), with its own list,
- * so no block persists or enforces website or keyword rules.
+ *  - **Password block**, **daily limit** and **daily periods**: apps and sites.
+ *  - **Block without password by time** (continuous TIME block): apps, sites and words.
+ *    It is the only block that takes keyword rules.
  *
+ * Sites and words are enforced by the site blocker (com.focusguard.sitesblocker).
  * Decided here so the wizard, limits UI and BlockingSessionManager cannot drift
  * apart: the UI hides unsupported target kinds and the manager filters again on
  * persistence.
@@ -29,17 +30,34 @@ object BlockTargetPolicy {
     }
 
     val APPS_ONLY = Kinds(apps = true, websites = false, keywords = false)
+    val APPS_AND_WEBSITES = Kinds(apps = true, websites = true, keywords = false)
+    val APPS_WEBSITES_AND_KEYWORDS = Kinds(apps = true, websites = true, keywords = true)
 
-    val DAILY_LIMIT = APPS_ONLY
+    /** Usage limits measure time spent, so they take targets but never words. */
+    val DAILY_LIMIT = APPS_AND_WEBSITES
 
-    @Suppress("UNUSED_PARAMETER")
-    fun forSessionType(sessionType: String): Kinds = APPS_ONLY
+    /**
+     * @param continuousTime for TIME: true for "block without password by time" (the only
+     *   block with words), false for daily periods.
+     */
+    fun forSessionType(sessionType: String, continuousTime: Boolean = true): Kinds =
+        when (sessionType.uppercase()) {
+            SESSION_TYPE_PASSWORD -> APPS_AND_WEBSITES
+            SESSION_TYPE_TIME ->
+                if (continuousTime) APPS_WEBSITES_AND_KEYWORDS else APPS_AND_WEBSITES
+            else -> APPS_ONLY
+        }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun acceptedRules(kinds: Kinds, rules: Collection<String>): Set<String> = emptySet()
+    fun acceptedRules(kinds: Kinds, rules: Collection<String>): Set<String> {
+        if (!kinds.websites && !kinds.keywords) return emptySet()
+        return WebsiteBlocker.normalizeRules(rules).filterTo(linkedSetOf()) { rule ->
+            if (WebsiteBlocker.isKeywordRule(rule)) kinds.keywords else kinds.websites
+        }
+    }
 
     fun acceptedRulesForSessionType(
         sessionType: String,
-        rules: Collection<String>
-    ): Set<String> = acceptedRules(forSessionType(sessionType), rules)
+        rules: Collection<String>,
+        continuousTime: Boolean = true
+    ): Set<String> = acceptedRules(forSessionType(sessionType, continuousTime), rules)
 }
