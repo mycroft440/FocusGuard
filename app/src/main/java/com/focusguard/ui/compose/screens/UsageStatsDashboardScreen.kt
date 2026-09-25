@@ -224,13 +224,15 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
 
                 else -> {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxSize().padding(padding),
                         verticalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
                         item(key = "header_spacer") { Spacer(Modifier.height(8.dp)) }
 
                         item(key = "phone_usage_chart") {
-                            PhoneUsageChartSection(phoneUsage)
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                PhoneUsageChartSection(phoneUsage)
+                            }
                         }
 
                         item(key = "banner_after_phone_usage") {
@@ -238,16 +240,18 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         }
 
                         item(key = "most_used_apps") {
-                            MostUsedAppsSection(
-                                apps = mostUsedApps,
-                                averageApps = mostUsedAverageApps,
-                                pm = pm,
-                                averageDays = mostUsedAverageDays,
-                                showAverage = showAverageForMostUsed,
-                                onToggleAverage = { showAverageForMostUsed = it },
-                                expanded = expandMostUsed,
-                                onToggleExpand = { expandMostUsed = it }
-                            )
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                MostUsedAppsSection(
+                                    apps = mostUsedApps,
+                                    averageApps = mostUsedAverageApps,
+                                    pm = pm,
+                                    averageDays = mostUsedAverageDays,
+                                    showAverage = showAverageForMostUsed,
+                                    onToggleAverage = { showAverageForMostUsed = it },
+                                    expanded = expandMostUsed,
+                                    onToggleExpand = { expandMostUsed = it }
+                                )
+                            }
                         }
 
                         item(key = "banner_after_most_used") {
@@ -255,12 +259,14 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         }
 
                         item(key = "most_used_today_apps") {
-                            MostUsedTodayAppsSection(
-                                apps = mostUsedTodayApps,
-                                pm = pm,
-                                expanded = expandMostUsedToday,
-                                onToggleExpand = { expandMostUsedToday = it }
-                            )
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                MostUsedTodayAppsSection(
+                                    apps = mostUsedTodayApps,
+                                    pm = pm,
+                                    expanded = expandMostUsedToday,
+                                    onToggleExpand = { expandMostUsedToday = it }
+                                )
+                            }
                         }
 
                         item(key = "banner_after_most_used_today") {
@@ -268,12 +274,14 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         }
 
                         item(key = "most_opened_apps") {
-                            MostOpenedAppsSection(
-                                apps = mostOpenedApps,
-                                pm = pm,
-                                expanded = expandMostOpened,
-                                onToggleExpand = { expandMostOpened = it }
-                            )
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                MostOpenedAppsSection(
+                                    apps = mostOpenedApps,
+                                    pm = pm,
+                                    expanded = expandMostOpened,
+                                    onToggleExpand = { expandMostOpened = it }
+                                )
+                            }
                         }
 
                         item(key = "banner_after_most_opened") {
@@ -281,12 +289,14 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         }
 
                         item(key = "never_used_apps") {
-                            NeverUsedAppsSection(
-                                apps = neverUsedApps,
-                                pm = pm,
-                                expanded = expandNeverUsed,
-                                onToggleExpand = { expandNeverUsed = it }
-                            )
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                NeverUsedAppsSection(
+                                    apps = neverUsedApps,
+                                    pm = pm,
+                                    expanded = expandNeverUsed,
+                                    onToggleExpand = { expandNeverUsed = it }
+                                )
+                            }
                         }
 
                         item(key = "metrics_footer_banner") {
@@ -681,8 +691,7 @@ private fun DailyUsageBarChart(dailyUsage: List<DailyPhoneUsage>) {
     if (dailyUsage.isEmpty()) {
         Text(
             text = stringResource(R.string.dashboard_no_data),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
 
