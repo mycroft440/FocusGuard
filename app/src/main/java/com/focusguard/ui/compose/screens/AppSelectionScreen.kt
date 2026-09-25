@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
+import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.*
 
 data class SelectableAppUi(
@@ -148,14 +149,18 @@ fun AppSelectionList(
 
         if (isLoading) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(color = AccentCyan)
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 if (alreadyBlockedApps.isNotEmpty()) {
@@ -341,6 +346,8 @@ fun AppSelectionList(
                 }
             }
         }
+
+        FocusGuardBannerAd()
     }
 }
 
