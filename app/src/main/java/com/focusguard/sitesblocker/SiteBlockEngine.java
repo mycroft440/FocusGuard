@@ -699,8 +699,14 @@ public final class SiteBlockEngine {
         lastUnsupportedBrowser = packageName;
         lastUnsupportedBrowserAt = now;
 
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
-        Toast.makeText(service, message, Toast.LENGTH_LONG).show();
+        // O navegador sai da tela para a página do app que explica o bloqueio. Se ela não
+        // puder ser aberta, o navegador ainda é fechado (tela inicial) com o aviso.
+        try {
+            service.startActivity(UnsupportedBrowserActivity.createIntent(service));
+        } catch (RuntimeException e) {
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+            Toast.makeText(service, message, Toast.LENGTH_LONG).show();
+        }
     }
 
     private void scheduleFirefoxRetry(String expectedPackage) {

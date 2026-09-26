@@ -173,6 +173,15 @@
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
+            android:name=".sitesblocker.UnsupportedBrowserActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:resizeableActivity="false"
+            android:taskAffinity="com.focusguard.unsupportedbrowser"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
             android:name=".ui.GenericBlockNoticeActivity"
             android:excludeFromRecents="true"
             android:exported="false"

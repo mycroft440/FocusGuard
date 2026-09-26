@@ -26,6 +26,11 @@ object RewardedGateCoordinator {
         description: String,
         action: () -> Unit
     ) {
+        // Premium: nenhuma função depende de anúncio recompensado.
+        if (PremiumManager.isPremium(context)) {
+            action()
+            return
+        }
         val target = requiredAds.coerceAtLeast(1)
         val gateKey = RewardedGateKeys.forRequest(title, target)
 

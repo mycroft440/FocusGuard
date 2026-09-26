@@ -10,11 +10,13 @@ import android.provider.Settings
 import com.focusguard.utils.FocusGuardLogger
 
 /**
- * Optional Device Owner policy for blocking installation from unknown sources.
+ * Optional block for installation from unknown sources.
  *
- * This policy intentionally stays separate from [DeviceOwnerManager]'s automatic
- * protection shield. It is enabled only after the user explicitly completes the
- * manual revocation flow in Android settings and confirms the action in FocusGuard.
+ * It works without Device Owner: while enabled, the accessibility service closes the
+ * Android screens that grant "Install unknown apps" (see
+ * [com.focusguard.security.UnknownSourcesInterceptionPolicy]). When Device Owner is
+ * active, the matching user restriction is applied as well. It is enabled only after
+ * the user revokes the existing grants in Android settings and confirms it here.
  */
 class UnknownSourcesSecurityManager private constructor(context: Context) {
 
@@ -23,8 +25,17 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
     private val adminComponent = FocusGuardDeviceAdminReceiver.getComponentName(appContext)
 
     companion object {
+        private const val PREFS = "extra_security"
+        private const val KEY_ACCESSIBILITY_BLOCK = "unknown_sources_accessibility_block"
+
         @Volatile
         private var instance: UnknownSourcesSecurityManager? = null
+
+        /** Leitura rápida para o serviço de acessibilidade (SharedPreferences em memória). */
+        fun isAccessibilityBlockEnabled(context: Context): Boolean =
+            context.applicationContext
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_ACCESSIBILITY_BLOCK, false)
 
         fun getInstance(context: Context): UnknownSourcesSecurityManager {
             return instance ?: synchronized(this) {
@@ -44,32 +55,24 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
         dpm.isDeviceOwnerApp(appContext.packageName)
     }.getOrDefault(false)
 
-    /**
-     * Returns true only when the strongest restriction available on this Android
-     * version is confirmed by DevicePolicyManager.
-     */
-    fun isBlocked(): Boolean {
-        if (!isDeviceOwnerActive()) return false
-        val restriction = restrictionForSdk(Build.VERSION.SDK_INT)
-        return runCatching {
-            dpm.getUserRestrictions(adminComponent).getBoolean(restriction, false)
-        }.onFailure { error ->
-            FocusGuardLogger.logError(
-                "ExtraSecurity",
-                "Falha ao verificar bloqueio de fontes desconhecidas",
-                error
-            )
-        }.getOrDefault(false)
-    }
+    /** Whether the block is on (accessibility interception, plus Device Owner if active). */
+    fun isBlocked(): Boolean = isAccessibilityBlockEnabled(appContext)
 
     /**
-     * Applies or removes the optional policy and reads it back before reporting
-     * success. On Android 10+ disabling also clears the older per-user variant so
-     * a policy left by a previous build cannot remain active unexpectedly.
+     * Turns the accessibility block on or off. With Device Owner active, the user
+     * restriction follows the same state; its failure does not undo the accessibility
+     * block, which does not depend on it.
      */
     fun setBlocked(enabled: Boolean): Boolean {
-        if (!isDeviceOwnerActive()) return false
+        val saved = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ACCESSIBILITY_BLOCK, enabled)
+            .commit()
+        if (isDeviceOwnerActive()) applyDeviceOwnerRestriction(enabled)
+        return saved
+    }
 
+    private fun applyDeviceOwnerRestriction(enabled: Boolean): Boolean {
         val requiredRestriction = restrictionForSdk(Build.VERSION.SDK_INT)
         return runCatching {
             if (enabled) {
@@ -83,20 +86,12 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
                     )
                 }
             }
-
-            val restrictions = dpm.getUserRestrictions(adminComponent)
-            val requiredStateMatches =
-                restrictions.getBoolean(requiredRestriction, false) == enabled
-            val legacyStateCleared = if (!enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                !restrictions.getBoolean(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, false)
-            } else {
-                true
-            }
-            requiredStateMatches && legacyStateCleared
+            dpm.getUserRestrictions(adminComponent)
+                .getBoolean(requiredRestriction, false) == enabled
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "ExtraSecurity",
-                "Falha ao ${if (enabled) "ativar" else "desativar"} bloqueio de fontes desconhecidas",
+                "Falha ao ${if (enabled) "ativar" else "desativar"} restrição de fontes desconhecidas",
                 error
             )
         }.getOrDefault(false)

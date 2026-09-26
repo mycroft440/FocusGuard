@@ -30,6 +30,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.focusguard.R
 import com.focusguard.monetization.FocusGuardAds
+import com.focusguard.monetization.PremiumManager
+import androidx.compose.runtime.collectAsState
 import com.focusguard.ui.compose.theme.DarkBg
 import com.google.android.libraries.ads.mobile.sdk.banner.AdView
 import kotlin.math.roundToInt
@@ -46,6 +48,11 @@ import kotlin.math.roundToInt
 fun FocusGuardBannerAd(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val activity = remember(context) { context.findComponentActivity() } ?: return
+    // Premium: sem banners.
+    val premium by PremiumManager.isPremiumFlow.collectAsState(
+        initial = PremiumManager.isPremium(context)
+    )
+    if (premium) return
 
     BoxWithConstraints(
         modifier = modifier

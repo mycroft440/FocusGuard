@@ -15,7 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,6 +80,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -792,6 +794,7 @@ private fun FocusDurationDial(
         "${minutes / 60} $hoursUnit ${minutes % 60} $minutesUnit"
     }
 
+    val currentOnMinutesChange by rememberUpdatedState(onMinutesChange)
     // Mostrador menor em telas baixas para caber junto com os cartões.
     val dialSize = if (LocalConfiguration.current.screenHeightDp < 700) 176.dp else 204.dp
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
@@ -817,7 +820,9 @@ private fun FocusDurationDial(
                             true
                         }
                     }
-                    .pointerInput(minutes) {
+                    // Chave fixa: a chave com os minutos recriava o detector a cada
+                    // valor novo e interrompia o arrasto (o mostrador "travava").
+                    .pointerInput(Unit) {
                         fun update(position: Offset) {
                             val cx = size.width / 2f
                             val cy = size.height / 2f
@@ -827,15 +832,23 @@ private fun FocusDurationDial(
                                     (position.x - cx).toDouble()
                                 )
                             ).toFloat()
-                            onMinutesChange(FocusDurationDialMath.minutesForAngle(degrees))
+                            currentOnMinutesChange(FocusDurationDialMath.minutesForAngle(degrees))
                         }
-                        detectDragGestures(
-                            onDragStart = { update(it) },
-                            onDrag = { change, _ ->
+                        // O dedo controla o mostrador desde o primeiro toque, sem a folga
+                        // do detector de arrasto e sem a rolagem da tela tomar o gesto.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            update(down.position)
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: break
+                                if (!change.pressed) break
                                 update(change.position)
                                 change.consume()
                             }
-                        )
+                        }
                     }
             ) {
                 val strokeWidth = 10.dp.toPx()

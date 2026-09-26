@@ -23,6 +23,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.focusguard.utils.PermissionUtils
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -51,12 +56,37 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
         UnknownSourcesSecurityManager.getInstance(context.applicationContext)
     }
 
-    var blocked by remember { mutableStateOf(securityManager.isBlocked()) }
-    var showPreActivationGuide by rememberSaveable { mutableStateOf(false) }
-    var waitingForManualConfirmation by rememberSaveable { mutableStateOf(false) }
-
     fun showMessage(messageRes: Int) {
         Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_LONG).show()
+    }
+
+    var blocked by remember { mutableStateOf(securityManager.isBlocked()) }
+    var showPreActivationGuide by rememberSaveable { mutableStateOf(false) }
+    // Abriu "fontes desconhecidas" e ainda não voltou: na volta, o app pergunta.
+    var awaitingReturn by rememberSaveable { mutableStateOf(false) }
+    var showReturnQuestion by rememberSaveable { mutableStateOf(false) }
+    // O usuário confirmou que desativou tudo: o botão "Ativar bloqueio" aparece.
+    var waitingForManualConfirmation by rememberSaveable { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && awaitingReturn) {
+                awaitingReturn = false
+                showReturnQuestion = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun openUnknownSources() {
+        if (securityManager.openUnknownSourcesSettings(context)) {
+            awaitingReturn = true
+            waitingForManualConfirmation = false
+        } else {
+            showMessage(R.string.extra_security_settings_open_failed)
+        }
     }
 
     fun disableBlock() {
@@ -71,8 +101,8 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
     }
 
     fun enableAfterManualConfirmation() {
-        if (!securityManager.isDeviceOwnerActive()) {
-            showMessage(R.string.extra_security_device_owner_required)
+        if (!PermissionUtils.isAccessibilityServiceEnabled(context)) {
+            showMessage(R.string.extra_security_accessibility_required)
             return
         }
 
@@ -138,11 +168,7 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
                             checked = blocked,
                             onCheckedChange = { enable ->
                                 if (enable) {
-                                    if (!securityManager.isDeviceOwnerActive()) {
-                                        showMessage(R.string.extra_security_device_owner_required)
-                                    } else {
-                                        showPreActivationGuide = true
-                                    }
+                                    showPreActivationGuide = true
                                 } else {
                                     disableBlock()
                                 }
@@ -179,11 +205,7 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(16.dp))
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                if (!securityManager.openUnknownSourcesSettings(context)) {
-                                    showMessage(R.string.extra_security_settings_open_failed)
-                                }
-                            }
+                            onClick = ::openUnknownSources
                         ) {
                             Icon(Icons.Default.Settings, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
@@ -214,12 +236,8 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (securityManager.openUnknownSourcesSettings(context)) {
-                            waitingForManualConfirmation = true
-                            showPreActivationGuide = false
-                        } else {
-                            showMessage(R.string.extra_security_settings_open_failed)
-                        }
+                        showPreActivationGuide = false
+                        openUnknownSources()
                     }
                 ) {
                     Text(stringResource(R.string.extra_security_open_unknown_sources_settings))
@@ -228,6 +246,30 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { showPreActivationGuide = false }) {
                     Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showReturnQuestion) {
+        AlertDialog(
+            onDismissRequest = { showReturnQuestion = false },
+            title = { Text(stringResource(R.string.extra_security_confirmation_title)) },
+            text = { Text(stringResource(R.string.extra_security_return_question)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showReturnQuestion = false
+                    waitingForManualConfirmation = true
+                }) {
+                    Text(stringResource(R.string.extra_security_return_yes))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showReturnQuestion = false
+                    openUnknownSources()
+                }) {
+                    Text(stringResource(R.string.extra_security_return_not_yet))
                 }
             }
         )
