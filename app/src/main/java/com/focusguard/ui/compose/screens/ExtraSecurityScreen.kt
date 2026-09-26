@@ -27,6 +27,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,12 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.admin.UnknownSourcesSecurityManager
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.FocusCard
+import kotlinx.coroutines.launch
 
 @Composable
 fun ExtraSecurityScreen(onBack: () -> Unit) {
@@ -55,6 +58,10 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
     val securityManager = remember(context.applicationContext) {
         UnknownSourcesSecurityManager.getInstance(context.applicationContext)
     }
+    val blockingManager = remember(context.applicationContext) {
+        BlockingSessionManager.getInstance(context.applicationContext)
+    }
+    val scope = rememberCoroutineScope()
 
     fun showMessage(messageRes: Int) {
         Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_LONG).show()
@@ -62,6 +69,7 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
 
     var blocked by remember { mutableStateOf(securityManager.isBlocked()) }
     var showPreActivationGuide by rememberSaveable { mutableStateOf(false) }
+    var showDisableCredentialDialog by rememberSaveable { mutableStateOf(false) }
     // O fluxo precisa sobreviver à reconstrução da árvore de navegação quando o app
     // volta das Configurações. O estágio durável fica no UnknownSourcesSecurityManager.
     var awaitingReturn by rememberSaveable {
@@ -110,6 +118,28 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
         } else {
             blocked = securityManager.isBlocked()
             showMessage(R.string.extra_security_policy_failed)
+        }
+    }
+
+    fun requestDisableBlock() {
+        scope.launch {
+            val overview = runCatching { blockingManager.getBlockOverview() }.getOrNull()
+            if (overview == null) {
+                showMessage(R.string.extra_security_policy_failed)
+                return@launch
+            }
+
+            val hasNonPasswordBlock = overview.dailyLimitEntries.isNotEmpty() ||
+                overview.scheduledTimeEntries.isNotEmpty() ||
+                overview.dopamineFastEntries.isNotEmpty()
+
+            if (hasNonPasswordBlock) {
+                showDisableCredentialDialog = true
+            } else {
+                // Nenhum bloqueio sem saída por senha está ativo. Isso inclui o caso
+                // em que existem somente bloqueios PASSWORD, que não prendem esta opção.
+                disableBlock()
+            }
         }
     }
 
@@ -183,7 +213,7 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
                                 if (enable) {
                                     showPreActivationGuide = true
                                 } else {
-                                    disableBlock()
+                                    requestDisableBlock()
                                 }
                             },
                             colors = SwitchDefaults.colors(
@@ -260,6 +290,18 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
                 TextButton(onClick = { showPreActivationGuide = false }) {
                     Text(stringResource(R.string.cancel))
                 }
+            }
+        )
+    }
+
+    if (showDisableCredentialDialog) {
+        ConfirmMasterCredentialDialog(
+            promptRes = R.string.uninstall_app_subtitle,
+            allowRecovery = false,
+            onDismiss = { showDisableCredentialDialog = false },
+            onConfirmed = {
+                showDisableCredentialDialog = false
+                disableBlock()
             }
         )
     }
