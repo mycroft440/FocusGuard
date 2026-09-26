@@ -62,11 +62,18 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
 
     var blocked by remember { mutableStateOf(securityManager.isBlocked()) }
     var showPreActivationGuide by rememberSaveable { mutableStateOf(false) }
-    // Abriu "fontes desconhecidas" e ainda não voltou: na volta, o app pergunta.
-    var awaitingReturn by rememberSaveable { mutableStateOf(false) }
+    // O fluxo precisa sobreviver à reconstrução da árvore de navegação quando o app
+    // volta das Configurações. O estágio durável fica no UnknownSourcesSecurityManager.
+    var awaitingReturn by rememberSaveable {
+        mutableStateOf(
+            securityManager.isActivationPending() && !securityManager.isReadyToEnable()
+        )
+    }
     var showReturnQuestion by rememberSaveable { mutableStateOf(false) }
     // O usuário confirmou que desativou tudo: o botão "Ativar bloqueio" aparece.
-    var waitingForManualConfirmation by rememberSaveable { mutableStateOf(false) }
+    var waitingForManualConfirmation by rememberSaveable {
+        mutableStateOf(securityManager.isReadyToEnable())
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -81,10 +88,16 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
     }
 
     fun openUnknownSources() {
-        if (securityManager.openUnknownSourcesSettings(context)) {
-            awaitingReturn = true
-            waitingForManualConfirmation = false
-        } else {
+        if (!securityManager.markSettingsReviewStarted()) {
+            showMessage(R.string.extra_security_policy_failed)
+            return
+        }
+
+        awaitingReturn = true
+        waitingForManualConfirmation = false
+        if (!securityManager.openUnknownSourcesSettings(context)) {
+            awaitingReturn = false
+            securityManager.clearActivationFlow()
             showMessage(R.string.extra_security_settings_open_failed)
         }
     }
@@ -259,7 +272,11 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     showReturnQuestion = false
-                    waitingForManualConfirmation = true
+                    if (securityManager.markReadyToEnable()) {
+                        waitingForManualConfirmation = true
+                    } else {
+                        showMessage(R.string.extra_security_policy_failed)
+                    }
                 }) {
                     Text(stringResource(R.string.extra_security_return_yes))
                 }
