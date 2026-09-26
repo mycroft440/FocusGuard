@@ -39,6 +39,46 @@ jobs:
           PY
           python3 /tmp/apply_targeted_fix.py
 
+      - name: Add localized power confirmation text
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          translations = {
+              "values-de": "Tippe erneut auf %1$s, um zu bestätigen.",
+              "values-hi": "पुष्टि करने के लिए %1$s पर फिर से टैप करें।",
+              "values-ru": "Нажмите %1$s ещё раз для подтверждения.",
+              "values-pt": "Toque em %1$s novamente para confirmar.",
+              "values-pt-rBR": "Toque em %1$s novamente para confirmar.",
+              "values-sw": "Gusa %1$s tena ili kuthibitisha.",
+              "values-mr": "पुष्टी करण्यासाठी %1$s वर पुन्हा टॅप करा.",
+              "values-en": "Tap %1$s again to confirm.",
+              "values-bn": "নিশ্চিত করতে %1$s আবার ট্যাপ করুন।",
+              "values-fr": "Appuyez de nouveau sur %1$s pour confirmer.",
+              "values-es": "Toca %1$s de nuevo para confirmar.",
+              "values-ar": "انقر على %1$s مرة أخرى للتأكيد.",
+              "values-te": "నిర్ధారించడానికి %1$sపై మళ్లీ నొక్కండి.",
+              "values-vi": "Nhấn lại %1$s để xác nhận.",
+              "values-ja": "確認するには、%1$s をもう一度タップしてください。",
+              "values-ha": "Taɓa %1$s kuma don tabbatarwa.",
+              "values-id": "Ketuk %1$s lagi untuk mengonfirmasi.",
+              "values-ur": "تصدیق کے لیے %1$s پر دوبارہ ٹیپ کریں۔",
+          }
+
+          for folder, text in translations.items():
+              path = Path("app/src/main/res") / folder / "power_menu_strings.xml"
+              if not path.exists():
+                  raise SystemExit(f"Missing expected localized power menu file: {path}")
+              content = path.read_text(encoding="utf-8")
+              if 'name="protected_power_menu_confirm_action"' in content:
+                  continue
+              line = f'    <string name="protected_power_menu_confirm_action">{text}</string>\n'
+              if "</resources>" not in content:
+                  raise SystemExit(f"Malformed resource file: {path}")
+              path.write_text(content.replace("</resources>", line + "</resources>", 1), encoding="utf-8")
+          PY
+
       - name: Install Android 16 SDK
         shell: bash
         run: |
