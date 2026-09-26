@@ -50,7 +50,6 @@ jobs:
               "values-hi": "पुष्टि करने के लिए %1$s पर फिर से टैप करें।",
               "values-ru": "Нажмите %1$s ещё раз для подтверждения.",
               "values-pt": "Toque em %1$s novamente para confirmar.",
-              "values-pt-rBR": "Toque em %1$s novamente para confirmar.",
               "values-sw": "Gusa %1$s tena ili kuthibitisha.",
               "values-mr": "पुष्टी करण्यासाठी %1$s वर पुन्हा टॅप करा.",
               "values-en": "Tap %1$s again to confirm.",
@@ -63,7 +62,7 @@ jobs:
               "values-ja": "確認するには、%1$s をもう一度タップしてください。",
               "values-ha": "Taɓa %1$s kuma don tabbatarwa.",
               "values-id": "Ketuk %1$s lagi untuk mengonfirmasi.",
-              "values-ur": "تصدیق کے لیے %1$s پر دوبارہ ٹیپ کریں۔",
+              "values-ur": "تصدیق کے لیے %1$s پر دوبارہ ٹیپ کریں।",
           }
 
           for folder, text in translations.items():
