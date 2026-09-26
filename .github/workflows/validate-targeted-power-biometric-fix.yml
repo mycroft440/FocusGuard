@@ -1,0 +1,600 @@
+name: Validate targeted power and biometric fix
+
+on:
+  push:
+    branches: ["fix/power-biometric-flow-20260926"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: ${{ !contains(github.event.head_commit.message, '[validated-targeted-fix]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply narrow power-menu and biometric-flow changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path, text):
+              p = Path(path)
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(text, encoding="utf-8")
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          def replace_between(text, start, end, replacement, label):
+              start_i = text.find(start)
+              if start_i < 0:
+                  raise SystemExit(f"{label}: start marker not found")
+              end_i = text.find(end, start_i)
+              if end_i < 0:
+                  raise SystemExit(f"{label}: end marker not found")
+              return text[:start_i] + replacement + text[end_i:]
+
+          # ------------------------------------------------------------------
+          # 1) Power menu: preserve the existing pre-attached fast appearance
+          # path, but make primary power actions follow OEM two-step confirmation.
+          # ------------------------------------------------------------------
+          controller_path = "app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt"
+          controller = read(controller_path)
+
+          controller = replace_once(
+              controller,
+              """    internal enum class PowerMatchOverlayDecision {\n        PASS,\n        SHIELD_AND_CONSUME,\n        REQUEST_BACK_FALLBACK\n    }\n""",
+              """    internal enum class PowerMatchOverlayDecision {\n        PASS,\n        SHIELD_AND_CONSUME,\n        REQUEST_BACK_FALLBACK\n    }\n    internal enum class PrimaryActionTapDecision { START, CONFIRM }\n""",
+              "power tap decision enum"
+          )
+
+          controller = replace_once(
+              controller,
+              """    private var screenOff = false\n    private var statusText: TextView? = null\n""",
+              """    private var screenOff = false\n    private var statusText: TextView? = null\n    private var pendingPrimaryAction: Action? = null\n    private var pendingPrimaryActionAtElapsed = 0L\n""",
+              "power pending state"
+          )
+
+          controller = replace_once(
+              controller,
+              """                    if (overlayVisible &&\n                        directSignalActive &&\n                        directMatchedWindowId >= 0 &&\n                        event.windowId == directMatchedWindowId &&\n                        event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED\n                    ) {\n                        dismiss()\n                        return false\n                    }\n""",
+              """                    if (overlayVisible &&\n                        directSignalActive &&\n                        directMatchedWindowId >= 0 &&\n                        event.windowId == directMatchedWindowId &&\n                        event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED\n                    ) {\n                        // Shutdown/restart confirmations often reuse the same\n                        // SystemUI window with a different class/text signature.\n                        // Keep our shield over that trusted transition so the user\n                        // can confirm with the same HardBlock action instead of\n                        // exposing OEM-specific long-press/safe-mode controls.\n                        if (hasActivePrimaryActionConfirmation()) {\n                            scheduleRecheck()\n                            return true\n                        }\n                        dismiss()\n                        return false\n                    }\n""",
+              "power confirmation transition"
+          )
+
+          method_start = "    private fun performNativeSinglePress(action: Action) {"
+          method_end = "    /**\n     * The first System UI global-actions event can identify the native window"
+          new_methods = r'''    private fun performNativeSinglePress(action: Action) {
+        val primary = action == Action.POWER_OFF || action == Action.RESTART
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val confirmationAttempt = primary && primaryActionTapDecision(
+            pendingAction = pendingPrimaryAction,
+            tappedAction = action,
+            pendingForMillis = if (pendingPrimaryActionAtElapsed > 0L) {
+                (nowElapsed - pendingPrimaryActionAtElapsed).coerceAtLeast(0L)
+            } else {
+                Long.MAX_VALUE
+            }
+        ) == PrimaryActionTapDecision.CONFIRM
+
+        if (primary && !confirmationAttempt) {
+            clearPendingPrimaryAction()
+        }
+        performNativeSinglePressWithRetry(action, confirmationAttempt)
+    }
+
+    private fun performNativeSinglePressWithRetry(
+        action: Action,
+        confirmationAttempt: Boolean
+    ) {
+        if (tryPerformNativeSinglePress(action)) {
+            onNativeActionClicked(action, confirmationAttempt)
+            return
+        }
+
+        // SystemUI can identify the window before its actionable children are
+        // attached. A single short retry uses a fresh accessibility root without
+        // adding any delay to the menu's initial appearance.
+        mainHandler.postDelayed({
+            if (!overlayVisible) return@postDelayed
+            if (tryPerformNativeSinglePress(action)) {
+                onNativeActionClicked(action, confirmationAttempt)
+            } else {
+                if (!confirmationAttempt) clearPendingPrimaryAction()
+                showStatus(R.string.protected_power_menu_action_unavailable)
+            }
+        }, NATIVE_ACTION_RETRY_DELAY_MILLIS)
+    }
+
+    private fun onNativeActionClicked(action: Action, confirmationAttempt: Boolean) {
+        val primary = action == Action.POWER_OFF || action == Action.RESTART
+        if (primary && !confirmationAttempt) {
+            pendingPrimaryAction = action
+            pendingPrimaryActionAtElapsed = SystemClock.elapsedRealtime()
+            val actionLabel = service.getString(
+                if (action == Action.POWER_OFF) {
+                    R.string.protected_power_menu_power_off
+                } else {
+                    R.string.protected_power_menu_restart
+                }
+            )
+            statusText?.apply {
+                text = service.getString(
+                    R.string.protected_power_menu_confirm_action,
+                    actionLabel
+                )
+                visibility = View.VISIBLE
+            }
+        } else {
+            clearPendingPrimaryAction()
+            showStatus(R.string.protected_power_menu_action_sent)
+        }
+        scheduleRecheck()
+    }
+
+    private fun tryPerformNativeSinglePress(action: Action): Boolean {
+        val root = if (action == Action.POWER_OFF || action == Action.RESTART) {
+            findTrackedPowerMenuRootForPrimaryAction() ?: findPowerMenuRoot()
+        } else {
+            findPowerMenuRoot()
+        } ?: return false
+
+        val node = findActionNode(root, action)
+        val clicked = node?.let(::clickNodeOrParent) == true
+        recycleSafely(node)
+        recycleSafely(root)
+        return clicked
+    }
+
+    private fun hasActivePrimaryActionConfirmation(
+        nowElapsed: Long = SystemClock.elapsedRealtime()
+    ): Boolean {
+        if (pendingPrimaryAction == null || pendingPrimaryActionAtElapsed <= 0L) return false
+        if (nowElapsed - pendingPrimaryActionAtElapsed > PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS) {
+            clearPendingPrimaryAction()
+            return false
+        }
+        return true
+    }
+
+    private fun clearPendingPrimaryAction() {
+        pendingPrimaryAction = null
+        pendingPrimaryActionAtElapsed = 0L
+    }
+
+'''
+          controller = replace_between(
+              controller,
+              method_start,
+              method_end,
+              new_methods,
+              "power native action methods"
+          )
+
+          controller = replace_once(
+              controller,
+              """        val undefinedWindowGraceActive = directSignalActive &&\n            directMatchedWindowId < 0 &&\n            nowElapsed - directSignalAtElapsed <= UNDEFINED_WINDOW_GRACE_MILLIS\n        val presence = when {\n            root != null || directWindowStillPresent -> PowerMenuPresence.PRESENT\n            reliableWindowObserved -> PowerMenuPresence.ABSENT_CONFIRMED\n            else -> PowerMenuPresence.UNKNOWN\n        }\n""",
+              """        val undefinedWindowGraceActive = directSignalActive &&\n            directMatchedWindowId < 0 &&\n            nowElapsed - directSignalAtElapsed <= UNDEFINED_WINDOW_GRACE_MILLIS\n        val primaryConfirmationPending = hasActivePrimaryActionConfirmation(nowElapsed)\n        val presence = when {\n            root != null || directWindowStillPresent -> PowerMenuPresence.PRESENT\n            primaryConfirmationPending -> PowerMenuPresence.UNKNOWN\n            reliableWindowObserved -> PowerMenuPresence.ABSENT_CONFIRMED\n            else -> PowerMenuPresence.UNKNOWN\n        }\n""",
+              "power recheck confirmation grace"
+          )
+
+          controller = replace_once(
+              controller,
+              """        closeStage = CloseStage.NONE\n        closeStageAtElapsed = 0L\n        closeBackAttempts = 0\n    }\n\n    private fun addActionCard(\n""",
+              """        closeStage = CloseStage.NONE\n        closeStageAtElapsed = 0L\n        closeBackAttempts = 0\n        clearPendingPrimaryAction()\n    }\n\n    private fun addActionCard(\n""",
+              "power release reset"
+          )
+
+          controller = replace_once(
+              controller,
+              """        closeStage = CloseStage.NONE\n        closeStageAtElapsed = 0L\n        closeBackAttempts = 0\n        screenOff = false\n    }\n\n    private fun showStatus(resId: Int) {\n""",
+              """        closeStage = CloseStage.NONE\n        closeStageAtElapsed = 0L\n        closeBackAttempts = 0\n        screenOff = false\n        clearPendingPrimaryAction()\n    }\n\n    private fun showStatus(resId: Int) {\n""",
+              "power detection reset"
+          )
+
+          controller = replace_once(
+              controller,
+              """    companion object {\n        internal fun powerMatchOverlayDecision(\n""",
+              """    companion object {\n        internal fun primaryActionTapDecision(\n            pendingAction: Action?,\n            tappedAction: Action,\n            pendingForMillis: Long\n        ): PrimaryActionTapDecision = if (\n            pendingAction == tappedAction &&\n            pendingForMillis in 0..PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS\n        ) {\n            PrimaryActionTapDecision.CONFIRM\n        } else {\n            PrimaryActionTapDecision.START\n        }\n\n        internal fun powerMatchOverlayDecision(\n""",
+              "power tap decision helper"
+          )
+
+          controller = replace_once(
+              controller,
+              """        const val NATIVE_ACTION_RETRY_DELAY_MILLIS = 180L\n        const val RECHECK_DELAY_MILLIS = 350L\n""",
+              """        const val NATIVE_ACTION_RETRY_DELAY_MILLIS = 180L\n        const val PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS = 10_000L\n        const val RECHECK_DELAY_MILLIS = 350L\n""",
+              "power confirmation timeout"
+          )
+          write(controller_path, controller)
+
+          power_strings_path = "app/src/main/res/values/power_menu_strings.xml"
+          power_strings = read(power_strings_path)
+          power_strings = replace_once(
+              power_strings,
+              """    <string name=\"protected_power_menu_action_unavailable\">This action is not exposed by your phone\\'s power menu.</string>\n""",
+              """    <string name=\"protected_power_menu_action_unavailable\">This action is not exposed by your phone\\'s power menu.</string>\n    <string name=\"protected_power_menu_confirm_action\">Tap %1$s again to confirm.</string>\n""",
+              "power confirmation string"
+          )
+          write(power_strings_path, power_strings)
+
+          # ------------------------------------------------------------------
+          # 2) Password target unlock: setup decides biometrics. Runtime no longer
+          # asks to enable biometrics, and it opens the configured method directly.
+          # ------------------------------------------------------------------
+          panel_path = "app/src/main/java/com/focusguard/ui/compose/screens/PasswordProtectedAppUnlockPanel.kt"
+          panel = read(panel_path)
+          panel = replace_once(
+              panel,
+              "private const val BIOMETRIC_FAILURES_BEFORE_FALLBACK = 2\n",
+              """// Keep rejected scans inside Android's biometric prompt. Password/pattern is\n// an explicit negative-button fallback; terminal biometric errors still fall back.\nprivate const val BIOMETRIC_FAILURES_BEFORE_FALLBACK = Int.MAX_VALUE\n""",
+              "biometric retry policy"
+          )
+          panel = replace_once(
+              panel,
+              """    var showCredentialDialog by remember(targetId) { mutableStateOf(false) }\n    var showBiometricOffer by remember(targetId) { mutableStateOf(false) }\n    var biometricPromptLaunched by remember(targetId) { mutableStateOf(false) }\n""",
+              """    var showCredentialDialog by remember(targetId) { mutableStateOf(false) }\n    var credentialSurfaceLaunched by remember(targetId) { mutableStateOf(false) }\n    var biometricPromptLaunched by remember(targetId) { mutableStateOf(false) }\n""",
+              "unlock surface state"
+          )
+          panel = replace_once(
+              panel,
+              """            onFallbackRequested = {\n                if (latest.hasTypedCredential) {\n                    error = null\n                    showCredentialDialog = true\n                }\n            },\n            onCancelled = {\n                if (latest.hasTypedCredential) {\n                    // A user pressing \"use password/pattern\" should land directly\n                    // on the alternate credential instead of having to tap again.\n                    error = null\n                    showCredentialDialog = true\n                } else {\n                    onCancelled()\n                }\n            },\n""",
+              """            onFallbackRequested = {\n                if (latest.hasTypedCredential) {\n                    error = null\n                    credentialSurfaceLaunched = true\n                    showCredentialDialog = true\n                }\n            },\n            onCancelled = {\n                if (latest.hasTypedCredential) {\n                    // The prompt's negative button is the explicit alternate route.\n                    error = null\n                    credentialSurfaceLaunched = true\n                    showCredentialDialog = true\n                } else {\n                    onCancelled()\n                }\n            },\n""",
+              "biometric fallback routing"
+          )
+
+          offer_start = "    LaunchedEffect(config, biometricAvailable, globalBiometricUnlockEnabled) {"
+          offer_end = "    // Biometric is the first unlock surface only when both the global preference"
+          panel = replace_between(panel, offer_start, offer_end, "", "remove runtime biometric offer")
+
+          auto_start = "    // Biometric is the first unlock surface only when both the global preference"
+          auto_end = "    val currentConfig = config ?: return"
+          new_auto = r'''    // Go directly to the method chosen while creating the block. Biometrics
+    // launch first only for targets that explicitly opted in; otherwise the
+    // password/pattern surface opens immediately without an extra choice screen.
+    LaunchedEffect(
+        config?.biometricEnabled,
+        config?.mode,
+        biometricAvailable,
+        globalBiometricUnlockEnabled,
+        targetId
+    ) {
+        val current = config ?: return@LaunchedEffect
+        val biometricAllowed = isPasswordTargetBiometricAllowed(
+            globalBiometricUnlockEnabled = globalBiometricUnlockEnabled,
+            targetBiometricEnabled = current.biometricEnabled
+        ) && biometricAvailable
+
+        if (biometricAllowed && !biometricPromptLaunched) {
+            activity?.lifecycle?.withResumed {
+                biometricPromptLaunched = true
+                launchBiometric()
+            }
+        } else if (!biometricAllowed && current.hasTypedCredential && !credentialSurfaceLaunched) {
+            credentialSurfaceLaunched = true
+            showCredentialDialog = true
+        }
+    }
+
+'''
+          panel = replace_between(panel, auto_start, auto_end, new_auto, "direct configured unlock surface")
+
+          panel = replace_once(
+              panel,
+              """    fun switchCredentialToBiometric() {\n        if (verifying || biometricPromptInFlight || !canSwitchCredentialToBiometric) return\n        showCredentialDialog = false\n        error = null\n        launchBiometric()\n    }\n""",
+              """    fun switchCredentialToBiometric() {\n        if (verifying || biometricPromptInFlight || !canSwitchCredentialToBiometric) return\n        showCredentialDialog = false\n        error = null\n        launchBiometric()\n    }\n""",
+              "credential to biometric route"
+          )
+
+          panel = replace_once(
+              panel,
+              """            OutlinedButton(\n                onClick = { showCredentialDialog = true },\n""",
+              """            OutlinedButton(\n                onClick = {\n                    credentialSurfaceLaunched = true\n                    showCredentialDialog = true\n                },\n""",
+              "manual credential route"
+          )
+
+          offer_ui_start = "    if (showBiometricOffer) {"
+          offer_ui_end = "    if (showCredentialDialog) {"
+          panel = replace_between(panel, offer_ui_start, offer_ui_end, "", "remove biometric offer dialog")
+          write(panel_path, panel)
+
+          # ------------------------------------------------------------------
+          # 3) Password-block setup: biometric is an explicit per-target choice.
+          # ------------------------------------------------------------------
+          config_path = "app/src/main/java/com/focusguard/ui/FinalConfigStep.kt"
+          config = read(config_path)
+
+          config = replace_once(
+              config,
+              """internal const val PERF_PASSWORD_TAG = \"perf_password\"\ninternal const val PERF_PASSWORD_CONFIRMATION_TAG = \"perf_password_confirmation\"\n""",
+              """internal const val PERF_PASSWORD_TAG = \"perf_password\"\ninternal const val PERF_PASSWORD_CONFIRMATION_TAG = \"perf_password_confirmation\"\n\ninternal fun effectiveTargetBiometricEnabled(\n    mode: PasswordAppUnlockMode,\n    requestedForTypedCredential: Boolean,\n    globalBiometricUnlockEnabled: Boolean,\n    biometricAvailable: Boolean\n): Boolean {\n    if (!globalBiometricUnlockEnabled || !biometricAvailable) return false\n    return mode == PasswordAppUnlockMode.BIOMETRIC_ONLY || requestedForTypedCredential\n}\n""",
+              "effective target biometric policy"
+          )
+
+          config = replace_once(
+              config,
+              """    var showPatternDialog by remember { mutableStateOf(false) }\n    var configError by remember { mutableStateOf<String?>(null) }\n\n    val launchBiometricRewardedGate: () -> Unit = {\n""",
+              """    var showPatternDialog by remember { mutableStateOf(false) }\n    var configError by remember { mutableStateOf<String?>(null) }\n    var targetBiometricRequested by rememberSaveable { mutableStateOf(false) }\n\n    val launchBiometricRewardedGate: (Boolean) -> Unit = { enableForCurrentTarget ->\n""",
+              "target biometric setup state"
+          )
+
+          config = replace_once(
+              config,
+              """        ) {\n            authManager.setBiometricAppUnlockEnabled(true)\n            biometricAppUnlockEnabled = true\n            configError = null\n        }\n    }\n""",
+              """        ) {\n            authManager.setBiometricAppUnlockEnabled(true)\n            biometricAppUnlockEnabled = true\n            if (enableForCurrentTarget) targetBiometricRequested = true\n            configError = null\n        }\n    }\n""",
+              "rewarded biometric result"
+          )
+
+          config = replace_once(
+              config,
+              """        showPatternDialog = false\n        configError = null\n    }\n""",
+              """        showPatternDialog = false\n        targetBiometricRequested = false\n        configError = null\n    }\n""",
+              "method selection reset"
+          )
+
+          config = replace_once(
+              config,
+              """                    onModeSelected = { mode ->\n                        unlockModeName = mode.name\n                        biometricAppUnlockEnabled = authManager.isBiometricAppUnlockEnabled()\n                        configError = null\n                    }\n""",
+              """                    onModeSelected = { mode ->\n                        unlockModeName = mode.name\n                        biometricAppUnlockEnabled = authManager.isBiometricAppUnlockEnabled()\n                        targetBiometricRequested = false\n                        configError = null\n                    }\n""",
+              "mode selection biometric reset"
+          )
+
+          config = replace_once(
+              config,
+              """                                                if (enable) {\n                                                    launchBiometricRewardedGate()\n                                                } else {\n""",
+              """                                                if (enable) {\n                                                    launchBiometricRewardedGate(false)\n                                                } else {\n""",
+              "biometric-only gate"
+          )
+
+          typed_option_marker = """                            }\n                        }\n\n                        configError?.let { message ->\n"""
+          typed_option_replacement = """                            }\n                        }\n\n                        if (\n                            unlockMode == PasswordAppUnlockMode.PASSWORD ||\n                            unlockMode == PasswordAppUnlockMode.PATTERN\n                        ) {\n                            TargetBiometricOptionCard(\n                                checked = targetBiometricRequested,\n                                biometricAvailable = biometricAvailable,\n                                globalBiometricUnlockEnabled = biometricAppUnlockEnabled,\n                                onCheckedChange = { enable ->\n                                    if (!enable) {\n                                        targetBiometricRequested = false\n                                    } else if (authManager.isBiometricAppUnlockEnabled()) {\n                                        biometricAppUnlockEnabled = true\n                                        targetBiometricRequested = true\n                                    } else {\n                                        launchBiometricRewardedGate(true)\n                                    }\n                                    configError = null\n                                },\n                                onEnroll = {\n                                    biometricEnrollmentLauncher.launch(\n                                        AppUnlockBiometricAuthenticator.createEnrollmentIntent(context)\n                                    )\n                                }\n                            )\n                        }\n\n                        configError?.let { message ->\n"""
+          config = replace_once(
+              config,
+              typed_option_marker,
+              typed_option_replacement,
+              "typed credential biometric option"
+          )
+
+          config = replace_once(
+              config,
+              """                            val effectiveBiometricEnabled =\n                                biometricAppUnlockEnabledNow && biometricReadyNow\n""",
+              """                            val effectiveBiometricEnabled = effectiveTargetBiometricEnabled(\n                                mode = selectedMode,\n                                requestedForTypedCredential = targetBiometricRequested,\n                                globalBiometricUnlockEnabled = biometricAppUnlockEnabledNow,\n                                biometricAvailable = biometricReadyNow\n                            )\n""",
+              "save target biometric choice"
+          )
+
+          helper_marker = """private fun unlockModeLabelRes(mode: PasswordAppUnlockMode): Int = when (mode) {\n"""
+          helper = r'''@Composable
+private fun TargetBiometricOptionCard(
+    checked: Boolean,
+    biometricAvailable: Boolean,
+    globalBiometricUnlockEnabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onEnroll: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = DarkBg),
+        border = BorderStroke(
+            1.dp,
+            if (checked) AccentCyan.copy(alpha = 0.42f) else TextHint.copy(alpha = 0.22f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.password_app_unlock_quick_biometric_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        stringResource(
+                            if (globalBiometricUnlockEnabled) {
+                                R.string.password_app_unlock_quick_biometric_desc
+                            } else {
+                                R.string.password_app_unlock_biometric_rewarded_desc
+                            }
+                        ),
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+                Switch(
+                    checked = checked,
+                    enabled = biometricAvailable,
+                    onCheckedChange = onCheckedChange
+                )
+            }
+            if (!biometricAvailable) {
+                Text(
+                    stringResource(R.string.password_app_unlock_biometric_unavailable),
+                    color = TextHint,
+                    fontSize = 12.sp
+                )
+                OutlinedButton(
+                    onClick = onEnroll,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.password_app_unlock_biometric_reactivate_action))
+                }
+            }
+        }
+    }
+}
+
+'''
+          config = replace_once(config, helper_marker, helper + helper_marker, "target biometric option card")
+          write(config_path, config)
+
+          # Clear wording: this page selects the actual unlock method, not a password "type".
+          unlock_strings_path = "app/src/main/res/values/password_app_unlock_strings.xml"
+          unlock_strings = read(unlock_strings_path)
+          unlock_strings = replace_once(
+              unlock_strings,
+              '<string name="password_app_unlock_choose_type">Choose password type</string>',
+              '<string name="password_app_unlock_choose_type">Choose how to unlock protected apps</string>',
+              "unlock method wording"
+          )
+          write(unlock_strings_path, unlock_strings)
+
+          # Regression coverage for the two state decisions added above.
+          write(
+              "app/src/test/java/com/focusguard/service/PowerMenuPrimaryActionPolicyTest.kt",
+              r'''package com.focusguard.service
+
+import com.focusguard.security.PowerMenuProtectionPolicy.Action
+import com.google.common.truth.Truth.assertThat
+import org.junit.Test
+
+class PowerMenuPrimaryActionPolicyTest {
+    @Test
+    fun `first primary action tap starts native action`() {
+        assertThat(
+            ProtectedPowerMenuController.primaryActionTapDecision(
+                pendingAction = null,
+                tappedAction = Action.POWER_OFF,
+                pendingForMillis = Long.MAX_VALUE
+            )
+        ).isEqualTo(ProtectedPowerMenuController.PrimaryActionTapDecision.START)
+    }
+
+    @Test
+    fun `same primary action within confirmation window confirms`() {
+        assertThat(
+            ProtectedPowerMenuController.primaryActionTapDecision(
+                pendingAction = Action.RESTART,
+                tappedAction = Action.RESTART,
+                pendingForMillis = 500L
+            )
+        ).isEqualTo(ProtectedPowerMenuController.PrimaryActionTapDecision.CONFIRM)
+    }
+
+    @Test
+    fun `expired or different action starts a new native action`() {
+        assertThat(
+            ProtectedPowerMenuController.primaryActionTapDecision(
+                pendingAction = Action.POWER_OFF,
+                tappedAction = Action.POWER_OFF,
+                pendingForMillis = ProtectedPowerMenuController.PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS + 1L
+            )
+        ).isEqualTo(ProtectedPowerMenuController.PrimaryActionTapDecision.START)
+        assertThat(
+            ProtectedPowerMenuController.primaryActionTapDecision(
+                pendingAction = Action.POWER_OFF,
+                tappedAction = Action.RESTART,
+                pendingForMillis = 100L
+            )
+        ).isEqualTo(ProtectedPowerMenuController.PrimaryActionTapDecision.START)
+    }
+}
+'''
+          )
+
+          write(
+              "app/src/test/java/com/focusguard/ui/FinalConfigBiometricPreferenceTest.kt",
+              r'''package com.focusguard.ui
+
+import com.focusguard.security.PasswordAppUnlockMode
+import com.google.common.truth.Truth.assertThat
+import org.junit.Test
+
+class FinalConfigBiometricPreferenceTest {
+    @Test
+    fun `typed credential does not silently inherit global biometric preference`() {
+        assertThat(
+            effectiveTargetBiometricEnabled(
+                mode = PasswordAppUnlockMode.PASSWORD,
+                requestedForTypedCredential = false,
+                globalBiometricUnlockEnabled = true,
+                biometricAvailable = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `typed credential uses biometric only after explicit target opt in`() {
+        assertThat(
+            effectiveTargetBiometricEnabled(
+                mode = PasswordAppUnlockMode.PATTERN,
+                requestedForTypedCredential = true,
+                globalBiometricUnlockEnabled = true,
+                biometricAvailable = true
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `biometric only still requires global entitlement and enrolled biometric`() {
+        assertThat(
+            effectiveTargetBiometricEnabled(
+                mode = PasswordAppUnlockMode.BIOMETRIC_ONLY,
+                requestedForTypedCredential = false,
+                globalBiometricUnlockEnabled = true,
+                biometricAvailable = true
+            )
+        ).isTrue()
+        assertThat(
+            effectiveTargetBiometricEnabled(
+                mode = PasswordAppUnlockMode.BIOMETRIC_ONLY,
+                requestedForTypedCredential = false,
+                globalBiometricUnlockEnabled = true,
+                biometricAvailable = false
+            )
+        ).isFalse()
+    }
+}
+'''
+          )
+          PY
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile, unit test and lint
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug --no-daemon --stacktrace
+
+      - name: Commit only validated product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/validate-targeted-power-biometric-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix power actions and biometric unlock flow [validated-targeted-fix]"
+          git push origin HEAD:fix/power-biometric-flow-20260926
