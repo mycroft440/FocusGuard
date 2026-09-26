@@ -29,12 +29,13 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import textwrap
           source = Path('.github/workflows/validate-targeted-power-biometric-fix.yml').read_text(encoding='utf-8')
           start_marker = "          python3 - <<'PY'\n"
           end_marker = "\n          PY\n\n      - name: Install Android 16 SDK"
           body = source.split(start_marker, 1)[1].split(end_marker, 1)[0]
-          Path('/tmp/apply_targeted_fix.py').write_text(textwrap.dedent(body), encoding='utf-8')
+          lines = body.splitlines()
+          body = "\n".join(line[10:] if line.startswith("          ") else line for line in lines) + "\n"
+          Path('/tmp/apply_targeted_fix.py').write_text(body, encoding='utf-8')
           PY
           python3 /tmp/apply_targeted_fix.py
 
