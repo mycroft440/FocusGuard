@@ -2,6 +2,7 @@ package com.focusguard.ui.compose.navigation
 
 import androidx.compose.runtime.*
 import android.content.Intent
+import com.focusguard.admin.UnknownSourcesSecurityManager
 import com.focusguard.data.CreatorInstagramPromptPolicy
 import com.focusguard.data.CreatorInstagramPromptStore
 import com.focusguard.data.UserProfileStore
@@ -103,7 +104,17 @@ fun FocusGuardNavHost(
     // Password/pattern/biometric credentials live on protected targets only;
     // the master password is reserved for administrative protection boundaries.
 
-    var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
+    var currentRoute by remember {
+        mutableStateOf(
+            if (UnknownSourcesSecurityManager.getInstance(activity.applicationContext)
+                    .isActivationPending()
+            ) {
+                FocusGuardRoute.ExtraSecurity
+            } else {
+                FocusGuardRoute.Home
+            }
+        )
+    }
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember {
         mutableIntStateOf(if (focusModeManager.isActive()) 4 else 1)
