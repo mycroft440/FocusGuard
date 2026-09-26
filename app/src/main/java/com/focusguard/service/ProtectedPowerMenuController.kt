@@ -60,6 +60,7 @@ class ProtectedPowerMenuController(
         SHIELD_AND_CONSUME,
         REQUEST_BACK_FALLBACK
     }
+    internal enum class PrimaryActionTapDecision { START, CONFIRM }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager =
@@ -81,6 +82,8 @@ class ProtectedPowerMenuController(
     private var protectionActive = false
     private var screenOff = false
     private var statusText: TextView? = null
+    private var pendingPrimaryAction: Action? = null
+    private var pendingPrimaryActionAtElapsed = 0L
 
     fun isVisible(): Boolean = overlayVisible
 
@@ -144,6 +147,15 @@ class ProtectedPowerMenuController(
                         event.windowId == directMatchedWindowId &&
                         event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                     ) {
+                        // Shutdown/restart confirmations often reuse the same
+                        // SystemUI window with a different class/text signature.
+                        // Keep our shield over that trusted transition so the user
+                        // can confirm with the same HardBlock action instead of
+                        // exposing OEM-specific long-press/safe-mode controls.
+                        if (hasActivePrimaryActionConfirmation()) {
+                            scheduleRecheck()
+                            return true
+                        }
                         dismiss()
                         return false
                     }
@@ -553,6 +565,7 @@ class ProtectedPowerMenuController(
         closeStage = CloseStage.NONE
         closeStageAtElapsed = 0L
         closeBackAttempts = 0
+        clearPendingPrimaryAction()
     }
 
     private fun addActionCard(
@@ -727,31 +740,78 @@ class ProtectedPowerMenuController(
         (value * service.resources.displayMetrics.density + 0.5f).toInt()
 
     private fun performNativeSinglePress(action: Action) {
+        val primary = action == Action.POWER_OFF || action == Action.RESTART
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val confirmationAttempt = primary && primaryActionTapDecision(
+  pendingAction = pendingPrimaryAction,
+  tappedAction = action,
+  pendingForMillis = if (pendingPrimaryActionAtElapsed > 0L) {
+      (nowElapsed - pendingPrimaryActionAtElapsed).coerceAtLeast(0L)
+  } else {
+      Long.MAX_VALUE
+  }
+        ) == PrimaryActionTapDecision.CONFIRM
+
+        if (primary && !confirmationAttempt) {
+  clearPendingPrimaryAction()
+        }
+        performNativeSinglePressWithRetry(action, confirmationAttempt)
+    }
+
+    private fun performNativeSinglePressWithRetry(
+        action: Action,
+        confirmationAttempt: Boolean
+    ) {
         if (tryPerformNativeSinglePress(action)) {
-            showStatus(R.string.protected_power_menu_action_sent)
-            scheduleRecheck()
-            return
+  onNativeActionClicked(action, confirmationAttempt)
+  return
         }
 
-        // Some SystemUI implementations emit the window event before the action
-        // nodes are fully attached. Retry once with a fresh root instead of making
-        // the visible HardBlock button look dead.
+        // SystemUI can identify the window before its actionable children are
+        // attached. A single short retry uses a fresh accessibility root without
+        // adding any delay to the menu's initial appearance.
         mainHandler.postDelayed({
-            if (!overlayVisible) return@postDelayed
-            if (tryPerformNativeSinglePress(action)) {
-                showStatus(R.string.protected_power_menu_action_sent)
-                scheduleRecheck()
-            } else {
-                showStatus(R.string.protected_power_menu_action_unavailable)
-            }
+  if (!overlayVisible) return@postDelayed
+  if (tryPerformNativeSinglePress(action)) {
+      onNativeActionClicked(action, confirmationAttempt)
+  } else {
+      if (!confirmationAttempt) clearPendingPrimaryAction()
+      showStatus(R.string.protected_power_menu_action_unavailable)
+  }
         }, NATIVE_ACTION_RETRY_DELAY_MILLIS)
+    }
+
+    private fun onNativeActionClicked(action: Action, confirmationAttempt: Boolean) {
+        val primary = action == Action.POWER_OFF || action == Action.RESTART
+        if (primary && !confirmationAttempt) {
+  pendingPrimaryAction = action
+  pendingPrimaryActionAtElapsed = SystemClock.elapsedRealtime()
+  val actionLabel = service.getString(
+      if (action == Action.POWER_OFF) {
+          R.string.protected_power_menu_power_off
+      } else {
+          R.string.protected_power_menu_restart
+      }
+  )
+  statusText?.apply {
+      text = service.getString(
+          R.string.protected_power_menu_confirm_action,
+          actionLabel
+      )
+      visibility = View.VISIBLE
+  }
+        } else {
+  clearPendingPrimaryAction()
+  showStatus(R.string.protected_power_menu_action_sent)
+        }
+        scheduleRecheck()
     }
 
     private fun tryPerformNativeSinglePress(action: Action): Boolean {
         val root = if (action == Action.POWER_OFF || action == Action.RESTART) {
-            findTrackedPowerMenuRootForPrimaryAction() ?: findPowerMenuRoot()
+  findTrackedPowerMenuRootForPrimaryAction() ?: findPowerMenuRoot()
         } else {
-            findPowerMenuRoot()
+  findPowerMenuRoot()
         } ?: return false
 
         val node = findActionNode(root, action)
@@ -759,6 +819,22 @@ class ProtectedPowerMenuController(
         recycleSafely(node)
         recycleSafely(root)
         return clicked
+    }
+
+    private fun hasActivePrimaryActionConfirmation(
+        nowElapsed: Long = SystemClock.elapsedRealtime()
+    ): Boolean {
+        if (pendingPrimaryAction == null || pendingPrimaryActionAtElapsed <= 0L) return false
+        if (nowElapsed - pendingPrimaryActionAtElapsed > PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS) {
+  clearPendingPrimaryAction()
+  return false
+        }
+        return true
+    }
+
+    private fun clearPendingPrimaryAction() {
+        pendingPrimaryAction = null
+        pendingPrimaryActionAtElapsed = 0L
     }
 
     /**
@@ -949,8 +1025,10 @@ class ProtectedPowerMenuController(
         val undefinedWindowGraceActive = directSignalActive &&
             directMatchedWindowId < 0 &&
             nowElapsed - directSignalAtElapsed <= UNDEFINED_WINDOW_GRACE_MILLIS
+        val primaryConfirmationPending = hasActivePrimaryActionConfirmation(nowElapsed)
         val presence = when {
             root != null || directWindowStillPresent -> PowerMenuPresence.PRESENT
+            primaryConfirmationPending -> PowerMenuPresence.UNKNOWN
             reliableWindowObserved -> PowerMenuPresence.ABSENT_CONFIRMED
             else -> PowerMenuPresence.UNKNOWN
         }
@@ -995,6 +1073,7 @@ class ProtectedPowerMenuController(
         closeStageAtElapsed = 0L
         closeBackAttempts = 0
         screenOff = false
+        clearPendingPrimaryAction()
     }
 
     private fun showStatus(resId: Int) {
@@ -1010,6 +1089,19 @@ class ProtectedPowerMenuController(
     }
 
     companion object {
+        internal fun primaryActionTapDecision(
+            pendingAction: Action?,
+            tappedAction: Action,
+            pendingForMillis: Long
+        ): PrimaryActionTapDecision = if (
+            pendingAction == tappedAction &&
+            pendingForMillis in 0..PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS
+        ) {
+            PrimaryActionTapDecision.CONFIRM
+        } else {
+            PrimaryActionTapDecision.START
+        }
+
         internal fun powerMatchOverlayDecision(
             powerMatched: Boolean,
             overlayShown: Boolean
@@ -1106,6 +1198,7 @@ class ProtectedPowerMenuController(
         const val MAX_CHILDREN_PER_NODE = 30
         const val MAX_TEXT_VALUES = 300
         const val NATIVE_ACTION_RETRY_DELAY_MILLIS = 180L
+        const val PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS = 10_000L
         const val RECHECK_DELAY_MILLIS = 350L
         const val UNDEFINED_WINDOW_GRACE_MILLIS = 1_050L
         const val BACK_RETRY_MILLIS = 1_050L
