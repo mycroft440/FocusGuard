@@ -10,5 +10,6 @@
     <string name="protected_power_menu_medical_info">Medical information</string>
     <string name="protected_power_menu_cancel">Cancel</string>
     <string name="protected_power_menu_action_unavailable">This action is not exposed by your phone\'s power menu.</string>
+    <string name="protected_power_menu_confirm_action">Tap %1$s again to confirm.</string>
     <string name="protected_power_menu_action_sent">Command sent to Android.</string>
 </resources>

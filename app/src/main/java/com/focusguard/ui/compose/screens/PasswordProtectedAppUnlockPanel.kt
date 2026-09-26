@@ -56,7 +56,9 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private const val BIOMETRIC_FAILURES_BEFORE_FALLBACK = 2
+// Keep rejected scans inside Android's biometric prompt. Password/pattern is
+// an explicit negative-button fallback; terminal biometric errors still fall back.
+private const val BIOMETRIC_FAILURES_BEFORE_FALLBACK = Int.MAX_VALUE
 
 internal fun isPasswordTargetBiometricAllowed(
     globalBiometricUnlockEnabled: Boolean,
@@ -98,7 +100,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
         mutableStateOf(store.getTarget(targetId))
     }
     var showCredentialDialog by remember(targetId) { mutableStateOf(false) }
-    var showBiometricOffer by remember(targetId) { mutableStateOf(false) }
+    var credentialSurfaceLaunched by remember(targetId) { mutableStateOf(false) }
     var biometricPromptLaunched by remember(targetId) { mutableStateOf(false) }
     var biometricPromptInFlight by remember(targetId) { mutableStateOf(false) }
     var biometricHandle by remember(targetId) {
@@ -271,14 +273,15 @@ internal fun PasswordProtectedTargetUnlockPanel(
             onFallbackRequested = {
                 if (latest.hasTypedCredential) {
                     error = null
+                    credentialSurfaceLaunched = true
                     showCredentialDialog = true
                 }
             },
             onCancelled = {
                 if (latest.hasTypedCredential) {
-                    // A user pressing "use password/pattern" should land directly
-                    // on the alternate credential instead of having to tap again.
+                    // The prompt's negative button is the explicit alternate route.
                     error = null
+                    credentialSurfaceLaunched = true
                     showCredentialDialog = true
                 } else {
                     onCancelled()
@@ -296,22 +299,9 @@ internal fun PasswordProtectedTargetUnlockPanel(
         }
     }
 
-    LaunchedEffect(config, biometricAvailable, globalBiometricUnlockEnabled) {
-        val current = config ?: return@LaunchedEffect
-        if (
-            globalBiometricUnlockEnabled &&
-            current.hasTypedCredential &&
-            !current.biometricEnabled &&
-            !current.biometricOfferShown &&
-            biometricAvailable
-        ) {
-            showBiometricOffer = true
-        }
-    }
-
-    // Biometric is the first unlock surface only when both the global preference
-    // and the per-target preference allow it. Otherwise password/pattern remains
-    // the available credential path and no biometric prompt is launched.
+    // Go directly to the method chosen while creating the block. Biometrics
+    // launch first only for targets that explicitly opted in; otherwise the
+    // password/pattern surface opens immediately without an extra choice screen.
     LaunchedEffect(
         config?.biometricEnabled,
         config?.mode,
@@ -320,18 +310,19 @@ internal fun PasswordProtectedTargetUnlockPanel(
         targetId
     ) {
         val current = config ?: return@LaunchedEffect
-        if (
-            isPasswordTargetBiometricAllowed(
-                globalBiometricUnlockEnabled = globalBiometricUnlockEnabled,
-                targetBiometricEnabled = current.biometricEnabled
-            ) &&
-            biometricAvailable &&
-            !biometricPromptLaunched
-        ) {
-            activity?.lifecycle?.withResumed {
-                biometricPromptLaunched = true
-                launchBiometric()
-            }
+        val biometricAllowed = isPasswordTargetBiometricAllowed(
+  globalBiometricUnlockEnabled = globalBiometricUnlockEnabled,
+  targetBiometricEnabled = current.biometricEnabled
+        ) && biometricAvailable
+
+        if (biometricAllowed && !biometricPromptLaunched) {
+  activity?.lifecycle?.withResumed {
+      biometricPromptLaunched = true
+      launchBiometric()
+  }
+        } else if (!biometricAllowed && current.hasTypedCredential && !credentialSurfaceLaunched) {
+  credentialSurfaceLaunched = true
+  showCredentialDialog = true
         }
     }
 
@@ -372,7 +363,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 Spacer(Modifier.height(10.dp))
             }
             OutlinedButton(
-                onClick = { showCredentialDialog = true },
+                onClick = {
+                    credentialSurfaceLaunched = true
+                    showCredentialDialog = true
+                },
                 enabled = !verifying && !biometricPromptInFlight,
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
@@ -405,46 +399,6 @@ internal fun PasswordProtectedTargetUnlockPanel(
             Spacer(Modifier.height(8.dp))
             Text(it, color = DangerRed, fontSize = 12.sp)
         }
-    }
-
-    if (showBiometricOffer) {
-        AlertDialog(
-            onDismissRequest = {
-                store.markBiometricOfferShownForTarget(targetId)
-                config = store.getTarget(targetId)
-                showBiometricOffer = false
-            },
-            title = { Text(stringResource(R.string.password_app_unlock_biometric_offer_title)) },
-            text = { Text(stringResource(R.string.password_app_unlock_biometric_offer_desc)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (
-                            authManager.isBiometricAppUnlockEnabled() &&
-                            store.setBiometricEnabledForTarget(targetId, true)
-                        ) {
-                            config = store.getTarget(targetId)
-                            showBiometricOffer = false
-                            biometricPromptLaunched = true
-                            launchBiometric()
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.password_app_unlock_biometric_offer_allow))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        store.markBiometricOfferShownForTarget(targetId)
-                        config = store.getTarget(targetId)
-                        showBiometricOffer = false
-                    }
-                ) {
-                    Text(stringResource(R.string.password_app_unlock_biometric_offer_not_now))
-                }
-            }
-        )
     }
 
     if (showCredentialDialog) {
