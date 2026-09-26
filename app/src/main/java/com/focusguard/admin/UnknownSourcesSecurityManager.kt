@@ -27,6 +27,8 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
     companion object {
         private const val PREFS = "extra_security"
         private const val KEY_ACCESSIBILITY_BLOCK = "unknown_sources_accessibility_block"
+        private const val KEY_ACTIVATION_PENDING = "unknown_sources_activation_pending"
+        private const val KEY_READY_TO_ENABLE = "unknown_sources_ready_to_enable"
 
         @Volatile
         private var instance: UnknownSourcesSecurityManager? = null
@@ -59,6 +61,43 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
     fun isBlocked(): Boolean = isAccessibilityBlockEnabled(appContext)
 
     /**
+     * Keeps the activation flow recoverable while Android Settings is in front of the app.
+     * The navigation shell can be rebuilt when FocusGuard returns to the foreground, so this
+     * state cannot live only inside the ExtraSecurityScreen composable.
+     */
+    fun isActivationPending(): Boolean =
+        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ACTIVATION_PENDING, false)
+
+    /** True after the user confirmed that the previously granted sources were disabled. */
+    fun isReadyToEnable(): Boolean =
+        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_READY_TO_ENABLE, false)
+
+    /** Marks that the user left FocusGuard to review/revoke existing unknown-source grants. */
+    fun markSettingsReviewStarted(): Boolean =
+        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ACTIVATION_PENDING, true)
+            .putBoolean(KEY_READY_TO_ENABLE, false)
+            .commit()
+
+    /** Keeps the final "Ativar bloqueio" step available even if the UI is rebuilt again. */
+    fun markReadyToEnable(): Boolean =
+        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ACTIVATION_PENDING, true)
+            .putBoolean(KEY_READY_TO_ENABLE, true)
+            .commit()
+
+    fun clearActivationFlow(): Boolean =
+        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_ACTIVATION_PENDING)
+            .remove(KEY_READY_TO_ENABLE)
+            .commit()
+
+    /**
      * Turns the accessibility block on or off. With Device Owner active, the user
      * restriction follows the same state; its failure does not undo the accessibility
      * block, which does not depend on it.
@@ -67,6 +106,8 @@ class UnknownSourcesSecurityManager private constructor(context: Context) {
         val saved = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_ACCESSIBILITY_BLOCK, enabled)
+            .remove(KEY_ACTIVATION_PENDING)
+            .remove(KEY_READY_TO_ENABLE)
             .commit()
         if (isDeviceOwnerActive()) applyDeviceOwnerRestriction(enabled)
         return saved
