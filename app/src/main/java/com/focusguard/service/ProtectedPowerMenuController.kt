@@ -727,28 +727,38 @@ class ProtectedPowerMenuController(
         (value * service.resources.displayMetrics.density + 0.5f).toInt()
 
     private fun performNativeSinglePress(action: Action) {
+        if (tryPerformNativeSinglePress(action)) {
+            showStatus(R.string.protected_power_menu_action_sent)
+            scheduleRecheck()
+            return
+        }
+
+        // Some SystemUI implementations emit the window event before the action
+        // nodes are fully attached. Retry once with a fresh root instead of making
+        // the visible HardBlock button look dead.
+        mainHandler.postDelayed({
+            if (!overlayVisible) return@postDelayed
+            if (tryPerformNativeSinglePress(action)) {
+                showStatus(R.string.protected_power_menu_action_sent)
+                scheduleRecheck()
+            } else {
+                showStatus(R.string.protected_power_menu_action_unavailable)
+            }
+        }, NATIVE_ACTION_RETRY_DELAY_MILLIS)
+    }
+
+    private fun tryPerformNativeSinglePress(action: Action): Boolean {
         val root = if (action == Action.POWER_OFF || action == Action.RESTART) {
             findTrackedPowerMenuRootForPrimaryAction() ?: findPowerMenuRoot()
         } else {
             findPowerMenuRoot()
-        }
-        if (root == null) {
-            showStatus(R.string.protected_power_menu_action_unavailable)
-            return
-        }
+        } ?: return false
 
         val node = findActionNode(root, action)
         val clicked = node?.let(::clickNodeOrParent) == true
         recycleSafely(node)
         recycleSafely(root)
-
-        if (!clicked) {
-            showStatus(R.string.protected_power_menu_action_unavailable)
-            return
-        }
-
-        showStatus(R.string.protected_power_menu_action_sent)
-        scheduleRecheck()
+        return clicked
     }
 
     /**
@@ -773,16 +783,13 @@ class ProtectedPowerMenuController(
     }
 
     private fun findActionNode(root: AccessibilityNodeInfo, action: Action): AccessibilityNodeInfo? {
+        // Fast path for the common AOSP/OEM case where labels are searchable.
         PowerMenuProtectionPolicy.termsFor(action).forEach { term ->
             val nodes = runCatching { root.findAccessibilityNodeInfosByText(term) }
                 .getOrDefault(emptyList())
             var selected: AccessibilityNodeInfo? = null
             nodes.forEach { node ->
-                if (selected == null && PowerMenuProtectionPolicy.matchesAction(
-                        action,
-                        listOf(node.text, node.contentDescription, node.viewIdResourceName)
-                    )
-                ) {
+                if (selected == null && nodeMatchesAction(node, action)) {
                     selected = node
                 } else {
                     recycleSafely(node)
@@ -790,7 +797,39 @@ class ProtectedPowerMenuController(
             }
             if (selected != null) return selected
         }
+
+        // Samsung and other OEM menus may expose the actionable row primarily by
+        // contentDescription/resource id rather than searchable visible text.
+        return findActionNodeInTree(root, action, depth = 0)
+    }
+
+    private fun findActionNodeInTree(
+        parent: AccessibilityNodeInfo,
+        action: Action,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (depth >= MAX_TREE_DEPTH) return null
+        val count = parent.childCount.coerceAtMost(MAX_CHILDREN_PER_NODE)
+        for (index in 0 until count) {
+            val child = runCatching { parent.getChild(index) }.getOrNull() ?: continue
+            if (nodeMatchesAction(child, action)) {
+                return child
+            }
+            val descendant = findActionNodeInTree(child, action, depth + 1)
+            if (descendant != null) {
+                recycleSafely(child)
+                return descendant
+            }
+            recycleSafely(child)
+        }
         return null
+    }
+
+    private fun nodeMatchesAction(node: AccessibilityNodeInfo, action: Action): Boolean {
+        return PowerMenuProtectionPolicy.matchesAction(
+            action,
+            listOf(node.text, node.contentDescription, node.viewIdResourceName)
+        ) || resourceIdMatchesAction(action, node.viewIdResourceName)
     }
 
     private fun clickNodeOrParent(start: AccessibilityNodeInfo): Boolean {
@@ -798,9 +837,12 @@ class ProtectedPowerMenuController(
         var ownsCurrent = false
         repeat(MAX_PARENT_DEPTH) {
             val node = current ?: return false
-            if (node.isClickable &&
-                runCatching { node.performAction(AccessibilityNodeInfo.ACTION_CLICK) }
-                    .getOrDefault(false)
+            // Some OEM accessibility nodes advertise ACTION_CLICK even when
+            // isClickable is false. Asking for ACTION_CLICK is safe here because
+            // this path never forwards ACTION_LONG_CLICK.
+            if (runCatching {
+                    node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                }.getOrDefault(false)
             ) {
                 if (ownsCurrent) recycleSafely(node)
                 return true
@@ -1039,10 +1081,31 @@ class ProtectedPowerMenuController(
             relevantEvent: Boolean
         ): Boolean = relevantEvent && packageName.isBlank()
 
-        const val MAX_PARENT_DEPTH = 5
+        internal fun resourceIdMatchesAction(
+            action: Action,
+            viewIdResourceName: String?
+        ): Boolean {
+            val id = viewIdResourceName
+                ?.substringAfterLast('/')
+                ?.lowercase()
+                .orEmpty()
+            if (id.isBlank()) return false
+            return when (action) {
+                Action.POWER_OFF -> id.contains("power_off") ||
+                    id.contains("poweroff") ||
+                    id.contains("shutdown") ||
+                    id.contains("shut_down")
+                Action.RESTART -> id.contains("restart") || id.contains("reboot")
+                Action.EMERGENCY -> id.contains("emergency")
+                Action.MEDICAL_INFO -> id.contains("medical")
+            }
+        }
+
+        const val MAX_PARENT_DEPTH = 8
         const val MAX_TREE_DEPTH = 12
         const val MAX_CHILDREN_PER_NODE = 30
         const val MAX_TEXT_VALUES = 300
+        const val NATIVE_ACTION_RETRY_DELAY_MILLIS = 180L
         const val RECHECK_DELAY_MILLIS = 350L
         const val UNDEFINED_WINDOW_GRACE_MILLIS = 1_050L
         const val BACK_RETRY_MILLIS = 1_050L
