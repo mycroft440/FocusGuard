@@ -87,6 +87,8 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import kotlinx.coroutines.launch
 
+private const val DEVELOPER_MODE_ENABLED = false
+
 @Composable
 fun SettingsScreen(
     profile: UserProfile,
@@ -246,12 +248,14 @@ fun SettingsScreen(
                 iconTint = Color(0xFFF5C451),
                 onClick = { showPremium = true }
             )
-            SettingsItem(
-                Icons.Default.Build,
-                stringResource(R.string.settings_dev_mode_title),
-                stringResource(R.string.settings_dev_mode_subtitle),
-                onClick = { showDeveloperMode = true }
-            )
+            if (DEVELOPER_MODE_ENABLED) {
+                SettingsItem(
+                    Icons.Default.Build,
+                    stringResource(R.string.settings_dev_mode_title),
+                    stringResource(R.string.settings_dev_mode_subtitle),
+                    onClick = { showDeveloperMode = true }
+                )
+            }
 
             Spacer(Modifier.height(32.dp))
             Text(
@@ -290,7 +294,7 @@ fun SettingsScreen(
         )
     }
 
-    if (showDeveloperMode) {
+    if (DEVELOPER_MODE_ENABLED && showDeveloperMode) {
         DeveloperModeHostDialog(
             onDismiss = { showDeveloperMode = false }
         )
