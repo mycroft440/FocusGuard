@@ -49,6 +49,9 @@ import kotlinx.coroutines.withTimeout
 object FocusGuardAds {
 
     private const val ADAPTIVE_BANNER_PRELOAD_BUFFER_SIZE = 2
+    private const val BANNER_WIDTHS_PREFS = "ads_banner_widths"
+    private const val KEY_BANNER_WIDTHS = "widths"
+    private const val MAX_REMEMBERED_BANNER_WIDTHS = 3
     private const val ADAPTIVE_BANNER_PRELOAD_PREFIX = "focusguard-adaptive-banner"
     private const val REWARDED_PRELOAD_ID = "focusguard-rewarded"
     private const val INTERSTITIAL_PRELOAD_ID = "focusguard-interstitial"
@@ -128,6 +131,9 @@ object FocusGuardAds {
      */
     private fun startAllPreloads(context: Context, screenWidthDp: Int) {
         startAdaptiveBannerPreload(context, screenWidthDp)
+        rememberedBannerWidths(context)
+            .filter { it != screenWidthDp.coerceAtLeast(300) }
+            .forEach { startAdaptiveBannerPreload(context, it) }
         startFullScreenPreloads()
     }
 
@@ -361,56 +367,91 @@ object FocusGuardAds {
         onLoaded: () -> Unit = {},
         onUnavailable: (String) -> Unit = {}
     ) {
+        fun serve() {
+            val normalizedWidthDp = normalizedBannerWidthDp(
+                requestedWidthDp = widthDp,
+                screenWidthDp = activity.resources.configuration.screenWidthDp
+            )
+            val preloadId = adaptiveBannerPreloadId(normalizedWidthDp)
+            val preloadedAd = BannerAdPreloader.pollAd(preloadId)
+            // Largura sem preload (ex.: banner dentro de um card): passa a ter
+            // um, para que a próxima abertura desta tela já seja instantânea.
+            startAdaptiveBannerPreload(activity, normalizedWidthDp)
+            rememberBannerWidth(activity, normalizedWidthDp)
+            if (preloadedAd != null) {
+                adView.registerBannerAd(preloadedAd, activity)
+                FocusGuardLogger.log(
+                    "Ads",
+                    "Banner adaptativo servido do preload para ${normalizedWidthDp}dp"
+                )
+                onLoaded()
+                return
+            }
+
+            val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
+                activity,
+                normalizedWidthDp
+            )
+            val request = BannerAdRequest.Builder(
+                BuildConfig.ADMOB_BANNER_AD_UNIT_ID,
+                adSize
+            ).build()
+            adView.loadAd(
+                request,
+                object : AdLoadCallback<BannerAd> {
+                    override fun onAdLoaded(ad: BannerAd) {
+                        FocusGuardLogger.log("Ads", "Banner adaptativo carregado diretamente")
+                        onLoaded()
+                    }
+
+                    override fun onAdFailedToLoad(adError: LoadAdError) {
+                        logLoadFailure("Banner adaptativo", adError)
+                        onUnavailable(
+                            adError.message.ifBlank { "Nenhum banner está disponível agora." }
+                        )
+                    }
+                }
+            )
+        }
+
+        // Caminho rápido: com o SDK já inicializado neste processo e o consentimento
+        // salvo permitindo anúncios, o banner pré-carregado é entregue no mesmo quadro,
+        // sem passar de novo pela UMP e por uma troca de thread.
+        if (initialized &&
+            !activity.isFinishing && !activity.isDestroyed &&
+            AdsConsentManager.canRequestAdsFromCachedConsent(activity) &&
+            android.os.Looper.myLooper() == android.os.Looper.getMainLooper()
+        ) {
+            serve()
+            return
+        }
+
         withAdsReady(
             activity = activity,
             onUnavailable = onUnavailable,
-            onReady = {
-                val normalizedWidthDp = normalizedBannerWidthDp(
-                    requestedWidthDp = widthDp,
-                    screenWidthDp = activity.resources.configuration.screenWidthDp
-                )
-                val preloadId = adaptiveBannerPreloadId(normalizedWidthDp)
-                val preloadedAd = BannerAdPreloader.pollAd(preloadId)
-                // Largura sem preload (ex.: banner dentro de um card): passa a ter
-                // um, para que a próxima abertura desta tela já seja instantânea.
-                startAdaptiveBannerPreload(activity, normalizedWidthDp)
-                if (preloadedAd != null) {
-                    adView.registerBannerAd(preloadedAd, activity)
-                    FocusGuardLogger.log(
-                        "Ads",
-                        "Banner adaptativo servido do preload para ${normalizedWidthDp}dp"
-                    )
-                    onLoaded()
-                    return@withAdsReady
-                }
-
-                val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
-                    activity,
-                    normalizedWidthDp
-                )
-                val request = BannerAdRequest.Builder(
-                    BuildConfig.ADMOB_BANNER_AD_UNIT_ID,
-                    adSize
-                ).build()
-                adView.loadAd(
-                    request,
-                    object : AdLoadCallback<BannerAd> {
-                        override fun onAdLoaded(ad: BannerAd) {
-                            FocusGuardLogger.log("Ads", "Banner adaptativo carregado diretamente")
-                            onLoaded()
-                        }
-
-                        override fun onAdFailedToLoad(adError: LoadAdError) {
-                            logLoadFailure("Banner adaptativo", adError)
-                            onUnavailable(
-                                adError.message.ifBlank { "Nenhum banner está disponível agora." }
-                            )
-                        }
-                    }
-                )
-            }
+            onReady = { serve() }
         )
     }
+
+    /**
+     * Larguras de banner usadas nas telas (algumas têm margens e não usam a largura
+     * da tela). Na próxima abertura do app, todas já começam pré-carregadas.
+     */
+    private fun rememberBannerWidth(context: Context, widthDp: Int) {
+        val prefs = context.applicationContext
+            .getSharedPreferences(BANNER_WIDTHS_PREFS, Context.MODE_PRIVATE)
+        val saved = prefs.getString(KEY_BANNER_WIDTHS, "").orEmpty()
+            .split(',').mapNotNull(String::toIntOrNull)
+        if (widthDp in saved) return
+        val updated = (listOf(widthDp) + saved).take(MAX_REMEMBERED_BANNER_WIDTHS)
+        prefs.edit().putString(KEY_BANNER_WIDTHS, updated.joinToString(",")).apply()
+    }
+
+    private fun rememberedBannerWidths(context: Context): List<Int> =
+        context.applicationContext
+            .getSharedPreferences(BANNER_WIDTHS_PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_BANNER_WIDTHS, "").orEmpty()
+            .split(',').mapNotNull(String::toIntOrNull)
 
     /** A recompensa só é creditada por onUserEarnedReward. */
     fun showRewarded(
