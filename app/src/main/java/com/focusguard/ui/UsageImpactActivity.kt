@@ -4,6 +4,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
@@ -70,14 +71,35 @@ class UsageImpactActivity : AppCompatActivity() {
             return
         }
 
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = goHome()
+        })
+
         setContent {
             FocusGuardTheme {
                 UsageImpactScreen(
                     packageName = targetPackage,
-                    onClose = ::finishAffinity
+                    onClose = ::goHome
                 )
             }
         }
+    }
+
+    /**
+     * Sair desta tela nunca pode devolver o usuário ao app bloqueado, que fica
+     * logo abaixo na pilha: isso reabriria o bloqueio e esta mesma tela. Voltar
+     * sempre leva à tela inicial do aparelho.
+     */
+    private fun goHome() {
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+            )
+        }
+        finish()
     }
 
     override fun onNewIntent(intent: Intent) {
