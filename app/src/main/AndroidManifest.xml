@@ -101,16 +101,6 @@
         </activity-alias>
 
         <activity
-            android:name=".ui.PomodoroLockActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:showWhenLocked="true"
-            android:taskAffinity="com.focusguard.pomodorolock"
-            android:theme="@style/Theme.FocusGuard"
-            android:turnScreenOn="true" />
-
-        <activity
             android:name=".widget.PomodoroWidgetDialActivity"
             android:excludeFromRecents="true"
             android:exported="false"

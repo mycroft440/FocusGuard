@@ -28,13 +28,6 @@ class BiometricAppUnlockPolicyTest {
     }
 
     @Test
-    fun `strict pomodoro never accepts a credential`() {
-        assertThat(
-            BiometricAppUnlockPolicy.acceptsCredentialUnlock(BlockOrigin.STRICT_POMODORO)
-        ).isFalse()
-    }
-
-    @Test
     fun `time hardened limit never accepts a credential`() {
         assertThat(
             BiometricAppUnlockPolicy.acceptsCredentialUnlock(
@@ -146,25 +139,10 @@ class BiometricAppUnlockPolicyTest {
     // --------------------------------------------------------- classification
 
     @Test
-    fun `strict pomodoro outranks everything else`() {
-        val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = true,
-            activeSessionType = "PASSWORD",
-            usageLimitExceeded = true,
-            limitLockMode = "NONE",
-            limitLockUntilTimestamp = null,
-            limitUnlockWithPassword = true
-        )
-
-        assertThat(origin).isEqualTo(BlockOrigin.STRICT_POMODORO)
-    }
-
-    @Test
     fun `dopamine fast outranks a permissive usage limit`() {
         // Getting this precedence backwards would let a permissive limit unseal
         // a fast.
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = "TIME",
             usageLimitExceeded = true,
             limitLockMode = "NONE",
@@ -178,7 +156,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `exceeded limit with password unlock is classified as unlockable`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = null,
             usageLimitExceeded = true,
             limitLockMode = "PASSWORD",
@@ -192,7 +169,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `time hardening outranks the password unlock flag on the same limit`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = null,
             usageLimitExceeded = true,
             limitLockMode = "TIME",
@@ -207,7 +183,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `expired time lock falls back to the password unlock flag`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = null,
             usageLimitExceeded = true,
             limitLockMode = "TIME",
@@ -222,7 +197,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `exceeded limit without password unlock is sealed`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = null,
             usageLimitExceeded = true,
             limitLockMode = "NONE",
@@ -236,7 +210,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `password session with no limit is classified as a password session`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = "PASSWORD",
             usageLimitExceeded = false,
             limitLockMode = null,
@@ -250,7 +223,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `nothing blocking yields no origin`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = null,
             usageLimitExceeded = false,
             limitLockMode = null,
@@ -264,7 +236,6 @@ class BiometricAppUnlockPolicyTest {
     @Test
     fun `session type classification is case insensitive`() {
         val origin = BiometricAppUnlockPolicy.classify(
-            strictPomodoroActive = false,
             activeSessionType = "time",
             usageLimitExceeded = false,
             limitLockMode = null,

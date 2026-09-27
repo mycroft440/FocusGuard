@@ -38,8 +38,7 @@ class SelfProtectionStateStoreTest {
                 context = context,
                 armed = true,
                 blockedApps = setOf("com.example.one", "com.example.two"),
-                blockedSites = setOf("example.com"),
-                strictPomodoro = true
+                blockedSites = setOf("example.com")
             )
         ).isTrue()
 
@@ -48,7 +47,6 @@ class SelfProtectionStateStoreTest {
         assertThat(snapshot.blockedApps)
             .containsExactly("com.example.one", "com.example.two")
         assertThat(snapshot.blockedSites).containsExactly("example.com")
-        assertThat(snapshot.strictPomodoro).isTrue()
     }
 
     @Test
@@ -57,8 +55,7 @@ class SelfProtectionStateStoreTest {
             context = context,
             armed = true,
             blockedApps = setOf("com.example.blocked"),
-            blockedSites = setOf("blocked.example"),
-            strictPomodoro = true
+            blockedSites = setOf("blocked.example")
         )
 
         assertThat(SelfProtectionStateStore.setArmed(context, false)).isTrue()
@@ -67,7 +64,6 @@ class SelfProtectionStateStoreTest {
         assertThat(snapshot.armed).isFalse()
         assertThat(snapshot.blockedApps).isEmpty()
         assertThat(snapshot.blockedSites).isEmpty()
-        assertThat(snapshot.strictPomodoro).isFalse()
     }
 
     @Test
@@ -77,8 +73,7 @@ class SelfProtectionStateStoreTest {
                 context = context,
                 armed = false,
                 blockedApps = setOf("com.example.stale"),
-                blockedSites = setOf("stale.example"),
-                strictPomodoro = true
+                blockedSites = setOf("stale.example")
             )
         ).isTrue()
 
@@ -86,7 +81,6 @@ class SelfProtectionStateStoreTest {
         assertThat(snapshot.armed).isFalse()
         assertThat(snapshot.blockedApps).isEmpty()
         assertThat(snapshot.blockedSites).isEmpty()
-        assertThat(snapshot.strictPomodoro).isFalse()
     }
 
     @Test

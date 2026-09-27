@@ -80,7 +80,7 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
         val manager = remember { PomodoroManager.getInstance(context) }
         val notificationController = remember { PomodoroNotificationController(context) }
         var config by remember {
-            mutableStateOf(store.loadConfig().copy(strictBlocking = false))
+            mutableStateOf(store.loadConfig())
         }
         var focusText by remember(config.focusMinutes) {
             mutableStateOf(config.focusMinutes.toString())
@@ -88,7 +88,7 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
         var error by remember { mutableStateOf<String?>(null) }
 
         fun persist(updated: PomodoroPlanConfig) {
-            config = store.saveConfig(updated.copy(strictBlocking = false).normalized())
+            config = store.saveConfig(updated.normalized())
             focusText = config.focusMinutes.toString()
             PomodoroWidgetProvider.requestUpdate(context)
             error = null
@@ -115,7 +115,7 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                 }
                 else -> scope.launch {
                     try {
-                        manager.startPlan(config.copy(strictBlocking = false))
+                        manager.startPlan(config)
                         PomodoroWidgetProvider.requestUpdate(context)
                         onClose()
                     } catch (cancelled: CancellationException) {

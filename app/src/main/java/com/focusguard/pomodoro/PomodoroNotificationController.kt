@@ -47,9 +47,8 @@ class PomodoroNotificationController(context: Context) {
 
     /**
      * Guarda uma única vez o filtro que existia antes do plano. O snapshot é
-     * usado também quando o modo rigoroso está ativo com o toggle "silenciar"
-     * desligado, pois o bloqueador legado muda o DND para PRIORITY por conta
-     * própria e precisamos desfazer essa mudança sem perder a escolha do usuário.
+     * usado também entre fases com o toggle "silenciar" desligado, para desfazer
+     * qualquer mudança no DND sem perder a escolha do usuário.
      */
     fun captureCurrentFilter(): Boolean {
         val notificationManager = manager ?: return false
@@ -77,7 +76,7 @@ class PomodoroNotificationController(context: Context) {
     /**
      * Reaplica temporariamente o estado anterior sem apagar o snapshot. É usado
      * entre fases de um mesmo plano quando "Silenciar notificações" está
-     * desligado, para neutralizar o DND automático do bloqueio rigoroso.
+     * desligado, para neutralizar mudanças externas no DND.
      */
     fun restoreForActivePlan() {
         restoreInternal(clearSnapshot = false)
