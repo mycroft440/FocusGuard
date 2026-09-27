@@ -108,6 +108,9 @@ internal fun PasswordProtectedTargetUnlockPanel(
     }
     var error by remember(targetId) { mutableStateOf<String?>(null) }
     var verifying by remember(targetId) { mutableStateOf(false) }
+    // O sistema fechou o quadro da digital (app pausado, outra janela por cima):
+    // ele volta sozinho quando esta tela retorna ao primeiro plano.
+    var biometricRetryOnResume by remember(targetId) { mutableStateOf(false) }
 
     val globalBiometricUnlockEnabled = authManager.isBiometricAppUnlockEnabled()
     val biometricAvailable = activity != null &&
@@ -277,15 +280,22 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     showCredentialDialog = true
                 }
             },
-            onCancelled = {
+            // "Usar senha/padrão" no quadro: abre a senha. Sem senha, só fecha o quadro.
+            onNegativeButton = {
+                error = null
                 if (latest.hasTypedCredential) {
-                    // The prompt's negative button is the explicit alternate route.
-                    error = null
                     credentialSurfaceLaunched = true
                     showCredentialDialog = true
-                } else {
-                    onCancelled()
                 }
+            },
+            // Toque fora ou Voltar: o quadro fecha e a pessoa continua nesta tela,
+            // com os botões de digital e de senha. Antes isso abria a senha sozinho
+            // ou saía para a tela inicial.
+            onCancelled = {
+                error = null
+            },
+            onSystemCancelled = {
+                biometricRetryOnResume = true
             },
             onFinished = {
                 biometricPromptInFlight = false
@@ -297,6 +307,20 @@ internal fun PasswordProtectedTargetUnlockPanel(
         if (targetId == null || config == null) {
             onCancelled()
         }
+    }
+
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, targetId) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME &&
+                biometricRetryOnResume && !showCredentialDialog
+            ) {
+                biometricRetryOnResume = false
+                launchBiometric()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Go directly to the method chosen while creating the block. Biometrics
@@ -356,6 +380,18 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     fontWeight = FontWeight.Bold
                 )
             }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (biometricPromptInFlight) {
+                    "Encoste o dedo no sensor de digital."
+                } else {
+                    "Toque acima para usar a digital de novo."
+                },
+                color = TextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
 
         if (currentConfig.hasTypedCredential) {
@@ -408,11 +444,12 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 error = error,
                 allowBiometricSwitch = canSwitchCredentialToBiometric,
                 onUseBiometric = ::switchCredentialToBiometric,
+                // Fechar a caixa volta para esta tela (digital ou senha de novo); só o
+                // Voltar da tela sai para a tela inicial.
                 onDismiss = {
                     if (!verifying) {
                         showCredentialDialog = false
                         error = null
-                        onCancelled()
                     }
                 },
                 onSubmit = { password ->
@@ -431,11 +468,12 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 error = error,
                 allowBiometricSwitch = canSwitchCredentialToBiometric,
                 onUseBiometric = ::switchCredentialToBiometric,
+                // Fechar a caixa volta para esta tela (digital ou senha de novo); só o
+                // Voltar da tela sai para a tela inicial.
                 onDismiss = {
                     if (!verifying) {
                         showCredentialDialog = false
                         error = null
-                        onCancelled()
                     }
                 },
                 onSubmit = { pattern, reset ->

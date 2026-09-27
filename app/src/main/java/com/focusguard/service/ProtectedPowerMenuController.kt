@@ -1,10 +1,14 @@
 package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
@@ -23,6 +27,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.focusguard.R
+import com.focusguard.admin.FocusGuardDeviceAdminReceiver
 import com.focusguard.security.PowerMenuProtectionPolicy
 import com.focusguard.security.PowerMenuProtectionPolicy.Action
 import com.focusguard.security.PowerMenuProtectionPolicy.DirectDecision
@@ -740,6 +745,12 @@ class ProtectedPowerMenuController(
         (value * service.resources.displayMetrics.density + 0.5f).toInt()
 
     private fun performNativeSinglePress(action: Action) {
+        // Com Device Owner, reiniciar usa a API oficial do Android: não depende da
+        // árvore de acessibilidade do menu nativo, que muda entre fabricantes.
+        if (action == Action.RESTART && rebootWithDeviceOwner()) {
+            showStatus(R.string.protected_power_menu_action_sent)
+            return
+        }
         val primary = action == Action.POWER_OFF || action == Action.RESTART
         val nowElapsed = SystemClock.elapsedRealtime()
         val confirmationAttempt = primary && primaryActionTapDecision(
@@ -786,6 +797,10 @@ class ProtectedPowerMenuController(
         if (primary && !confirmationAttempt) {
   pendingPrimaryAction = action
   pendingPrimaryActionAtElapsed = SystemClock.elapsedRealtime()
+  // Vários fabricantes abrem uma confirmação ("Desligar?") depois do primeiro
+  // toque. O usuário já escolheu a ação no menu do HardBlock: ela é confirmada
+  // sozinha. O toque manual de confirmação continua valendo como reserva.
+  scheduleAutomaticConfirmation(action)
   val actionLabel = service.getString(
       if (action == Action.POWER_OFF) {
           R.string.protected_power_menu_power_off
@@ -815,10 +830,85 @@ class ProtectedPowerMenuController(
         } ?: return false
 
         val node = findActionNode(root, action)
-        val clicked = node?.let(::clickNodeOrParent) == true
+        var clicked = node?.let(::clickNodeOrParent) == true
+        // Alguns menus nativos anunciam o clique de acessibilidade e o ignoram, ou
+        // nem o anunciam. Um toque curto sobre o botão nativo resolve nesses casos.
+        if (!clicked && node != null) clicked = tapNodeThroughOverlay(node)
         recycleSafely(node)
         recycleSafely(root)
         return clicked
+    }
+
+    /**
+     * Toque curto (nunca longo, que em alguns fabricantes abre o Modo Seguro) no
+     * centro do botão nativo. A proteção deixa de receber toques só durante o gesto.
+     */
+    private fun tapNodeThroughOverlay(node: AccessibilityNodeInfo): Boolean {
+        val bounds = Rect()
+        runCatching { node.getBoundsInScreen(bounds) }
+        if (bounds.isEmpty) return false
+        val current = overlay ?: return false
+        val params = overlayParams ?: return false
+
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        runCatching { windowManager.updateViewLayout(current, params) }
+
+        fun restoreTouches() {
+            if (!overlayVisible || overlay !== current) return
+            params.flags = visibleFlags(params.flags)
+            runCatching { windowManager.updateViewLayout(current, params) }
+        }
+
+        val path = Path().apply {
+            moveTo(bounds.exactCenterX(), bounds.exactCenterY())
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, TAP_DURATION_MILLIS))
+            .build()
+        val dispatched = runCatching {
+            service.dispatchGesture(
+                gesture,
+                object : AccessibilityService.GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
+                        mainHandler.postDelayed(::restoreTouches, TAP_RESTORE_DELAY_MILLIS)
+                    }
+
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        restoreTouches()
+                    }
+                },
+                mainHandler
+            )
+        }.getOrDefault(false)
+        if (!dispatched) restoreTouches()
+        return dispatched
+    }
+
+    private fun scheduleAutomaticConfirmation(action: Action) {
+        AUTO_CONFIRM_DELAYS_MILLIS.forEach { delay ->
+            mainHandler.postDelayed({
+                if (!overlayVisible || pendingPrimaryAction != action) return@postDelayed
+                if (tryPerformNativeSinglePress(action)) {
+                    clearPendingPrimaryAction()
+                    showStatus(R.string.protected_power_menu_action_sent)
+                }
+            }, delay)
+        }
+    }
+
+    /** Reinício pela API do Device Owner. Sem Device Owner, retorna false. */
+    private fun rebootWithDeviceOwner(): Boolean {
+        val dpm = service.getSystemService(Context.DEVICE_POLICY_SERVICE)
+            as? DevicePolicyManager ?: return false
+        if (!runCatching { dpm.isDeviceOwnerApp(service.packageName) }.getOrDefault(false)) {
+            return false
+        }
+        return runCatching {
+            dpm.reboot(FocusGuardDeviceAdminReceiver.getComponentName(service))
+            true
+        }.onFailure { error ->
+            FocusGuardLogger.logError("PowerMenu", "Falha ao reiniciar pelo Device Owner", error)
+        }.getOrDefault(false)
     }
 
     private fun hasActivePrimaryActionConfirmation(
@@ -1198,6 +1288,9 @@ class ProtectedPowerMenuController(
         const val MAX_CHILDREN_PER_NODE = 30
         const val MAX_TEXT_VALUES = 300
         const val NATIVE_ACTION_RETRY_DELAY_MILLIS = 180L
+        const val TAP_DURATION_MILLIS = 40L
+        const val TAP_RESTORE_DELAY_MILLIS = 80L
+        val AUTO_CONFIRM_DELAYS_MILLIS = longArrayOf(450L, 1_100L)
         const val PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS = 10_000L
         const val RECHECK_DELAY_MILLIS = 350L
         const val UNDEFINED_WINDOW_GRACE_MILLIS = 1_050L

@@ -87,7 +87,11 @@ object AppUnlockBiometricAuthenticator {
         failureThresholdBeforeFallback: Int = 0,
         onFallbackRequested: () -> Unit = {},
         onCancelled: () -> Unit = {},
-        onFinished: () -> Unit = {}
+        onFinished: () -> Unit = {},
+        /** Botão negativo do quadro (ex.: "Usar senha"). Sem ele, vale onCancelled. */
+        onNegativeButton: (() -> Unit)? = null,
+        /** O sistema fechou o quadro (app pausado, outra janela). Sem ele, vale onCancelled. */
+        onSystemCancelled: (() -> Unit)? = null
     ): AuthenticationHandle {
         if (!isAvailable(activity)) {
             onFinished()
@@ -105,7 +109,9 @@ object AppUnlockBiometricAuthenticator {
             onError = onError,
             onFallbackRequested = onFallbackRequested,
             onCancelled = onCancelled,
-            onFinished = onFinished
+            onFinished = onFinished,
+            onNegativeButton = onNegativeButton ?: onCancelled,
+            onSystemCancelled = onSystemCancelled ?: onCancelled
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
@@ -137,7 +143,9 @@ internal class AppUnlockBiometricCallback(
     private val onError: (String) -> Unit,
     private val onFallbackRequested: () -> Unit,
     private val onCancelled: () -> Unit,
-    private val onFinished: () -> Unit
+    private val onFinished: () -> Unit,
+    private val onNegativeButton: () -> Unit = onCancelled,
+    private val onSystemCancelled: () -> Unit = onCancelled
 ) : BiometricPrompt.AuthenticationCallback() {
     private var consecutiveFailures = 0
     private var finished = false
@@ -173,14 +181,14 @@ internal class AppUnlockBiometricCallback(
 
     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
         finish {
-            val cancelled = errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
-                errorCode == BiometricPrompt.ERROR_CANCELED
-            if (cancelled) {
-                onCancelled()
-            } else {
-                onError(errString.toString())
-                if (failureThresholdBeforeFallback > 0) onFallbackRequested()
+            when (errorCode) {
+                BiometricPrompt.ERROR_NEGATIVE_BUTTON -> onNegativeButton()
+                BiometricPrompt.ERROR_USER_CANCELED -> onCancelled()
+                BiometricPrompt.ERROR_CANCELED -> onSystemCancelled()
+                else -> {
+                    onError(errString.toString())
+                    if (failureThresholdBeforeFallback > 0) onFallbackRequested()
+                }
             }
         }
     }
