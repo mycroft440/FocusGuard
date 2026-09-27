@@ -24,8 +24,7 @@ data class PomodoroPlanConfig(
     val alarmDurationSeconds: Int = 5,
     val soundIndex: Int = 0,
     val silenceNotifications: Boolean = false,
-    val hideNotifications: Boolean = false,
-    val strictBlocking: Boolean = false
+    val hideNotifications: Boolean = false
 ) {
     fun normalized(): PomodoroPlanConfig = copy(
         focusMinutes = focusMinutes.coerceIn(1, 24 * 60),
@@ -34,8 +33,7 @@ data class PomodoroPlanConfig(
         longBreakEvery = longBreakEvery.coerceIn(1, 100),
         targetSessions = targetSessions.coerceIn(0, 5),
         alarmDurationSeconds = alarmDurationSeconds.coerceIn(1, 60),
-        soundIndex = soundIndex.coerceIn(0, 9),
-        strictBlocking = false
+        soundIndex = soundIndex.coerceIn(0, 9)
     )
 }
 
@@ -260,7 +258,6 @@ class PomodoroPlanStore(context: Context) {
             .put("soundIndex", config.soundIndex)
             .put("silenceNotifications", config.silenceNotifications)
             .put("hideNotifications", config.hideNotifications)
-            .put("strictBlocking", config.strictBlocking)
 
         private fun configFromJson(json: JSONObject): PomodoroPlanConfig = PomodoroPlanConfig(
             focusMinutes = json.optInt("focusMinutes", 25),
@@ -273,8 +270,7 @@ class PomodoroPlanStore(context: Context) {
             alarmDurationSeconds = json.optInt("alarmDurationSeconds", 5),
             soundIndex = json.optInt("soundIndex", 0),
             silenceNotifications = json.optBoolean("silenceNotifications", false),
-            hideNotifications = json.optBoolean("hideNotifications", false),
-            strictBlocking = json.optBoolean("strictBlocking", false)
+            hideNotifications = json.optBoolean("hideNotifications", false)
         )
     }
 }

@@ -60,7 +60,6 @@ class MaintenanceSpecialAccessPolicyTest {
                     focusGuard = true
                 ),
                 selfProtectionEngaged = true,
-                strictPomodoroActive = false,
                 deviceAdminActivationAuthorized = false,
                 maintenanceActive = true,
                 rootSignals = roots()
@@ -74,7 +73,6 @@ class MaintenanceSpecialAccessPolicyTest {
             SettingsInterceptionPolicy.decide(
                 signals = signals(),
                 selfProtectionEngaged = true,
-                strictPomodoroActive = false,
                 deviceAdminActivationAuthorized = false,
                 maintenanceActive = true,
                 rootSignals = roots(focusGuard = true, essential = true)
@@ -88,7 +86,6 @@ class MaintenanceSpecialAccessPolicyTest {
             SettingsInterceptionPolicy.decide(
                 signals = signals(focusGuard = true, uninstall = true),
                 selfProtectionEngaged = true,
-                strictPomodoroActive = false,
                 deviceAdminActivationAuthorized = false,
                 maintenanceActive = true,
                 rootSignals = roots()

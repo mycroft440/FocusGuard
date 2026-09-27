@@ -71,14 +71,12 @@ class SettingsInterceptionPolicyTest {
     private fun decide(
         signals: SettingsInterceptionPolicy.EventSignals,
         engaged: Boolean = true,
-        strictPomodoro: Boolean = false,
         deviceAdminActivationAuthorized: Boolean = false,
         maintenanceActive: Boolean = false,
         rootSignals: SettingsInterceptionPolicy.RootSignals = roots()
     ) = SettingsInterceptionPolicy.decide(
         signals = signals,
         selfProtectionEngaged = engaged,
-        strictPomodoroActive = strictPomodoro,
         deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
         maintenanceActive = maintenanceActive,
         rootSignals = rootSignals
@@ -297,12 +295,6 @@ class SettingsInterceptionPolicyTest {
             )
         ).isEqualTo(Decision.IGNORE)
         assertThat(SelfProtectionTargetScope.isFocusGuardTargetConfirmed()).isFalse()
-    }
-
-    @Test
-    fun `strict pomodoro still owns ordinary settings`() {
-        assertThat(decide(signals(), strictPomodoro = true))
-            .isEqualTo(Decision.POMODORO_LOCK)
     }
 
     private companion object {

@@ -19,7 +19,7 @@
     <string name="self_protection_term_title">Compromisso de autoproteção</string>
     <string name="self_protection_term_intro">O FocusGuard é uma ferramenta voluntária para apoiar o controle de hábitos. A proteção só é ativada por uma escolha feita neste aparelho.</string>
     <string name="self_protection_term_scope_title">O que será protegido</string>
-    <string name="self_protection_term_scope_body">Enquanto um bloqueio, limite ou filtro escolhido por você estiver ativo, tentativas de desativar a proteção ou remover o próprio FocusGuard serão interrompidas. A autoproteção não bloqueará a desinstalação nem os controles de outros aplicativos. No Pomodoro rigoroso, toda a navegação fora da tela de foco permanece indisponível pelo prazo escolhido.</string>
+    <string name="self_protection_term_scope_body">Enquanto um bloqueio, limite ou filtro escolhido por você estiver ativo, tentativas de desativar a proteção ou remover o próprio FocusGuard serão interrompidas. A autoproteção não bloqueará a desinstalação nem os controles de outros aplicativos.</string>
     <string name="self_protection_term_modes_title">Limites técnicos</string>
     <string name="self_protection_term_modes_body">No modo comum, a Acessibilidade reage às telas do Android e não oferece garantia absoluta contra a primeira tentativa. No modo Device Owner, o Android bloqueia desde a primeira tentativa somente a desinstalação do FocusGuard e, nas versões compatíveis, a parada forçada e a limpeza de dados; as demais restrições reforçadas são exibidas antes do provisionamento.</string>
     <string name="self_protection_term_exit_title">Como a proteção termina</string>

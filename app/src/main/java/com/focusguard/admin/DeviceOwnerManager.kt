@@ -104,18 +104,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             "com.android.vending"
         )
 
-        private val PHONE_LOCK_TASK_PACKAGES = listOf(
-            "com.android.dialer",
-            "com.google.android.dialer",
-            "com.android.phone",
-            "com.android.server.telecom",
-            "com.samsung.android.dialer",
-            "com.samsung.android.incallui",
-            "com.miui.dialer",
-            "com.coloros.dialer",
-            "com.oplus.dialer"
-        )
-
         /** Restrictions that remain active even during the ten-minute maintenance window. */
         private val ALWAYS_ON_RESTRICTIONS = listOf(
             UserManager.DISALLOW_FACTORY_RESET,
@@ -456,44 +444,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             dpm.lockNow()
         } catch (e: Exception) {
             FocusGuardLogger.log("Admin", "Erro ao travar dispositivo: ${e.message}")
-        }
-    }
-
-    /** Configura o Lock Task para o Pomodoro rigoroso. */
-    fun prepareStrictPomodoroLockTaskPackages() {
-        if (!isDeviceOwnerActive()) return
-        try {
-            val pm = context.packageManager
-            val allowedPackages = (listOf(context.packageName) + PHONE_LOCK_TASK_PACKAGES)
-                .distinct()
-                .filter { packageName ->
-                    packageName == context.packageName || runCatching {
-                        pm.getPackageInfo(packageName, 0)
-                        true
-                    }.getOrDefault(false)
-                }
-
-            dpm.setLockTaskPackages(componentName, allowedPackages.toTypedArray())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                dpm.setLockTaskFeatures(
-                    componentName,
-                    DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
-                )
-            }
-            Log.d("FocusGuardAdmin", "Lock Task rigoroso preparado: $allowedPackages")
-        } catch (e: Exception) {
-            FocusGuardLogger.logError("DeviceOwner", "Falha ao preparar Lock Task rigoroso", e)
-        }
-    }
-
-    /** Mantém somente o FocusGuard no allowlist após o fim do Pomodoro rigoroso. */
-    fun clearStrictPomodoroLockTaskPackages() {
-        if (!isDeviceOwnerActive()) return
-        try {
-            dpm.setLockTaskPackages(componentName, arrayOf(context.packageName))
-            Log.d("FocusGuardAdmin", "Lock Task rigoroso limpo")
-        } catch (e: Exception) {
-            FocusGuardLogger.logError("DeviceOwner", "Falha ao limpar Lock Task rigoroso", e)
         }
     }
 

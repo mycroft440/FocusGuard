@@ -14,7 +14,7 @@ import java.util.TimeZone
  * vida em vez do agregado `totalTimeInForeground`, que o Android arredonda para
  * baldes maiores que o dia e que alguns fabricantes inflam com uso em segundo
  * plano. Além disso respeita a [ProtectionHierarchy]: enquanto um bloqueio mais
- * forte (período agendado, jejum, Pomodoro rigoroso) segura o app, o limite
+ * forte (período agendado, jejum) segura o app, o limite
  * aguarda e esse tempo não entra na conta.
  *
  * Todos os pontos que decidem ou exibem o limite (serviço de acessibilidade,
