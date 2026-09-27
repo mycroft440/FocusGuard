@@ -85,16 +85,6 @@ import kotlinx.coroutines.withContext
 internal const val PERF_PASSWORD_TAG = "perf_password"
 internal const val PERF_PASSWORD_CONFIRMATION_TAG = "perf_password_confirmation"
 
-internal fun effectiveTargetBiometricEnabled(
-    mode: PasswordAppUnlockMode,
-    requestedForTypedCredential: Boolean,
-    globalBiometricUnlockEnabled: Boolean,
-    biometricAvailable: Boolean
-): Boolean {
-    if (!globalBiometricUnlockEnabled || !biometricAvailable) return false
-    return mode == PasswordAppUnlockMode.BIOMETRIC_ONLY || requestedForTypedCredential
-}
-
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun FinalConfigStep(
@@ -155,9 +145,8 @@ fun FinalConfigStep(
     var hidePatternTrace by rememberSaveable { mutableStateOf(false) }
     var showPatternDialog by remember { mutableStateOf(false) }
     var configError by remember { mutableStateOf<String?>(null) }
-    var targetBiometricRequested by rememberSaveable { mutableStateOf(false) }
 
-    val launchBiometricRewardedGate: (Boolean) -> Unit = { enableForCurrentTarget ->
+    val launchBiometricRewardedGate: () -> Unit = {
         RewardedGateCoordinator.launch(
             context = context,
             requiredAds = MonetizationPolicy.BIOMETRIC_UNLOCK_REWARDED_ADS,
@@ -166,7 +155,6 @@ fun FinalConfigStep(
         ) {
             authManager.setBiometricAppUnlockEnabled(true)
             biometricAppUnlockEnabled = true
-            if (enableForCurrentTarget) targetBiometricRequested = true
             configError = null
         }
     }
@@ -178,7 +166,6 @@ fun FinalConfigStep(
         patternCredential = ""
         hidePatternTrace = false
         showPatternDialog = false
-        targetBiometricRequested = false
         configError = null
     }
 
@@ -236,7 +223,6 @@ fun FinalConfigStep(
                     onModeSelected = { mode ->
                         unlockModeName = mode.name
                         biometricAppUnlockEnabled = authManager.isBiometricAppUnlockEnabled()
-                        targetBiometricRequested = false
                         configError = null
                     }
                 )
@@ -365,7 +351,7 @@ fun FinalConfigStep(
                                             enabled = biometricAvailable,
                                             onCheckedChange = { enable ->
                                                 if (enable) {
-                                                    launchBiometricRewardedGate(false)
+                                                    launchBiometricRewardedGate()
                                                 } else {
                                                     authManager.setBiometricAppUnlockEnabled(false)
                                                     biometricAppUnlockEnabled = false
@@ -401,33 +387,6 @@ fun FinalConfigStep(
                                     }
                                 }
                             }
-                        }
-
-                        if (
-                            unlockMode == PasswordAppUnlockMode.PASSWORD ||
-                            unlockMode == PasswordAppUnlockMode.PATTERN
-                        ) {
-                            TargetBiometricOptionCard(
-                                checked = targetBiometricRequested,
-                                biometricAvailable = biometricAvailable,
-                                globalBiometricUnlockEnabled = biometricAppUnlockEnabled,
-                                onCheckedChange = { enable ->
-                                    if (!enable) {
-                                        targetBiometricRequested = false
-                                    } else if (authManager.isBiometricAppUnlockEnabled()) {
-                                        biometricAppUnlockEnabled = true
-                                        targetBiometricRequested = true
-                                    } else {
-                                        launchBiometricRewardedGate(true)
-                                    }
-                                    configError = null
-                                },
-                                onEnroll = {
-                                    biometricEnrollmentLauncher.launch(
-                                        AppUnlockBiometricAuthenticator.createEnrollmentIntent(context)
-                                    )
-                                }
-                            )
                         }
 
                         configError?.let { message ->
@@ -504,12 +463,8 @@ fun FinalConfigStep(
                                 PasswordAppUnlockMode.BIOMETRIC_ONLY -> null
                             }
 
-                            val effectiveBiometricEnabled = effectiveTargetBiometricEnabled(
-                                mode = selectedMode,
-                                requestedForTypedCredential = targetBiometricRequested,
-                                globalBiometricUnlockEnabled = biometricAppUnlockEnabledNow,
-                                biometricAvailable = biometricReadyNow
-                            )
+                            val effectiveBiometricEnabled =
+                                biometricAppUnlockEnabledNow && biometricReadyNow
 
                             isSaving = true
                             scope.launch {
@@ -744,74 +699,6 @@ private fun UnlockModeChoiceButton(
                 contentDescription = null,
                 tint = if (enabled) AccentCyan else TextHint
             )
-        }
-    }
-}
-
-@Composable
-private fun TargetBiometricOptionCard(
-    checked: Boolean,
-    biometricAvailable: Boolean,
-    globalBiometricUnlockEnabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    onEnroll: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkBg),
-        border = BorderStroke(
-  1.dp,
-  if (checked) AccentCyan.copy(alpha = 0.42f) else TextHint.copy(alpha = 0.22f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-  modifier = Modifier.fillMaxWidth().padding(14.dp),
-  verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-  Row(
-      modifier = Modifier.fillMaxWidth(),
-      verticalAlignment = Alignment.CenterVertically
-  ) {
-      Column(modifier = Modifier.weight(1f)) {
-          Text(
-              stringResource(R.string.password_app_unlock_quick_biometric_title),
-              color = TextPrimary,
-              fontWeight = FontWeight.Bold,
-              fontSize = 14.sp
-          )
-          Spacer(Modifier.height(3.dp))
-          Text(
-              stringResource(
-                  if (globalBiometricUnlockEnabled) {
-                      R.string.password_app_unlock_quick_biometric_desc
-                  } else {
-                      R.string.password_app_unlock_biometric_rewarded_desc
-                  }
-              ),
-              color = TextSecondary,
-              fontSize = 12.sp
-          )
-      }
-      Switch(
-          checked = checked,
-          enabled = biometricAvailable,
-          onCheckedChange = onCheckedChange
-      )
-  }
-  if (!biometricAvailable) {
-      Text(
-          stringResource(R.string.password_app_unlock_biometric_unavailable),
-          color = TextHint,
-          fontSize = 12.sp
-      )
-      OutlinedButton(
-          onClick = onEnroll,
-          modifier = Modifier.fillMaxWidth()
-      ) {
-          Text(stringResource(R.string.password_app_unlock_biometric_reactivate_action))
-      }
-  }
         }
     }
 }
