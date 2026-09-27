@@ -287,6 +287,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var pendingSettingsProtectionUntilElapsed = 0L
     private var lastUnknownSourcesBlockElapsed = 0L
+    private var lastImmediateBlockedPackage: String? = null
+    private var lastImmediateBlockElapsed = 0L
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -704,6 +706,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                     )
                 ) return
             }
+
+            // Caminho imediato do bloqueio de apps (inclusive por senha): o evento do app
+            // bloqueado cobre a tela antes de qualquer outra etapa (motor de sites,
+            // resolução do pacote pela árvore, atualização de dados), para que o
+            // conteúdo do app não chegue a aparecer.
+            if (handleImmediateBlockedAppEvent(event, directPackage)) return
 
             // Bloqueio de fontes desconhecidas (Segurança extra): fecha as telas que
             // concedem "Instalar apps desconhecidos", sem precisar de Device Owner.
@@ -1267,6 +1275,38 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             }
         }
+    }
+
+    private fun handleImmediateBlockedAppEvent(
+        event: AccessibilityEvent,
+        directPackage: String
+    ): Boolean {
+        if (!isBlockingSessionActive || isPomodoroStrictActive) return false
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return false
+        if (directPackage.isBlank() ||
+            directPackage == packageName ||
+            directPackage == defaultLauncherPackage ||
+            directPackage in interceptionPackages ||
+            directPackage in focusModeAllowedAppsSet ||
+            (focusModeFallbackActive && directPackage in focusModeBlockedAppsSet)
+        ) return false
+        val className = event.className?.toString().orEmpty()
+        if (className.contains("Toast") || className.contains("PopupWindow")) return false
+        if (!ImmediateInterceptionPolicy.isBlockedTargetWindow(directPackage, blockedAppsSet)) {
+            return false
+        }
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        foregroundPackageName = directPackage
+        // Uma rajada de eventos do mesmo app vira um só bloqueio: a cortina já está
+        // na tela e a tela de bloqueio/senha já foi pedida.
+        if (directPackage == lastImmediateBlockedPackage &&
+            nowElapsed - lastImmediateBlockElapsed < IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS
+        ) return true
+        lastImmediateBlockedPackage = directPackage
+        lastImmediateBlockElapsed = nowElapsed
+        blockApp(directPackage, event.eventTime)
+        return true
     }
 
     private fun handleWindowStateChanged(
@@ -2928,6 +2968,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
         private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
         private const val UNKNOWN_SOURCES_BLOCK_DEBOUNCE_MILLIS = 800L
+        private const val IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS = 700L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
