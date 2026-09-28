@@ -27,9 +27,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,12 +43,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.database.AppDatabase
+import com.focusguard.utils.UsageLimitPauseStateStore
 import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.usage.BlockReleaseTimes
+import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.usage.UsageInterventionStore
 import com.focusguard.usage.UsageInterventionType
 import java.text.SimpleDateFormat
@@ -53,6 +59,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -135,7 +142,12 @@ private data class UsageImpactSnapshot(
     val windowMillis: Long,
     val interventionType: UsageInterventionType,
     val dailyLimitMinutes: Int?,
-    val endsAt: Long?
+    val endsAt: Long?,
+    /** Quando o app volta a abrir; null num bloqueio sem data final. */
+    val blockedUntil: Long?,
+    /** Bloqueio por períodos do dia: o trecho do dia em que o app fica liberado. */
+    val allowedWindow: BlockReleaseTimes.AllowedWindow?,
+    val scheduledPeriod: Boolean
 )
 
 @Composable
@@ -245,6 +257,9 @@ private fun UsageImpactScreen(
                 )
                 Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
 
+                ReleaseCard(data = data, compact = compact)
+                Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
+
                 Text(
                     text = impactDescription(data),
                     color = TextSecondary,
@@ -271,10 +286,89 @@ private fun UsageImpactScreen(
     }
 }
 
+/** Quanto tempo o app ainda fica bloqueado e, nos períodos do dia, quando fica liberado. */
+@Composable
+private fun ReleaseCard(data: UsageImpactSnapshot, compact: Boolean) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(data.blockedUntil) {
+        while (true) {
+            delay(15_000L)
+            now = System.currentTimeMillis()
+        }
+    }
+    val until = data.blockedUntil
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = if (compact) 10.dp else 13.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Fica bloqueado por mais",
+                color = TextSecondary,
+                fontSize = if (compact) 11.sp else 12.sp
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = if (until == null) "Sem data final" else formatRemaining(until - now),
+                color = TextPrimary,
+                fontSize = if (compact) 20.sp else 22.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            if (until != null) {
+                Text(
+                    text = "Liberado ${formatReleaseMoment(until, now)}",
+                    color = TextSecondary,
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    maxLines = 1
+                )
+            }
+            data.allowedWindow?.let { window ->
+                Spacer(Modifier.height(if (compact) 8.dp else 10.dp))
+                Text(
+                    "Período liberado",
+                    color = TextSecondary,
+                    fontSize = if (compact) 11.sp else 12.sp
+                )
+                Text(
+                    text = "Das ${hhmm(window.startHour, window.startMinute)} " +
+                        "às ${hhmm(window.endHour, window.endMinute)}",
+                    color = SuccessGreen,
+                    fontSize = if (compact) 16.sp else 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                if (window.restrictedToDays) {
+                    Text(
+                        "Nos dias sem bloqueio, o app fica liberado o dia todo.",
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        fontSize = if (compact) 10.sp else 11.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
 private fun impactDescription(data: UsageImpactSnapshot): String {
     val period = "Períodos equivalentes de ${formatWindow(data.windowMillis)}."
     return when (data.interventionType) {
         UsageInterventionType.TIME_BLOCK -> {
+            if (data.scheduledPeriod) {
+                val ruleEnd = data.endsAt?.takeIf { it > System.currentTimeMillis() }
+                return if (ruleEnd != null) {
+                    "$period Bloqueio por períodos ativo até ${formatTimestamp(ruleEnd)}."
+                } else {
+                    "$period Bloqueio por períodos do dia ativo."
+                }
+            }
             val end = data.endsAt?.takeIf { it > System.currentTimeMillis() }
             if (end != null) {
                 "$period Bloqueio ativo até ${formatTimestamp(end)}."
@@ -364,6 +458,26 @@ private suspend fun loadUsageImpact(
         UsageInterventionType.USAGE_LIMIT
     }
 
+    val timedSession = UsageImpactRouter.findActiveTimedSessionForApp(
+        context = context,
+        database = AppDatabase.getDatabase(context),
+        packageName = packageName,
+        nowMillis = now
+    )
+    val blockedUntil = when {
+        timedSession != null -> BlockReleaseTimes.scheduledWindowEnd(timedSession, now)
+        limit != null -> BlockReleaseTimes.usageLimitBlockedUntil(
+            limit = limit,
+            nowMillis = now,
+            pauseBlockedUntil = UsageLimitPauseStateStore.pauseBlockedUntil(
+                lockMode = limit.lockMode,
+                ruleEndMillis = limit.lockUntilTimestamp,
+                nowMillis = now
+            )
+        )
+        else -> intervention?.endsAt
+    }
+
     UsageImpactSnapshot(
         appName = label,
         beforeMillis = before,
@@ -372,7 +486,10 @@ private suspend fun loadUsageImpact(
         interventionType = type,
         dailyLimitMinutes = intervention?.dailyLimitMinutes
             ?: limit?.dailyLimitMinutes?.takeIf { it > 0 },
-        endsAt = intervention?.endsAt ?: limit?.lockUntilTimestamp
+        endsAt = intervention?.endsAt ?: limit?.lockUntilTimestamp,
+        blockedUntil = blockedUntil,
+        allowedWindow = timedSession?.let(BlockReleaseTimes::allowedWindow),
+        scheduledPeriod = timedSession?.isFixed24h == false
     )
 }
 
@@ -394,6 +511,33 @@ private fun formatWindow(millis: Long): String {
         else -> "$seconds s"
     }
 }
+
+private fun formatRemaining(millis: Long): String {
+    // Arredonda para cima: com 30 s restantes, "0 min" pareceria já liberado.
+    val totalMinutes = ((millis.coerceAtLeast(0L) + 59_999L) / 60_000L)
+    val days = totalMinutes / (24L * 60L)
+    val hours = (totalMinutes / 60L) % 24L
+    val minutes = totalMinutes % 60L
+    return when {
+        days > 0L -> "${days}d ${hours}h"
+        hours > 0L -> "${hours}h ${minutes}min"
+        else -> "$minutes min"
+    }
+}
+
+private fun formatReleaseMoment(at: Long, now: Long): String {
+    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(at))
+    val today = SimpleDateFormat("yyyyMMdd", Locale.US)
+    val tomorrow = Date(now + DAY_MILLIS)
+    return when (today.format(Date(at))) {
+        today.format(Date(now)) -> "hoje às $time"
+        today.format(tomorrow) -> "amanhã às $time"
+        else -> "em ${SimpleDateFormat("dd/MM", Locale.getDefault()).format(Date(at))} às $time"
+    }
+}
+
+private fun hhmm(hour: Int, minute: Int): String =
+    String.format(Locale.getDefault(), "%02d:%02d", hour, minute)
 
 private fun formatTimestamp(timestamp: Long): String =
     SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(timestamp))
