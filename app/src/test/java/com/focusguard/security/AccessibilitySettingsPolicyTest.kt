@@ -187,4 +187,35 @@ class AccessibilitySettingsPolicyTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `own service page markers identify the HardBlock service page`() {
+        val markers = AccessibilitySettingsPolicy.ownServicePageMarkers(
+            appLabel = "HardBlock",
+            serviceDescription = "O FocusGuard observa o aplicativo ou navegador em primeiro " +
+                "plano e o conteúdo visível da janela."
+        )
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsOwnServicePage(
+                listOf("HardBlock", "Atalho de HardBlock", "Configurações"),
+                markers
+            )
+        ).isTrue()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsOwnServicePage(
+                listOf(
+                    "O FocusGuard observa o aplicativo ou navegador em primeiro plano e o " +
+                        "conteúdo visível da janela para aplicar bloqueios."
+                ),
+                markers
+            )
+        ).isTrue()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsOwnServicePage(
+                listOf("TalkBack", "Atalho de TalkBack", "Configurações"),
+                markers
+            )
+        ).isFalse()
+    }
+
 }

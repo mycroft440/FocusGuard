@@ -1656,7 +1656,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             textMentionsFocusGuard = managedTextSignals.focusGuard,
             textMentionsDestructiveControl = managedTextSignals.destructiveControl,
             textMentionsEssentialSpecialAccess = managedTextSignals.essentialSpecialAccess,
-            textMentionsAppInfoGateway = managedTextSignals.appInfoGateway
+            textMentionsAppInfoGateway = managedTextSignals.appInfoGateway,
+            textMentionsOwnAccessibilityServicePage =
+                AccessibilitySettingsPolicy.textTargetsOwnServicePage(
+                    eventValues,
+                    ownServicePageMarkers
+                )
         )
 
         val masterRemovalTarget = when {
@@ -1696,7 +1701,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                 mentionsDeviceAdmin = ::rootMentionsDeviceAdmin,
                 mentionsFocusGuard = ::rootMentionsFocusGuard,
                 mentionsDestructiveControl = ::rootMentionsDestructiveControl,
-                mentionsEssentialSpecialAccess = ::rootMentionsEssentialSpecialAccess
+                mentionsEssentialSpecialAccess = ::rootMentionsEssentialSpecialAccess,
+                mentionsOwnAccessibilityServicePage = {
+                    ownServicePageRootCheckAllowed(event.eventType, nowElapsed) &&
+                        rootMentionsOwnAccessibilityServicePage()
+                }
             )
         )
 
@@ -1978,6 +1987,41 @@ class BlockingAccessibilityService : AccessibilityService() {
             searchTerms = AccessibilitySettingsPolicy.searchTerms,
             classifier = AccessibilitySettingsPolicy::textTargetsAccessibility,
             screenLabel = "Acessibilidade"
+        )
+    }
+
+    private val ownServicePageMarkers: List<String> by lazy {
+        AccessibilitySettingsPolicy.ownServicePageMarkers(
+            appLabel = getString(R.string.app_name),
+            serviceDescription = getString(R.string.accessibility_service_description_transparent)
+        )
+    }
+
+    private var lastOwnServicePageRootCheckElapsed = 0L
+
+    /**
+     * A troca de janela sempre confere a árvore. Mudanças de conteúdo (a página
+     * termina de carregar depois da troca) conferem no máximo a cada 300 ms,
+     * para não varrer a árvore do Configurações a cada rolagem.
+     */
+    private fun ownServicePageRootCheckAllowed(eventType: Int, nowElapsed: Long): Boolean {
+        val transition = eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        if (!transition &&
+            nowElapsed - lastOwnServicePageRootCheckElapsed < OWN_SERVICE_PAGE_ROOT_CHECK_INTERVAL_MS
+        ) return false
+        lastOwnServicePageRootCheckElapsed = nowElapsed
+        return true
+    }
+
+    private fun rootMentionsOwnAccessibilityServicePage(): Boolean {
+        val markers = ownServicePageMarkers
+        return rootContainsAny(
+            searchTerms = markers,
+            classifier = { values ->
+                AccessibilitySettingsPolicy.textTargetsOwnServicePage(values, markers)
+            },
+            screenLabel = "serviço de acessibilidade do HardBlock"
         )
     }
 
@@ -2886,6 +2930,7 @@ class BlockingAccessibilityService : AccessibilityService() {
          * All four are already in [requestedAccessibilityEventTypes], so this
          * widens nothing about what the service observes.
          */
+        private const val OWN_SERVICE_PAGE_ROOT_CHECK_INTERVAL_MS = 300L
         private val settingsInterceptionEventTypes = setOf(
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
