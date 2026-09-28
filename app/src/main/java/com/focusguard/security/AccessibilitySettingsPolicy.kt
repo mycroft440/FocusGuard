@@ -15,6 +15,9 @@ object AccessibilitySettingsPolicy {
         val accessibilityDisclosure: Boolean
     )
 
+    private const val OWN_SERVICE_DESCRIPTION_PREFIX_LENGTH = 48
+    private const val OWN_SERVICE_DESCRIPTION_MIN_LENGTH = 16
+
     // Must be initialized before the pre-normalized dictionaries below.
     private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
 
@@ -125,6 +128,38 @@ object AccessibilitySettingsPolicy {
         installedAccessibilityAppsTerms.map(::normalize)
     private val normalizedAccessibilityDisclosureSearchTerms =
         accessibilityDisclosureSearchTerms.map(::normalize)
+
+    /**
+     * Marcadores exclusivos da página do próprio serviço de acessibilidade do
+     * HardBlock: a descrição do serviço (texto nosso) e o rótulo do atalho
+     * ("Atalho de HardBlock"). Eles identificam essa página mesmo quando ela
+     * é aberta direto, por exemplo pela notificação do Android que leva ao
+     * interruptor do serviço, onde a palavra "Acessibilidade" não aparece.
+     */
+    fun ownServicePageMarkers(appLabel: String, serviceDescription: String): List<String> {
+        val label = appLabel.trim()
+        val descriptionPrefix = serviceDescription.trim()
+            .take(OWN_SERVICE_DESCRIPTION_PREFIX_LENGTH)
+            .trim()
+        return buildList {
+            if (descriptionPrefix.length >= OWN_SERVICE_DESCRIPTION_MIN_LENGTH) add(descriptionPrefix)
+            if (label.isNotEmpty()) {
+                add("Atalho de $label")
+                add("Atalho do $label")
+                add("$label shortcut")
+                add("Atajo de $label")
+                add("Atajo del $label")
+            }
+        }.distinct()
+    }
+
+    fun textTargetsOwnServicePage(
+        values: Iterable<CharSequence?>,
+        markers: Collection<String>
+    ): Boolean {
+        if (markers.isEmpty()) return false
+        return valuesContainAnyNormalized(normalizeValues(values), markers.map(::normalize))
+    }
 
     fun classTargetsAccessibility(className: String): Boolean {
         return accessibilityClassMarkers.any { marker ->

@@ -31,7 +31,8 @@ class SettingsInterceptionPolicyTest {
         textMentionsFocusGuard: Boolean = false,
         textMentionsDestructiveControl: Boolean = false,
         textMentionsEssentialSpecialAccess: Boolean = false,
-        textMentionsAppInfoGateway: Boolean = false
+        textMentionsAppInfoGateway: Boolean = false,
+        textMentionsOwnAccessibilityServicePage: Boolean = false
     ) = SettingsInterceptionPolicy.EventSignals(
         packageName = packageName,
         isViewClickedEvent = isViewClickedEvent,
@@ -51,7 +52,8 @@ class SettingsInterceptionPolicyTest {
         textMentionsFocusGuard = textMentionsFocusGuard,
         textMentionsDestructiveControl = textMentionsDestructiveControl,
         textMentionsEssentialSpecialAccess = textMentionsEssentialSpecialAccess,
-        textMentionsAppInfoGateway = textMentionsAppInfoGateway
+        textMentionsAppInfoGateway = textMentionsAppInfoGateway,
+        textMentionsOwnAccessibilityServicePage = textMentionsOwnAccessibilityServicePage
     )
 
     private fun roots(
@@ -59,13 +61,15 @@ class SettingsInterceptionPolicyTest {
         deviceAdmin: Boolean = false,
         focusGuard: Boolean = false,
         destructive: Boolean = false,
-        essential: Boolean = false
+        essential: Boolean = false,
+        ownServicePage: Boolean = false
     ) = SettingsInterceptionPolicy.RootSignals(
         mentionsAccessibility = { accessibility },
         mentionsDeviceAdmin = { deviceAdmin },
         mentionsFocusGuard = { focusGuard },
         mentionsDestructiveControl = { destructive },
-        mentionsEssentialSpecialAccess = { essential }
+        mentionsEssentialSpecialAccess = { essential },
+        mentionsOwnAccessibilityServicePage = { ownServicePage }
     )
 
     private fun decide(
@@ -295,6 +299,42 @@ class SettingsInterceptionPolicyTest {
             )
         ).isEqualTo(Decision.IGNORE)
         assertThat(SelfProtectionTargetScope.isFocusGuardTargetConfirmed()).isFalse()
+    }
+
+    @Test
+    fun `own accessibility service page opened directly is protected`() {
+        // Aberta pela notificação do Android: só "HardBlock", o atalho e a
+        // descrição do serviço aparecem, sem a palavra "Acessibilidade".
+        assertThat(
+            decide(
+                signals(
+                    isWindowTransitionEvent = true,
+                    isGenericSubSettings = true,
+                    textMentionsFocusGuard = true
+                ),
+                rootSignals = roots(ownServicePage = true)
+            )
+        ).isEqualTo(Decision.PROTECT)
+        assertThat(
+            decide(signals(textMentionsOwnAccessibilityServicePage = true))
+        ).isEqualTo(Decision.PROTECT)
+    }
+
+    @Test
+    fun `own accessibility service page stays open without an active protection`() {
+        assertThat(
+            decide(
+                signals(textMentionsOwnAccessibilityServicePage = true),
+                engaged = false,
+                rootSignals = roots(ownServicePage = true)
+            )
+        ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `samsung accessibility package is watched`() {
+        assertThat(SettingsInterceptionPolicy.interceptionPackages)
+            .contains("com.samsung.accessibility")
     }
 
     private companion object {

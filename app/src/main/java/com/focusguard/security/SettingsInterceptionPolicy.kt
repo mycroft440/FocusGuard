@@ -16,7 +16,9 @@ object SettingsInterceptionPolicy {
         "com.miui.securitycenter",
         "com.huawei.systemmanager",
         "com.samsung.android.sm",
-        "com.samsung.android.sm_cn"
+        "com.samsung.android.sm_cn",
+        // One UI hospeda parte da área de Acessibilidade fora do Configurações.
+        "com.samsung.accessibility"
     )
 
     val packageInstallerPackages = setOf(
@@ -58,7 +60,9 @@ object SettingsInterceptionPolicy {
         val textMentionsFocusGuard: Boolean,
         val textMentionsDestructiveControl: Boolean,
         val textMentionsEssentialSpecialAccess: Boolean,
-        val textMentionsAppInfoGateway: Boolean = false
+        val textMentionsAppInfoGateway: Boolean = false,
+        /** A página do próprio serviço de acessibilidade do HardBlock. */
+        val textMentionsOwnAccessibilityServicePage: Boolean = false
     )
 
     /**
@@ -70,13 +74,15 @@ object SettingsInterceptionPolicy {
         mentionsDeviceAdmin: () -> Boolean,
         mentionsFocusGuard: () -> Boolean,
         mentionsDestructiveControl: () -> Boolean,
-        mentionsEssentialSpecialAccess: () -> Boolean
+        mentionsEssentialSpecialAccess: () -> Boolean,
+        mentionsOwnAccessibilityServicePage: () -> Boolean = { false }
     ) {
         val mentionsAccessibility = memoized(mentionsAccessibility)
         val mentionsDeviceAdmin = memoized(mentionsDeviceAdmin)
         val mentionsFocusGuard = memoized(mentionsFocusGuard)
         val mentionsDestructiveControl = memoized(mentionsDestructiveControl)
         val mentionsEssentialSpecialAccess = memoized(mentionsEssentialSpecialAccess)
+        val mentionsOwnAccessibilityServicePage = memoized(mentionsOwnAccessibilityServicePage)
 
         private fun memoized(source: () -> Boolean): () -> Boolean {
             val cached by lazy(LazyThreadSafetyMode.NONE) { source() }
@@ -120,6 +126,17 @@ object SettingsInterceptionPolicy {
             } else {
                 Decision.IGNORE
             }
+        }
+
+        // A página com o interruptor do serviço do HardBlock pode ser aberta
+        // direto (notificação "pode ver e controlar sua tela", atalho, busca),
+        // sem a palavra "Acessibilidade" na tela. Ela é reconhecida pela
+        // descrição do serviço ou pelo rótulo "Atalho de HardBlock", textos que
+        // só existem nessa página.
+        if (signals.textMentionsOwnAccessibilityServicePage ||
+            rootSignals.mentionsOwnAccessibilityServicePage()
+        ) {
+            return Decision.PROTECT
         }
 
         // ACTION_ADD_DEVICE_ADMIN is a short app-initiated enrollment window.
