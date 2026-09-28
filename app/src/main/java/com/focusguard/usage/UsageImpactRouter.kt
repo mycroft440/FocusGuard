@@ -87,7 +87,7 @@ object UsageImpactRouter {
         )
     }
 
-    private suspend fun findActiveTimedSessionForApp(
+    internal suspend fun findActiveTimedSessionForApp(
         context: Context,
         database: AppDatabase,
         packageName: String,

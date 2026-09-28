@@ -209,6 +209,19 @@ object UsageLimitPauseStateStore {
         return evaluation.shouldBlock
     }
 
+    /** Fim da pausa de 30 minutos em curso de uma regra, sem alterar o estado. */
+    fun pauseBlockedUntil(lockMode: String, ruleEndMillis: Long?, nowMillis: Long): Long? {
+        if (!UsageLimitBehaviorPolicy.isPauseMode(lockMode)) return null
+        val end = ruleEndMillis ?: return null
+        val identifier = UsageLimitBehaviorPolicy.identifierFrom(lockMode)
+            .ifBlank { "rule_$end" }
+        val state = synchronized(stateLock) { readPauseState(safeKey(identifier)) }
+            ?: return null
+        return state.blockedUntilMillis.takeIf {
+            state.ruleEndMillis == end && it > nowMillis
+        }
+    }
+
     /**
      * Revokes the once-per-day PAUSE_30 release for one configured rule without
      * touching the rule deadline. This is deliberately synchronous when backed by
