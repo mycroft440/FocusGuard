@@ -152,7 +152,24 @@ public final class SiteBlockEngine {
         verifiedBrowsers = new VerifiedBrowsers(service);
         IdentifiedBrowsers.load(service);
         redirectController = new BlockRedirectController(
-                service, mainHandler, urlExtractor, this::scheduleReread);
+                service, mainHandler, urlExtractor, this::scheduleReread, this::redirectUrl);
+    }
+
+    /**
+     * Destino escolhido em Configurações. Se ele passou a ser bloqueado (entrou na lista, no filtro
+     * de pornografia ou num bloqueio do FocusGuard), volta ao Google: o destino fica isento da
+     * lista para não entrar em loop, e um destino bloqueado viraria uma brecha.
+     */
+    private String redirectUrl() {
+        String url = RedirectDestinationStore.url(service);
+        if (RedirectDestinationStore.DEFAULT_URL.equals(url)) return url;
+        if (store == null) store = new BlockedSitesStore(service);
+        boolean blocked = RedirectDestinationStore.isBlockedBySitesList(store, url)
+                || (externalRules != null && externalRules.blocksAdultContent()
+                        && AdultContentFilter.blocksUrl(url))
+                || (externalRules != null
+                        && externalRules.decide(service.getPackageName(), url) != ExternalRules.NONE);
+        return blocked ? RedirectDestinationStore.DEFAULT_URL : url;
     }
 
     /**
@@ -1085,7 +1102,7 @@ public final class SiteBlockEngine {
 
         if (redirectController == null) {
             redirectController = new BlockRedirectController(
-                service, mainHandler, urlExtractor, this::scheduleReread);
+                service, mainHandler, urlExtractor, this::scheduleReread, this::redirectUrl);
         }
         redirectController.start(packageName);
     }

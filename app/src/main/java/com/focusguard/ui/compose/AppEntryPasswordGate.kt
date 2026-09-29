@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.withResumed
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppEntryAuthSession
@@ -110,6 +112,9 @@ fun AppEntryPasswordGate(
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var patternResetKey by remember { mutableIntStateOf(0) }
+    // Geração em que a digital já abriu sozinha. Sobrevive à rotação para o quadro não
+    // abrir de novo por cima dele mesmo; uma nova volta ao app abre outra vez.
+    var biometricAutoPromptGeneration by rememberSaveable { mutableStateOf(0L) }
 
     val wrongCredentialMessage = stringResource(R.string.app_entry_lock_wrong_credential)
     val unavailableMessage = stringResource(R.string.app_entry_lock_unavailable)
@@ -253,6 +258,18 @@ fun AppEntryPasswordGate(
                     },
                     onCancelled = { error = null }
                 )
+            }
+
+            // Com a digital liberada, o quadro do sistema abre sozinho ao entrar. A tela comum
+            // fica atrás dele: se a pessoa cancelar, o botão, a senha e o padrão continuam ali.
+            LaunchedEffect(state.generation, biometricAllowed) {
+                if (!biometricAllowed || biometricAutoPromptGeneration == state.generation) {
+                    return@LaunchedEffect
+                }
+                activity.lifecycle.withResumed {
+                    biometricAutoPromptGeneration = state.generation
+                    launchBiometric()
+                }
             }
 
             AppEntryLockScreen(

@@ -69,6 +69,7 @@ import com.focusguard.data.UserProfile
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.security.PermissionRevocationFlow
 import com.focusguard.security.SelfProtectionStateStore
+import com.focusguard.sitesblocker.RedirectDestinationStore
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.RemoveAllBlocksActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
@@ -85,6 +86,7 @@ import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.launch
 
 private const val DEVELOPER_MODE_ENABLED = false
@@ -111,6 +113,10 @@ fun SettingsScreen(
     var showDeveloperMode by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
     var showPremium by remember { mutableStateOf(false) }
+    var showRedirectDestination by remember { mutableStateOf(false) }
+    var redirectDestinationUrl by remember {
+        mutableStateOf(RedirectDestinationStore.url(context))
+    }
     val isPremium by PremiumManager.isPremiumFlow.collectAsState(
         initial = PremiumManager.isPremium(context)
     )
@@ -209,6 +215,15 @@ fun SettingsScreen(
                 onClick = onSitesBlockerClick
             )
             SettingsItem(
+                Icons.Default.Language,
+                stringResource(R.string.settings_redirect_destination_title),
+                stringResource(
+                    R.string.settings_redirect_destination_subtitle,
+                    redirectDestinationDisplay(redirectDestinationUrl)
+                ),
+                onClick = { showRedirectDestination = true }
+            )
+            SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.master_remove_all_blocks_title),
                 stringResource(R.string.master_remove_all_blocks_subtitle),
@@ -271,6 +286,17 @@ fun SettingsScreen(
         PremiumDialog(onDismiss = { showPremium = false })
     }
 
+    if (showRedirectDestination) {
+        RedirectDestinationDialog(
+            currentUrl = redirectDestinationUrl,
+            onDismiss = { showRedirectDestination = false },
+            onSaved = { url ->
+                redirectDestinationUrl = url
+                showRedirectDestination = false
+            }
+        )
+    }
+
     if (showRevokeConfirmation) {
         RevokePermissionsConfirmationDialog(
             onDismiss = { showRevokeConfirmation = false },
@@ -303,6 +329,83 @@ fun SettingsScreen(
     if (revocationWorking) {
         RevokePermissionsProgressDialog()
     }
+}
+
+/** "https://google.com" → "google.com"; o HTTP fica visível por ser a exceção. */
+private fun redirectDestinationDisplay(url: String): String = url.removePrefix("https://")
+
+/**
+ * Escolhe o site que o navegador abre depois de um site bloqueado. Um destino que algum
+ * bloqueio ativo pega é recusado: o destino fica isento da lista para não entrar em loop.
+ */
+@Composable
+private fun RedirectDestinationDialog(
+    currentUrl: String,
+    onDismiss: () -> Unit,
+    onSaved: (String) -> Unit
+) {
+    val context = LocalContext.current
+    var input by remember { mutableStateOf(redirectDestinationDisplay(currentUrl)) }
+    var errorRes by remember { mutableStateOf<Int?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_redirect_destination_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.settings_redirect_destination_helper),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = {
+                        input = it
+                        errorRes = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = errorRes != null,
+                    placeholder = { Text("google.com") }
+                )
+                errorRes?.let { res ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(res),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val activeRules = SelfProtectionStateStore.read(context).blockedSites
+                    val result = RedirectDestinationStore.save(context, input) { url ->
+                        WebsiteBlocker.findMatchingRulesIgnoringGrants(url, activeRules)
+                            .isNotEmpty()
+                    }
+                    when (result) {
+                        RedirectDestinationStore.SaveResult.SAVED ->
+                            onSaved(RedirectDestinationStore.url(context))
+                        RedirectDestinationStore.SaveResult.INVALID_URL ->
+                            errorRes = R.string.settings_redirect_destination_invalid
+                        RedirectDestinationStore.SaveResult.BLOCKED ->
+                            errorRes = R.string.settings_redirect_destination_blocked
+                    }
+                }
+            ) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable

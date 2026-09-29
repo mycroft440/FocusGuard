@@ -20,14 +20,14 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.function.Supplier;
+
 final class BlockRedirectController {
     interface Listener {
         /** A troca desistiu com o site talvez ainda na tela: ele deve ser conferido de novo. */
         void onRedirectReleased(String packageName);
     }
 
-    private static final String REDIRECT_URL = "https://google.com";
-    private static final String REDIRECT_HOST = "google.com";
     private static final String LOG_TAG = "BloquearSitesRedirect";
 
     private static final long REDIRECT_DEBOUNCE_MS = 1200L;
@@ -56,6 +56,9 @@ final class BlockRedirectController {
     private final UrlExtractor urlExtractor;
     private final AddressBarNavigator addressBarNavigator;
     private final Listener listener;
+    // Destino escolhido em Configurações (Google por padrão), já sem os destinos bloqueados.
+    private final Supplier<String> destination;
+    private String redirectUrl = RedirectDestinationStore.DEFAULT_URL;
 
     private WindowManager windowManager;
     private LinearLayout blockCurtain;
@@ -90,12 +93,14 @@ final class BlockRedirectController {
             AccessibilityService service,
             Handler mainHandler,
             UrlExtractor urlExtractor,
-            Listener listener
+            Listener listener,
+            Supplier<String> destination
     ) {
         this.service = service;
         this.mainHandler = mainHandler;
         this.urlExtractor = urlExtractor;
         this.listener = listener;
+        this.destination = destination;
         this.addressBarNavigator = new AddressBarNavigator(service, mainHandler);
         this.windowManager = (WindowManager) service.getSystemService(AccessibilityService.WINDOW_SERVICE);
     }
@@ -121,11 +126,16 @@ final class BlockRedirectController {
     }
 
     /**
-     * Página inicial do Google, destino do redirecionamento. Uma busca explícita no Google não conta:
-     * ela é o que o filtro de pornografia bloqueia, e a troca só termina quando ela sai da barra.
+     * Site de destino do redirecionamento (o Google, se nenhum outro foi escolhido). Uma busca
+     * explícita nele não conta: ela é o que o filtro de pornografia bloqueia, e a troca só termina
+     * quando ela sai da barra.
      */
     boolean isRedirectDestination(String visibleUrl) {
-        return REDIRECT_HOST.equals(DomainMatcher.extractHost(visibleUrl))
+        // Durante uma troca vale o destino dela, mesmo que a configuração mude no meio.
+        String url = redirectPackage != null ? redirectUrl : destination.get();
+        String host = DomainMatcher.extractHost(url);
+        return host != null
+                && host.equals(DomainMatcher.extractHost(visibleUrl))
                 && !AdultContentFilter.blocksUrl(visibleUrl);
     }
 
@@ -137,6 +147,7 @@ final class BlockRedirectController {
         mainHandler.removeCallbacks(retryAddressBarRunnable);
         addressBarNavigator.cancel();
         redirectPackage = packageName;
+        redirectUrl = destination.get();
         redirectFailed = false;
         newTabFallbackUsed = false;
         searchScreenBrowser = AddressBarNavigator.opensSearchScreen(
@@ -217,7 +228,7 @@ final class BlockRedirectController {
         // tela, e o site bloqueado não pode receber toques do usuário nesse meio tempo.
         if (!addressBarNavigator.start(
                 redirectPackage,
-                REDIRECT_URL,
+                redirectUrl,
                 this::onAddressBarNavigationFinished,
                 () -> setCurtainPassThrough(false))) {
             return false;
@@ -326,7 +337,7 @@ final class BlockRedirectController {
         lastRedirectAt = now;
         redirectFailed = false;
 
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(REDIRECT_URL));
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(redirectUrl));
         intent.setPackage(redirectPackage);
         intent.addCategory(Intent.CATEGORY_BROWSABLE);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -336,7 +347,7 @@ final class BlockRedirectController {
             service.startActivity(intent);
         } catch (ActivityNotFoundException | SecurityException e) {
             redirectFailed = true;
-            Log.w(LOG_TAG, "Não foi possível abrir o Google no navegador bloqueado.", e);
+            Log.w(LOG_TAG, "Não foi possível abrir o destino no navegador bloqueado.", e);
         }
 
         updateRetryButton();
@@ -346,7 +357,7 @@ final class BlockRedirectController {
         mainHandler.removeCallbacks(redirectCheckRunnable);
         if (redirectPackage == null) return;
 
-        // Enquanto a barra é preenchida, ela já mostra google.com sem a navegação ter ocorrido.
+        // Enquanto a barra é preenchida, ela já mostra o destino sem a navegação ter ocorrido.
         if (addressBarNavigator.isRunning() || navigationPending) return;
 
         AccessibilityNodeInfo root = foregroundApplicationRoot();
@@ -354,7 +365,7 @@ final class BlockRedirectController {
         boolean browserInFront = redirectPackage.equals(packageName);
 
         if (browserInFront) {
-            // Com a tela de pesquisa ainda aberta (Opera GX e Mi Browser), google.com é só o texto
+            // Com a tela de pesquisa ainda aberta (Opera GX e Mi Browser), o destino é só o texto
             // digitado: a chegada só conta com ela fechada.
             String visibleUrl = urlExtractor.extract(root, null, packageName);
             if (isRedirectDestination(visibleUrl)

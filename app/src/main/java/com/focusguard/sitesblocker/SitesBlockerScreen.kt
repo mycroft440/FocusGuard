@@ -289,7 +289,7 @@ fun SitesBlockerScreen(onBack: () -> Unit) {
                 Text(
                     "Para bloquear os sites que você escolher, o app precisa usar o serviço de acessibilidade para ler o texto visível da barra de endereço dos navegadores e identificar o domínio aberto.\n\n" +
                         "A URL é comparada somente no aparelho com a sua lista de bloqueio. O app não envia URLs, histórico ou a lista de sites a terceiros e não altera configurações sem sua ação.\n\n" +
-                        "Quando um domínio bloqueado é detectado, o app cobre a tela e leva o navegador para o Google: toca na barra de endereço, digita google.com e confirma, trocando o site da aba atual. Se não conseguir, abre o Google em uma aba nova.\n\n" +
+                        "Quando um domínio bloqueado é detectado, o app cobre a tela e leva o navegador para o destino escolhido em Configurações (o Google, por padrão): toca na barra de endereço, digita o endereço e confirma, trocando o site da aba atual. Se não conseguir, abre o destino em uma aba nova.\n\n" +
                         "Enquanto houver sites na lista ou o bloqueio de pornografia estiver ligado, só os navegadores suportados ficam liberados: os demais são fechados ao abrir, voltando para a tela inicial.\n\n" +
                         "Com o bloqueio de pornografia ligado, o app também lê, somente no aparelho, o texto das páginas abertas (títulos, resultados de busca e o que foi pesquisado) para identificar conteúdo adulto. Nada é enviado para fora do aparelho."
                 )
