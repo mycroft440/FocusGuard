@@ -55,6 +55,12 @@
     <string name="block_type_remaining_hours">%1$d hour(s) left until unlock</string>
     <string name="block_type_remaining_less_than_hour">Less than an hour left</string>
     <string name="block_type_remaining_elapsed">Period ended</string>
+    <string name="block_type_schedule_start">Начало: %1$s</string>
+    <string name="block_type_schedule_end">Окончание: %1$s</string>
+    <string name="block_type_schedule_no_end">Окончание: без даты</string>
+    <string name="block_type_schedule_hours">Время: с %1$s до %2$s</string>
+    <string name="block_type_schedule_days">Дни: %1$s</string>
+    <string name="block_type_schedule_every_day">Каждый день</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -93,6 +93,11 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.WebsiteBlocker
+import java.text.DateFormat
+import java.text.DateFormatSymbols
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * The four protection choices shown on the Home screen.
@@ -349,6 +354,7 @@ fun BlockTypeDetailScreen(
                                     BlockedEntryRow(
                                         entry = entry,
                                         accent = type.accent,
+                                        showSchedule = type != BlockTypeUi.PASSWORD,
                                         onRemove = if (type == BlockTypeUi.PASSWORD) {
                                             { removalTarget = entry }
                                         } else {
@@ -371,6 +377,7 @@ fun BlockTypeDetailScreen(
                                     BlockedEntryRow(
                                         entry = entry,
                                         accent = type.accent,
+                                        showSchedule = type != BlockTypeUi.PASSWORD,
                                         onRemove = if (type == BlockTypeUi.PASSWORD) {
                                             { removalTarget = entry }
                                         } else {
@@ -700,6 +707,7 @@ private fun BlockedSectionHeader(text: String, accent: Color) {
 private fun BlockedEntryRow(
     entry: BlockingSessionManager.BlockOverview.Entry,
     accent: Color,
+    showSchedule: Boolean = false,
     onRemove: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -755,6 +763,16 @@ private fun BlockedEntryRow(
                     color = accent,
                     fontSize = 12.sp
                 )
+                if (showSchedule) {
+                    entryScheduleLines(entry).forEach { line ->
+                        Text(
+                            text = line,
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
             }
             onRemove?.let { remove ->
                 Spacer(Modifier.width(8.dp))
@@ -799,4 +817,72 @@ private fun entryStatusText(
         BlockCountdownPolicy.Remaining.Elapsed ->
             stringResource(R.string.block_type_remaining_elapsed)
     }
+}
+
+/**
+ * Início, término, horário e dias do bloqueio, uma informação por linha.
+ *
+ * Só entra o que o bloqueio de fato tem: um jejum 24h não ganha linha de
+ * horário, e dias da semana só aparecem quando o bloqueio foi restrito a eles
+ * (ou, num período do dia, como "todos os dias" quando não foi).
+ */
+@Composable
+private fun entryScheduleLines(
+    entry: BlockingSessionManager.BlockOverview.Entry
+): List<String> {
+    val context = LocalContext.current
+    val locale = remember(context) { context.resources.configuration.locales[0] }
+    val dateTimeFormat = remember(locale) {
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, locale)
+    }
+    val timeFormat = remember(context) {
+        android.text.format.DateFormat.getTimeFormat(context)
+    }
+
+    val lines = mutableListOf<String>()
+    entry.dailyWindow?.let { window ->
+        lines += stringResource(
+            R.string.block_type_schedule_hours,
+            formatMinutesOfDay(window.startMinutes, timeFormat),
+            formatMinutesOfDay(window.endMinutes, timeFormat)
+        )
+    }
+    when {
+        entry.daysOfWeek.isNotEmpty() && entry.daysOfWeek.size < 7 -> lines += stringResource(
+            R.string.block_type_schedule_days,
+            weekdayNames(entry.daysOfWeek, locale)
+        )
+        entry.daysOfWeek.size == 7 || entry.dailyWindow != null -> lines += stringResource(
+            R.string.block_type_schedule_days,
+            stringResource(R.string.block_type_schedule_every_day)
+        )
+    }
+    entry.startAtMillis?.let { start ->
+        lines += stringResource(
+            R.string.block_type_schedule_start,
+            dateTimeFormat.format(Date(start))
+        )
+    }
+    lines += entry.unlockAtMillis?.let { end ->
+        stringResource(R.string.block_type_schedule_end, dateTimeFormat.format(Date(end)))
+    } ?: stringResource(R.string.block_type_schedule_no_end)
+    return lines
+}
+
+private fun formatMinutesOfDay(minutes: Int, format: DateFormat): String {
+    val calendar = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, minutes / 60)
+        set(Calendar.MINUTE, minutes % 60)
+        set(Calendar.SECOND, 0)
+    }
+    return format.format(calendar.time)
+}
+
+/** Nomes curtos dos dias no idioma do aparelho, na ordem recebida. */
+internal fun weekdayNames(days: List<Int>, locale: Locale): String {
+    val names = DateFormatSymbols.getInstance(locale).shortWeekdays
+    return days.mapNotNull { day -> names.getOrNull(day)?.takeIf { it.isNotBlank() } }
+        .joinToString(", ") { name ->
+            name.trimEnd('.').replaceFirstChar { it.titlecase(locale) }
+        }
 }

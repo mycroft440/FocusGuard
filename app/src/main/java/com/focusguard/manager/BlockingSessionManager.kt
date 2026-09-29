@@ -124,14 +124,69 @@ class BlockingSessionManager @Inject constructor(
          * @param identifier package name for an app, normalized rule for a site.
          * @param dailyLimitMinutes only set for daily-limit entries.
          * @param unlockAtMillis only set for time-bound blocks; null means the
-         *   block runs until the user ends it.
+         *   block runs until the user ends it. For a daily limit it is the end of
+         *   the whole rule, not of the day's block.
+         * @param startAtMillis when the block (or the limit) started counting.
+         * @param dailyWindow the blocked hours of a daily-period block; null when
+         *   the block holds all day.
+         * @param daysOfWeek [java.util.Calendar.DAY_OF_WEEK] values the block is
+         *   restricted to, Monday first; empty means no restriction.
          */
         data class Entry(
             val identifier: String,
             val isWebsite: Boolean,
             val dailyLimitMinutes: Int? = null,
-            val unlockAtMillis: Long? = null
+            val unlockAtMillis: Long? = null,
+            val startAtMillis: Long? = null,
+            val dailyWindow: DailyWindow? = null,
+            val daysOfWeek: List<Int> = emptyList()
         )
+
+        /** Blocked hours of the day, in minutes since midnight; may cross midnight. */
+        data class DailyWindow(val startMinutes: Int, val endMinutes: Int)
+
+        internal data class Schedule(
+            val dailyWindow: DailyWindow?,
+            val daysOfWeek: List<Int>,
+            val startAtMillis: Long
+        )
+
+        companion object {
+            // Segunda primeiro, como o usuário lê a semana na hora de configurar.
+            private val WEEK_ORDER = listOf(
+                Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY,
+                Calendar.THURSDAY, Calendar.FRIDAY, Calendar.SATURDAY, Calendar.SUNDAY
+            )
+
+            /** "1,2,3" (Calendar.DAY_OF_WEEK, como persistido) → dias válidos, segunda primeiro. */
+            fun parseDaysOfWeek(raw: String): List<Int> {
+                val days = raw.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+                return WEEK_ORDER.filter { it in days }
+            }
+
+            internal fun scheduleOf(session: BlockSession): Schedule {
+                val window = if (session.isFixed24h) {
+                    null
+                } else {
+                    DailyWindow(
+                        startMinutes = session.recurringStartHour * 60 +
+                            session.recurringStartMinute,
+                        endMinutes = session.recurringEndHour * 60 +
+                            session.recurringEndMinute
+                    )
+                }
+                val days = if (session.isRecurring) {
+                    parseDaysOfWeek(session.recurringDaysOfWeek)
+                } else {
+                    emptyList()
+                }
+                return Schedule(
+                    dailyWindow = window,
+                    daysOfWeek = days,
+                    startAtMillis = session.startTime
+                )
+            }
+        }
     }
 
     /**
@@ -170,19 +225,11 @@ class BlockingSessionManager @Inject constructor(
         )
 
         val scheduledTimeEntries = scheduledTimeSessions.flatMap { session ->
-            buildEntries(
-                appPackages = getAppsForSessions(listOf(session.id)),
-                websiteRules = getSitesForSessions(listOf(session.id)),
-                unlockAtMillis = session.endTime
-            )
+            buildSessionEntries(session)
         }.distinctBy { it.identifier }
 
         val fastEntries = continuousTimeSessions.flatMap { session ->
-            buildEntries(
-                appPackages = getAppsForSessions(listOf(session.id)),
-                websiteRules = getSitesForSessions(listOf(session.id)),
-                unlockAtMillis = session.endTime
-            )
+            buildSessionEntries(session)
         }.distinctBy { it.identifier }
 
         val appLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
@@ -191,13 +238,17 @@ class BlockingSessionManager @Inject constructor(
             BlockOverview.Entry(
                 identifier = limit.packageName,
                 isWebsite = false,
-                dailyLimitMinutes = limit.dailyLimitMinutes
+                dailyLimitMinutes = limit.dailyLimitMinutes,
+                unlockAtMillis = limit.lockUntilTimestamp,
+                startAtMillis = limit.createdAt
             )
         } + websiteLimits.map { limit ->
             BlockOverview.Entry(
                 identifier = WebsiteBlocker.normalizeRule(limit.domain),
                 isWebsite = true,
-                dailyLimitMinutes = limit.dailyLimitMinutes
+                dailyLimitMinutes = limit.dailyLimitMinutes,
+                unlockAtMillis = limit.lockUntilTimestamp,
+                startAtMillis = limit.createdAt
             )
         }
 
@@ -207,6 +258,15 @@ class BlockingSessionManager @Inject constructor(
             scheduledTimeEntries = scheduledTimeEntries.sortedBy { it.identifier },
             dopamineFastEntries = fastEntries.sortedBy { it.identifier }
         )
+    }
+
+    private suspend fun buildSessionEntries(session: BlockSession): List<BlockOverview.Entry> {
+        val (window, days, startAt) = BlockOverview.scheduleOf(session)
+        return buildEntries(
+            appPackages = getAppsForSessions(listOf(session.id)),
+            websiteRules = getSitesForSessions(listOf(session.id)),
+            unlockAtMillis = session.endTime
+        ).map { it.copy(startAtMillis = startAt, dailyWindow = window, daysOfWeek = days) }
     }
 
     private fun buildEntries(

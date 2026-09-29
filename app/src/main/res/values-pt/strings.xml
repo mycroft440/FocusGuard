@@ -55,6 +55,12 @@
     <string name="block_type_remaining_hours">Faltam %1$d hora(s) para o desbloqueio</string>
     <string name="block_type_remaining_less_than_hour">Falta menos de uma hora</string>
     <string name="block_type_remaining_elapsed">Prazo encerrado</string>
+    <string name="block_type_schedule_start">Início: %1$s</string>
+    <string name="block_type_schedule_end">Término: %1$s</string>
+    <string name="block_type_schedule_no_end">Término: sem data definida</string>
+    <string name="block_type_schedule_hours">Horário: %1$s às %2$s</string>
+    <string name="block_type_schedule_days">Dias: %1$s</string>
+    <string name="block_type_schedule_every_day">Todos os dias</string>
 
     <!-- Seletor de duração -->
     <string name="duration_unit_hours">horas</string>

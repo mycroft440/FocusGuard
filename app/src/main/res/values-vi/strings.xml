@@ -55,6 +55,12 @@
     <string name="block_type_remaining_hours">%1$d hour(s) left until unlock</string>
     <string name="block_type_remaining_less_than_hour">Less than an hour left</string>
     <string name="block_type_remaining_elapsed">Period ended</string>
+    <string name="block_type_schedule_start">Bắt đầu: %1$s</string>
+    <string name="block_type_schedule_end">Kết thúc: %1$s</string>
+    <string name="block_type_schedule_no_end">Kết thúc: không có ngày</string>
+    <string name="block_type_schedule_hours">Giờ: %1$s đến %2$s</string>
+    <string name="block_type_schedule_days">Ngày: %1$s</string>
+    <string name="block_type_schedule_every_day">Hằng ngày</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>
