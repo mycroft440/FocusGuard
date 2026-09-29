@@ -89,14 +89,11 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.launch
 
-private const val DEVELOPER_MODE_ENABLED = false
-
 @Composable
 fun SettingsScreen(
     profile: UserProfile,
     onProfileClick: () -> Unit,
     onLanguageClick: () -> Unit,
-    onSitesBlockerClick: () -> Unit,
     onExtraSecurityClick: () -> Unit,
     onCreatorInstagramClick: () -> Unit,
     onBack: () -> Unit
@@ -210,12 +207,6 @@ fun SettingsScreen(
             )
             SettingsItem(
                 Icons.Default.Language,
-                "Bloquear sites",
-                "Sites, pornografia e navegadores não suportados",
-                onClick = onSitesBlockerClick
-            )
-            SettingsItem(
-                Icons.Default.Language,
                 stringResource(R.string.settings_redirect_destination_title),
                 stringResource(
                     R.string.settings_redirect_destination_subtitle,
@@ -263,14 +254,12 @@ fun SettingsScreen(
                 iconTint = Color(0xFFF5C451),
                 onClick = { showPremium = true }
             )
-            if (DEVELOPER_MODE_ENABLED) {
-                SettingsItem(
-                    Icons.Default.Build,
-                    stringResource(R.string.settings_dev_mode_title),
-                    stringResource(R.string.settings_dev_mode_subtitle),
-                    onClick = { showDeveloperMode = true }
-                )
-            }
+            SettingsItem(
+                Icons.Default.Build,
+                stringResource(R.string.settings_dev_mode_title),
+                stringResource(R.string.settings_dev_mode_subtitle),
+                onClick = { showDeveloperMode = true }
+            )
 
             Spacer(Modifier.height(32.dp))
             Text(
@@ -320,7 +309,7 @@ fun SettingsScreen(
         )
     }
 
-    if (DEVELOPER_MODE_ENABLED && showDeveloperMode) {
+    if (showDeveloperMode) {
         DeveloperModeHostDialog(
             onDismiss = { showDeveloperMode = false }
         )

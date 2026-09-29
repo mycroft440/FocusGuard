@@ -52,7 +52,6 @@ import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.screens.ProfileScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
-import com.focusguard.sitesblocker.SitesBlockerScreen
 import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
@@ -70,7 +69,6 @@ private object FocusGuardRoute {
     const val Limits = "LIMITS"
     const val IntruderLog = "INTRUDER_LOG"
     const val Language = "LANGUAGE"
-    const val SitesBlocker = "SITES_BLOCKER"
     const val ExtraSecurity = "EXTRA_SECURITY"
     const val UsageLimits = "USAGE_LIMITS"
     const val Dashboard = "DASHBOARD"
@@ -270,7 +268,6 @@ fun FocusGuardNavHost(
             FocusGuardRoute.Limits,
             FocusGuardRoute.Language,
             FocusGuardRoute.Profile,
-            FocusGuardRoute.SitesBlocker,
             FocusGuardRoute.ExtraSecurity,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
             FocusGuardRoute.IntruderLog,
@@ -395,7 +392,6 @@ fun FocusGuardNavHost(
                     profile = userProfile,
                     onProfileClick = { currentRoute = FocusGuardRoute.Profile },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
-                    onSitesBlockerClick = { currentRoute = FocusGuardRoute.SitesBlocker },
                     onExtraSecurityClick = { currentRoute = FocusGuardRoute.ExtraSecurity },
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
@@ -426,9 +422,6 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
                 FocusGuardRoute.Language -> LanguageScreen(
-                    onBack = { currentRoute = FocusGuardRoute.Settings }
-                )
-                FocusGuardRoute.SitesBlocker -> SitesBlockerScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.ExtraSecurity -> ExtraSecurityScreen(
