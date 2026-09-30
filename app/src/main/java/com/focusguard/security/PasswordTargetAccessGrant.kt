@@ -66,11 +66,32 @@ object PasswordTargetAccessGrant {
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, error ->
             FocusGuardLogger.logError("PasswordTargetAccessGrant", "Erro em tarefa em segundo plano", error)
-            // Como no fechamento do processo que esse erro causava antes: sem o monitor,
-            // nenhuma liberação fica valendo e a senha é pedida de novo.
-            clear()
+            revokeGrantsAfterError()
         }
     )
+    private val lastErrorReconcileElapsed = java.util.concurrent.atomic.AtomicLong(Long.MIN_VALUE)
+
+    /**
+     * Como no fechamento do processo que esse erro causava antes: sem o monitor, nenhuma
+     * liberação fica valendo e a senha é pedida de novo. Os donos mais fortes (bloqueio
+     * por tempo, limite) ficam como estão, e a proteção é reconciliada (no máximo uma
+     * vez por segundo, para um erro repetido não virar laço).
+     */
+    private fun revokeGrantsAfterError() {
+        grantedPackages.clear()
+        startedAppVisits.clear()
+        appMonitorJobs.values.forEach(Job::cancel)
+        appMonitorJobs.clear()
+        recentAppExits.clear()
+        websiteGrantBrowsers.clear()
+        val now = SystemClock.elapsedRealtime()
+        val last = lastErrorReconcileElapsed.get()
+        if ((last == Long.MIN_VALUE || now - last >= 1_000L) &&
+            lastErrorReconcileElapsed.compareAndSet(last, now)
+        ) {
+            reconcileProtection(invalidateWebsitePolicy = true)
+        }
+    }
     private val grantedPackages = ConcurrentHashMap.newKeySet<String>()
     private val appMonitorJobs = ConcurrentHashMap<String, Job>()
     // Visitas já confirmadas em primeiro plano pelo monitor (e não só liberadas).
