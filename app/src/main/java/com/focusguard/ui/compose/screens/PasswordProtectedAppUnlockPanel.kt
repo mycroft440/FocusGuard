@@ -86,6 +86,7 @@ internal fun isPasswordTargetBiometricAllowed(
 internal fun PasswordProtectedTargetUnlockPanel(
     blockedPackage: String?,
     blockedDomain: String?,
+    browserPackage: String? = null,
     authManager: AuthManager,
     sessionManager: BlockingSessionManager,
     onUnlocked: () -> Unit,
@@ -207,7 +208,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 }
 
                 if (websiteRule != null) {
-                    PasswordTargetAccessGrant.grantWebsite(context, websiteRule)
+                    PasswordTargetAccessGrant.grantWebsite(context, websiteRule, browserPackage)
                     if (!PasswordTargetAccessGrant.isWebsiteRuleGranted(websiteRule)) {
                         error = failureMessage
                         onInvalid?.invoke()

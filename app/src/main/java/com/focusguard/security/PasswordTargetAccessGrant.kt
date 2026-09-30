@@ -22,8 +22,8 @@ import kotlinx.coroutines.launch
  * A correct target credential never edits/deletes the configured block. App
  * grants cover exactly one foreground visit. Website grants cover the current
  * visit to the matching rule and are revoked when URL matching observes
- * navigation away; a bounded timeout is a fail-closed fallback if no further
- * browser event arrives.
+ * navigation away, when the browser leaves the foreground, or when another browser
+ * shows the site. There is no time limit: like an app, a site is one visit.
  *
  * TIME and an exhausted daily limit are stronger layers. Reconciliation publishes
  * those owners here so an old PASSWORD visit grant can never punch through a
@@ -34,7 +34,6 @@ object PasswordTargetAccessGrant {
     private const val APP_OPEN_TIMEOUT_MILLIS = 15_000L
     private const val APP_POLL_MILLIS = 200L
     private const val EVENT_LOOKBACK_MILLIS = 30_000L
-    private const val WEBSITE_GRANT_TIMEOUT_MILLIS = 5 * 60_000L
     private const val INTERNAL_ACTIVITY_HANDOFF_WINDOW_MILLIS = 2_000L
     private const val POST_EXIT_ECHO_SUPPRESSION_MILLIS = 4_000L
     private const val POST_EXIT_USAGE_LOOKBACK_MILLIS = 1_500L
@@ -68,8 +67,14 @@ object PasswordTargetAccessGrant {
     // Visitas já confirmadas em primeiro plano pelo monitor (e não só liberadas).
     private val startedAppVisits = ConcurrentHashMap.newKeySet<String>()
     private val recentAppExits = ConcurrentHashMap<String, RecentAppExit>()
-    private val websiteExpiryElapsed = ConcurrentHashMap<String, Long>()
-    private val websiteMonitorJobs = ConcurrentHashMap<String, Job>()
+    /**
+     * Sites liberados por senha → navegador em que a senha foi digitada ("" enquanto
+     * o navegador ainda não é conhecido; o primeiro navegador visto fica com a visita).
+     * Como nos apps, a liberação vale para uma visita: termina quando o navegador sai
+     * da frente, quando outro navegador abre o site ou quando a barra mostra outro
+     * endereço. Não há prazo.
+     */
+    private val websiteGrantBrowsers = ConcurrentHashMap<String, String>()
     private val strongerAppPackages = ConcurrentHashMap.newKeySet<String>()
     private val strongerWebsiteRules = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var applicationContext: Context? = null
@@ -106,7 +111,7 @@ object PasswordTargetAccessGrant {
         val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
             .takeIf(String::isNotBlank) ?: return
         strongerWebsiteRules.add(rule)
-        websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
+        websiteGrantBrowsers.keys.toList().forEach { grantedRule ->
             if (websiteRulesOverlap(grantedRule, rule)) {
                 dropWebsiteGrantForStrongerProtection(grantedRule)
             }
@@ -130,7 +135,7 @@ object PasswordTargetAccessGrant {
         strongerWebsiteRules.clear()
         strongerWebsiteRules.addAll(normalized)
 
-        websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
+        websiteGrantBrowsers.keys.toList().forEach { grantedRule ->
             if (normalized.any { strongerRule ->
                     websiteRulesOverlap(grantedRule, strongerRule)
                 }
@@ -260,21 +265,10 @@ object PasswordTargetAccessGrant {
         reconcileProtection()
     }
 
-    fun grantWebsite(context: Context, ruleOrDomain: String) {
-        val rule = WebsiteBlocker.normalizeRule(ruleOrDomain).takeIf(String::isNotBlank) ?: return
-        if (strongerWebsiteRules.any { strongerRule ->
-                websiteRulesOverlap(rule, strongerRule)
-            }
-        ) return
-
+    fun grantWebsite(context: Context, ruleOrDomain: String, browserPackage: String? = null) {
         val appContext = context.applicationContext
         applicationContext = appContext
-        websiteExpiryElapsed[rule] = SystemClock.elapsedRealtime() + WEBSITE_GRANT_TIMEOUT_MILLIS
-        websiteMonitorJobs.remove(rule)?.cancel()
-        websiteMonitorJobs[rule] = scope.launch {
-            delay(WEBSITE_GRANT_TIMEOUT_MILLIS)
-            revokeWebsiteRule(rule)
-        }
+        if (!publishWebsiteGrant(ruleOrDomain, browserPackage)) return
 
         // Rebuild managed-browser URL policy without this authenticated rule.
         scope.launch {
@@ -283,10 +277,21 @@ object PasswordTargetAccessGrant {
         }
     }
 
+    /** Registra a visita liberada; false se uma camada mais forte já cobre o site. */
+    internal fun publishWebsiteGrant(ruleOrDomain: String, browserPackage: String?): Boolean {
+        val rule = WebsiteBlocker.normalizeRule(ruleOrDomain).takeIf(String::isNotBlank)
+            ?: return false
+        if (strongerWebsiteRules.any { strongerRule -> websiteRulesOverlap(rule, strongerRule) }) {
+            return false
+        }
+        websiteGrantBrowsers[rule] = browserPackage?.takeIf(String::isNotBlank).orEmpty()
+        return true
+    }
+
     fun isWebsiteRuleGranted(ruleOrDomain: String): Boolean {
         val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
         if (rule.isBlank()) return false
-        val expiry = websiteExpiryElapsed[rule] ?: return false
+        if (rule !in websiteGrantBrowsers) return false
         if (strongerWebsiteRules.any { strongerRule ->
                 websiteRulesOverlap(rule, strongerRule)
             }
@@ -294,9 +299,38 @@ object PasswordTargetAccessGrant {
             dropWebsiteGrantForStrongerProtection(rule)
             return false
         }
-        if (SystemClock.elapsedRealtime() < expiry) return true
-        revokeWebsiteRule(rule)
-        return false
+        return true
+    }
+
+    /**
+     * Um navegador mostrou uma página. A visita liberada pertence a um navegador só:
+     * abrir o site liberado em outro navegador pede a senha de novo.
+     */
+    fun onWebsiteBrowserObserved(browserPackage: String) {
+        if (websiteGrantBrowsers.isEmpty() || browserPackage.isBlank()) return
+        websiteGrantBrowsers.entries.toList().forEach { (rule, owner) ->
+            when {
+                owner.isEmpty() -> websiteGrantBrowsers.replace(rule, owner, browserPackage)
+                owner != browserPackage -> revokeWebsiteRule(rule)
+            }
+        }
+    }
+
+    /**
+     * Outra janela assumiu a frente (tela inicial, recentes, outro app): as visitas
+     * liberadas em navegadores que não são esse pacote terminam, como nos apps.
+     */
+    fun endWebsiteVisitsOnForeground(foregroundPackage: String, foregroundIsBrowser: Boolean) {
+        if (websiteGrantBrowsers.isEmpty() || foregroundPackage.isBlank()) return
+        if (foregroundIsBrowser) onWebsiteBrowserObserved(foregroundPackage)
+        websiteGrantBrowsers.entries.toList().forEach { (rule, owner) ->
+            val leftTheBrowser = if (owner.isEmpty()) {
+                !foregroundIsBrowser
+            } else {
+                owner != foregroundPackage
+            }
+            if (leftTheBrowser) revokeWebsiteRule(rule)
+        }
     }
 
     /**
@@ -308,8 +342,8 @@ object PasswordTargetAccessGrant {
         urlOrDomain: String,
         configuredRules: Collection<String>
     ) {
-        if (websiteExpiryElapsed.isEmpty()) return
-        val grantedSnapshot = websiteExpiryElapsed.keys.toList()
+        if (websiteGrantBrowsers.isEmpty()) return
+        val grantedSnapshot = websiteGrantBrowsers.keys.toList()
         grantedSnapshot.forEach { grantedRule ->
             if (grantedRule !in WebsiteBlocker.normalizeRules(configuredRules)) return@forEach
             val stillOnGrantedTarget = WebsiteBlocker.matchesRuleIgnoringGrants(
@@ -323,8 +357,7 @@ object PasswordTargetAccessGrant {
     fun revokeWebsiteRule(ruleOrDomain: String?) {
         val rule = ruleOrDomain?.let(WebsiteBlocker::normalizeRule)?.takeIf(String::isNotBlank)
             ?: return
-        val existed = websiteExpiryElapsed.remove(rule) != null
-        websiteMonitorJobs.remove(rule)?.cancel()
+        val existed = websiteGrantBrowsers.remove(rule) != null
         if (existed) reconcileProtection(invalidateWebsitePolicy = true)
     }
 
@@ -334,15 +367,13 @@ object PasswordTargetAccessGrant {
         appMonitorJobs.values.forEach(Job::cancel)
         appMonitorJobs.clear()
         recentAppExits.clear()
-        websiteExpiryElapsed.clear()
-        websiteMonitorJobs.values.forEach(Job::cancel)
-        websiteMonitorJobs.clear()
+        websiteGrantBrowsers.clear()
         strongerAppPackages.clear()
         strongerWebsiteRules.clear()
     }
 
     internal fun grantedWebsiteRulesSnapshot(): Set<String> =
-        websiteExpiryElapsed.keys.filterTo(linkedSetOf(), ::isWebsiteRuleGranted)
+        websiteGrantBrowsers.keys.filterTo(linkedSetOf(), ::isWebsiteRuleGranted)
 
     internal fun websiteRulesOverlap(first: String, second: String): Boolean {
         val normalizedFirst = WebsiteBlocker.normalizeRule(first)
@@ -630,8 +661,7 @@ object PasswordTargetAccessGrant {
 
     /** Drops the website grant without recursively starting another reconciliation. */
     private fun dropWebsiteGrantForStrongerProtection(rule: String) {
-        websiteExpiryElapsed.remove(rule)
-        websiteMonitorJobs.remove(rule)?.cancel()
+        websiteGrantBrowsers.remove(rule)
     }
 
     private fun reconcileProtection(invalidateWebsitePolicy: Boolean = false) {

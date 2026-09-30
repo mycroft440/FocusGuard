@@ -134,6 +134,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             hardWebsiteRules().any(WebsiteBlocker::isPornographyRule)
 
         override fun decide(packageName: String, visibleUrl: String): Int {
+            // A visita liberada por senha é de um navegador só: outro navegador com o
+            // mesmo site encerra a liberação e a senha é pedida de novo.
+            PasswordTargetAccessGrant.onWebsiteBrowserObserved(packageName)
             if (WebsiteBlocker.findMatchingRulesIgnoringGrants(visibleUrl, hardWebsiteRules())
                     .isNotEmpty()
             ) return SiteBlockEngine.ExternalRules.BLOCK
@@ -151,6 +154,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             launchBlockNotice(
                 blockedPackage = null,
                 blockedDomain = WebsiteBlocker.displayRule(rule),
+                browserPackage = packageName,
                 // decide() só responde PASSWORD sem regra mais forte ou limite
                 // esgotado; a tela de senha confere o dono (inclusive o filtro de
                 // pornografia) antes de liberar e volta ao roteador se não for PASSWORD.
@@ -721,6 +725,17 @@ class BlockingAccessibilityService : AccessibilityService() {
                         eventDeliveredAtUptimeMillis
                     )
                 ) return
+            }
+
+            // Outra janela na frente encerra as visitas a sites liberadas por senha em
+            // outros navegadores (o teclado já saiu acima, em consumeInputUiEvent).
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                shouldEndWebsiteVisitsFor(directPackage, packageName)
+            ) {
+                PasswordTargetAccessGrant.endWebsiteVisitsOnForeground(
+                    foregroundPackage = directPackage,
+                    foregroundIsBrowser = BrowserProfiles.forPackage(directPackage) != null
+                )
             }
 
             // A tela inicial em primeiro plano encerra na hora as visitas liberadas por
@@ -2567,7 +2582,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         blockedDomain: String?,
         eventUptimeMillis: Long = SystemClock.uptimeMillis(),
         isCurrent: (() -> Boolean)? = null,
-        directPasswordSite: Boolean = false
+        directPasswordSite: Boolean = false,
+        browserPackage: String? = null
     ): Boolean {
         if (isCurrent?.invoke() == false) return false
         // Every attempt renews the touch-blocking curtain. BlockNoticeActivity
@@ -2590,6 +2606,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     blockedDomain = blockedDomain,
                     curtainGeneration = generation,
                     eventUptimeMillis = eventUptimeMillis,
+                    browserPackage = browserPackage,
                     directPasswordUnlock = if (blockedDomain != null) {
                         directPasswordSite
                     } else {
@@ -3077,6 +3094,23 @@ class BlockingAccessibilityService : AccessibilityService() {
         const val EXTRA_BLOCK_EVENT_UPTIME_MILLIS = "BLOCK_EVENT_UPTIME_MILLIS"
         const val EXTRA_CURTAIN_GENERATION = "CURTAIN_GENERATION"
         internal const val EXTRA_VERIFY_PASSWORD_OWNER = "VERIFY_PASSWORD_OWNER"
+        const val EXTRA_BROWSER_PACKAGE = "BROWSER_PACKAGE"
+
+        // Janelas que passam por cima sem tirar o navegador da frente: a cortina de
+        // notificações, a caixa de compartilhar e os pedidos de permissão do site.
+        private val WEBSITE_VISIT_OVERLAY_PACKAGES = setOf(
+            "com.android.systemui",
+            "android",
+            "com.android.permissioncontroller",
+            "com.google.android.permissioncontroller"
+        )
+
+        internal fun shouldEndWebsiteVisitsFor(
+            foregroundPackage: String,
+            ownPackage: String
+        ): Boolean = foregroundPackage.isNotBlank() &&
+            foregroundPackage != ownPackage &&
+            foregroundPackage !in WEBSITE_VISIT_OVERLAY_PACKAGES
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
@@ -3268,7 +3302,9 @@ class BlockingAccessibilityService : AccessibilityService() {
              * (uma Activity a menos e uma consulta ao banco a menos até a senha). A tela
              * de senha refaz a checagem do dono e devolve ao roteador se ela falhar.
              */
-            directPasswordUnlock: Boolean = false
+            directPasswordUnlock: Boolean = false,
+            /** Navegador do site com senha: a liberação vale só nele. */
+            browserPackage: String? = null
         ): Intent = Intent(
             context,
             if (directPasswordUnlock) PasswordUnlockActivity::class.java
@@ -3286,6 +3322,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (directPasswordUnlock) putExtra(EXTRA_VERIFY_PASSWORD_OWNER, true)
             putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
             putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
+            browserPackage?.let { putExtra(EXTRA_BROWSER_PACKAGE, it) }
             putExtra(EXTRA_BLOCK_EVENT_UPTIME_MILLIS, eventUptimeMillis)
             putExtra(EXTRA_CURTAIN_GENERATION, curtainGeneration)
         }

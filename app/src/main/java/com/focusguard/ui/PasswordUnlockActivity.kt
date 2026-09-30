@@ -191,6 +191,9 @@ class PasswordUnlockActivity : AppCompatActivity() {
             BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
             0L
         )
+        val browserPackage = sourceIntent.getStringExtra(
+            BlockingAccessibilityService.EXTRA_BROWSER_PACKAGE
+        )?.takeIf(String::isNotBlank)
         val currentAccessAttemptId = beginOrContinueAccessAttempt(packageName, blockedDomain)
         val newAttempt = presentation.present(currentAccessAttemptId, curtainGeneration)
         val attemptId = presentation.attemptId
@@ -214,6 +217,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
                             blockAttemptId = attemptId,
                             blockedPackage = packageName,
                             blockedDomain = blockedDomain,
+                            browserPackage = browserPackage,
                             targetLabel = targetLabel,
                             authenticationReady = authenticationReady && ownerVerified,
                             authManager = authManager,
@@ -506,6 +510,7 @@ private fun PasswordUnlockContent(
     blockAttemptId: Long,
     blockedPackage: String?,
     blockedDomain: String?,
+    browserPackage: String?,
     targetLabel: String?,
     authenticationReady: Boolean,
     authManager: AuthManager,
@@ -671,6 +676,7 @@ private fun PasswordUnlockContent(
                     PasswordProtectedTargetUnlockPanel(
                         blockedPackage = blockedPackage,
                         blockedDomain = blockedDomain,
+                        browserPackage = browserPackage,
                         authManager = authManager,
                         sessionManager = blockingSessionManager,
                         onUnlocked = {
