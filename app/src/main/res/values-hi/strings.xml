@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">ब्लॉक रखें</string>
     <string name="block_type_cancel_done">ब्लॉक रद्द किया गया।</string>
     <string name="block_type_cancel_failed">रद्द करने का समय खत्म हो गया। ब्लॉक जारी रहेगा।</string>
+    <string name="limit_cancel_window_desc">तब तक आप सीमा बदल या हटा सकते हैं। अभी से लॉक करने के लिए बंद करें।</string>
+    <string name="block_type_limit_editable_until">%1$s तक बदला जा सकता है</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Keep block</string>
     <string name="block_type_cancel_done">Block cancelled.</string>
     <string name="block_type_cancel_failed">The time to cancel is over. The block stays on.</string>
+    <string name="limit_cancel_window_desc">Until then, you can edit or remove the limit. Turn off to lock it right away.</string>
+    <string name="block_type_limit_editable_until">Can be changed until %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

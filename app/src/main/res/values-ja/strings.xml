@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">ブロックを続ける</string>
     <string name="block_type_cancel_done">ブロックを取り消しました。</string>
     <string name="block_type_cancel_failed">取り消し期限が過ぎました。ブロックは続きます。</string>
+    <string name="limit_cancel_window_desc">それまでは制限を編集・削除できます。オフにすると今すぐロックされます。</string>
+    <string name="block_type_limit_editable_until">%1$s まで変更できます</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

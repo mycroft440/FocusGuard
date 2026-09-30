@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">خلي الحظر</string>
     <string name="block_type_cancel_done">اتلغى الحظر.</string>
     <string name="block_type_cancel_failed">مهلة الإلغاء خلصت. الحظر مكمل.</string>
+    <string name="limit_cancel_window_desc">لحد كده تقدر تعدّل الحد أو تشيله. اقفل الاختيار عشان يتقفل من دلوقتي.</string>
+    <string name="block_type_limit_editable_until">ممكن يتغير لحد %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Sperre behalten</string>
     <string name="block_type_cancel_done">Sperre aufgehoben.</string>
     <string name="block_type_cancel_failed">Die Frist zum Aufheben ist abgelaufen. Die Sperre bleibt bestehen.</string>
+    <string name="limit_cancel_window_desc">Bis dahin kannst du das Limit ändern oder entfernen. Ausschalten, um es sofort zu sperren.</string>
+    <string name="block_type_limit_editable_until">Kann bis %1$s geändert werden</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

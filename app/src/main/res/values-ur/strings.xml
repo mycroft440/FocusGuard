@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">بلاک برقرار رکھیں</string>
     <string name="block_type_cancel_done">بلاک منسوخ ہو گیا۔</string>
     <string name="block_type_cancel_failed">منسوخی کا وقت ختم ہو گیا۔ بلاک جاری رہے گا۔</string>
+    <string name="limit_cancel_window_desc">تب تک آپ حد میں ترمیم یا اسے ہٹا سکتے ہیں۔ ابھی سے لاک کرنے کے لیے بند کریں۔</string>
+    <string name="block_type_limit_editable_until">%1$s تک تبدیل کیا جا سکتا ہے</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

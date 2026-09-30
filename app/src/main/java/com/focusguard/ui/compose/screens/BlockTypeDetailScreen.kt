@@ -958,6 +958,15 @@ private fun entryScheduleLines(
             stringResource(R.string.block_type_schedule_every_day)
         )
     }
+    // Limite criado com a opção das 48 h: até quando ainda pode ser editado/removido.
+    entry.cancelableUntilMillis
+        ?.takeIf { entry.dailyLimitMinutes != null && it > System.currentTimeMillis() }
+        ?.let { until ->
+            lines += stringResource(
+                R.string.block_type_limit_editable_until,
+                dateTimeFormat.format(Date(until))
+            )
+        }
     entry.startAtMillis?.let { start ->
         lines += stringResource(
             R.string.block_type_schedule_start,

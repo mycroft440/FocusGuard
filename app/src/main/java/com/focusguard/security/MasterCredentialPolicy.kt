@@ -102,9 +102,13 @@ object MasterCredentialPolicy {
         safetyModeEnabled: Boolean,
         hasMasterCredential: Boolean,
         masterCredentialVerified: Boolean,
-        nowMillis: Long = System.currentTimeMillis()
+        nowMillis: Long = System.currentTimeMillis(),
+        /** Ver [isLimitLockedAfterCancelWindow]. */
+        lockAfter: Long? = null
     ): MutationGate {
-        if (isTimeHardened(lockMode, lockUntilTimestamp, nowMillis)) {
+        if (isTimeHardened(lockMode, lockUntilTimestamp, nowMillis) ||
+            isLimitLockedAfterCancelWindow(lockAfter, lockUntilTimestamp, nowMillis)
+        ) {
             return MutationGate.BLOCKED_BY_TIME_HARDENING
         }
         if (safetyModeEnabled) {
@@ -125,8 +129,30 @@ object MasterCredentialPolicy {
         safetyModeEnabled = safetyModeEnabled,
         hasMasterCredential = hasMasterCredential,
         masterCredentialVerified = masterCredentialVerified,
-        nowMillis = nowMillis
+        nowMillis = nowMillis,
+        lockAfter = limit.lockAfter
     )
+
+    /**
+     * Limite criado com a opção "só fica sem volta depois de 48 h": alterável até
+     * [lockAfter] e travado dali até o fim da regra. Sem [lockAfter] (limites antigos),
+     * nunca trava por esta regra.
+     */
+    fun isLimitLockedAfterCancelWindow(
+        lockAfter: Long?,
+        ruleEndMillis: Long?,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = lockAfter != null &&
+        nowMillis >= lockAfter &&
+        (ruleEndMillis == null || nowMillis < ruleEndMillis)
+
+    /** Quando um limite novo passa a travar, conforme a opção das 48 h. */
+    fun limitLockAfter(createdAtMillis: Long, cancelWindowEnabled: Boolean): Long =
+        if (cancelWindowEnabled) {
+            createdAtMillis + CANCEL_WINDOW_HOURS * 3_600_000L
+        } else {
+            createdAtMillis
+        }
 
     fun isTimeHardened(
         lockMode: String,

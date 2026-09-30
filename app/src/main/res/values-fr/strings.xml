@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Garder le blocage</string>
     <string name="block_type_cancel_done">Blocage annulé.</string>
     <string name="block_type_cancel_failed">Le délai d’annulation est passé. Le blocage continue.</string>
+    <string name="limit_cancel_window_desc">D’ici là, vous pouvez modifier ou supprimer la limite. Désactivez pour la verrouiller dès maintenant.</string>
+    <string name="block_type_limit_editable_until">Modifiable jusqu’au %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

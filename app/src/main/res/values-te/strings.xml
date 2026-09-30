@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">బ్లాక్ ఉంచండి</string>
     <string name="block_type_cancel_done">బ్లాక్ రద్దు చేయబడింది.</string>
     <string name="block_type_cancel_failed">రద్దు చేసే గడువు ముగిసింది. బ్లాక్ కొనసాగుతుంది.</string>
+    <string name="limit_cancel_window_desc">అప్పటివరకు మీరు పరిమితిని మార్చవచ్చు లేదా తీసివేయవచ్చు. ఇప్పుడే లాక్ చేయడానికి ఆఫ్ చేయండి.</string>
+    <string name="block_type_limit_editable_until">%1$s వరకు మార్చవచ్చు</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

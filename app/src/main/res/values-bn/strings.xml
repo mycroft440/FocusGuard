@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">ব্লক রাখুন</string>
     <string name="block_type_cancel_done">ব্লক বাতিল হয়েছে।</string>
     <string name="block_type_cancel_failed">বাতিলের সময় শেষ। ব্লক চলবে।</string>
+    <string name="limit_cancel_window_desc">ততক্ষণ আপনি সীমা সম্পাদনা বা সরাতে পারবেন। এখনই লক করতে বন্ধ করুন।</string>
+    <string name="block_type_limit_editable_until">%1$s পর্যন্ত পরিবর্তন করা যাবে</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

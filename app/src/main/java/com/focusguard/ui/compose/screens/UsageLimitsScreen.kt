@@ -360,7 +360,8 @@ fun AppLimitsTab(
                 lockUntilTimestamp = app.lockUntilTimestamp,
                 safetyModeEnabled = authManager.isSafetyModeEnabled(),
                 hasMasterCredential = credentialManager.hasCredential(),
-                masterCredentialVerified = false
+                masterCredentialVerified = false,
+                lockAfter = app.lockAfter
             )
         ) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
@@ -438,7 +439,8 @@ fun AppLimitsTab(
                     usageMs = displayedUsageMillis,
                     lockMode = limit?.lockMode ?: "NONE",
                     lockPasswordHash = limit?.lockPasswordHash,
-                    lockUntilTimestamp = limit?.lockUntilTimestamp
+                    lockUntilTimestamp = limit?.lockUntilTimestamp,
+                    lockAfter = limit?.lockAfter
                 )
             }
             val installedPackages = installedApps.mapTo(mutableSetOf()) { it.packageName }
@@ -455,7 +457,8 @@ fun AppLimitsTab(
                         usageMs = 0L,
                         lockMode = limit?.lockMode ?: "NONE",
                         lockPasswordHash = limit?.lockPasswordHash,
-                        lockUntilTimestamp = limit?.lockUntilTimestamp
+                        lockUntilTimestamp = limit?.lockUntilTimestamp,
+                        lockAfter = limit?.lockAfter
                     )
                 }
                 .toList()
@@ -472,7 +475,8 @@ fun AppLimitsTab(
                         usageMs = 0L,
                         lockMode = limit.lockMode,
                         lockPasswordHash = limit.lockPasswordHash,
-                        lockUntilTimestamp = limit.lockUntilTimestamp
+                        lockUntilTimestamp = limit.lockUntilTimestamp,
+                        lockAfter = limit.lockAfter
                     )
                 }
                 .toList()
@@ -591,7 +595,7 @@ fun AppLimitsTab(
             hasMasterCredential = hasMasterCredential,
             onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showDialog = false },
-            onSave = { minutes, enabled, lockMode, _, lockUntil, companionDomains ->
+            onSave = { minutes, enabled, lockMode, _, lockUntil, companionDomains, lockAfter ->
                 val appToSave = selectedApp ?: return@AppLimitRedesignedSheet
                 val monetizedAction: () -> Unit = {
                     scope.launch(Dispatchers.IO) {
@@ -616,7 +620,8 @@ fun AppLimitsTab(
                                     lockUntilTimestamp = lockUntil,
                                     createdAt = activationTime,
                                     preventOpeningAfterLimit = true,
-                                    unlockWithPassword = lockMode.equals("PASSWORD", ignoreCase = true)
+                                    unlockWithPassword = lockMode.equals("PASSWORD", ignoreCase = true),
+                                    lockAfter = lockAfter
                                 )
                             )
 
@@ -648,7 +653,8 @@ fun AppLimitsTab(
                                                     isEnabled = enabled,
                                                     lockMode = websiteLockMode,
                                                     lockPasswordHash = null,
-                                                    lockUntilTimestamp = lockUntil
+                                                    lockUntilTimestamp = lockUntil,
+                                                    lockAfter = lockAfter
                                                 )
                                             )
                                             existingWebsiteRules += domain
@@ -663,7 +669,8 @@ fun AppLimitsTab(
                                 usageMs = 0L,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
-                                lockUntilTimestamp = lockUntil
+                                lockUntilTimestamp = lockUntil,
+                                lockAfter = lockAfter
                             )
                         } else {
                             limitDao.getAllStatic()
@@ -806,7 +813,8 @@ fun WebsiteLimitsTab(
                 lockUntilTimestamp = site.lockUntilTimestamp,
                 safetyModeEnabled = authManager.isSafetyModeEnabled(),
                 hasMasterCredential = credentialManager.hasCredential(),
-                masterCredentialVerified = false
+                masterCredentialVerified = false,
+                lockAfter = site.lockAfter
             )
         ) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
@@ -897,7 +905,8 @@ fun WebsiteLimitsTab(
                         usageMs = usageStats[normalized] ?: 0L,
                         lockMode = it.lockMode,
                         lockPasswordHash = it.lockPasswordHash,
-                        lockUntilTimestamp = it.lockUntilTimestamp
+                        lockUntilTimestamp = it.lockUntilTimestamp,
+                        lockAfter = it.lockAfter
                     )
                 }
             withContext(Dispatchers.Main) {
@@ -1205,7 +1214,9 @@ fun WebsiteLimitsTab(
                             isEnabled = enabled,
                             lockMode = lockMode,
                             lockPasswordHash = null,
-                            lockUntilTimestamp = lockUntil
+                            lockUntilTimestamp = lockUntil,
+                            // Editar dentro das 48 h não pode apagar a trava marcada.
+                            lockAfter = siteToEdit.lockAfter
                         )
                     )
                     blockingSessionManager.checkAndEnforce()

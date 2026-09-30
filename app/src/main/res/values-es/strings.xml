@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Mantener bloqueo</string>
     <string name="block_type_cancel_done">Bloqueo cancelado.</string>
     <string name="block_type_cancel_failed">Se acabó el plazo para cancelar. El bloqueo continúa.</string>
+    <string name="limit_cancel_window_desc">Hasta entonces, puedes editar o quitar el límite. Desactívalo para bloquearlo desde ya.</string>
+    <string name="block_type_limit_editable_until">Se puede cambiar hasta %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

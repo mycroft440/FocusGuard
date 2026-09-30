@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Pertahankan blokir</string>
     <string name="block_type_cancel_done">Blokir dibatalkan.</string>
     <string name="block_type_cancel_failed">Batas waktu pembatalan sudah lewat. Blokir tetap berjalan.</string>
+    <string name="limit_cancel_window_desc">Sampai saat itu, Anda bisa mengubah atau menghapus batas. Matikan untuk langsung menguncinya.</string>
+    <string name="block_type_limit_editable_until">Bisa diubah sampai %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

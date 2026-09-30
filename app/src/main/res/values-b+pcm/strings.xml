@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Keep block</string>
     <string name="block_type_cancel_done">Block don cancel.</string>
     <string name="block_type_cancel_failed">Time to cancel don finish. The block still dey.</string>
+    <string name="limit_cancel_window_desc">Before then, you fit change or remove the limit. Off am make e lock now now.</string>
+    <string name="block_type_limit_editable_until">You fit change am until %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

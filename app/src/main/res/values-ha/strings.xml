@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Ci gaba da toshewa</string>
     <string name="block_type_cancel_done">An soke toshewa.</string>
     <string name="block_type_cancel_failed">Lokacin soke ya wuce. Toshewar tana ci gaba.</string>
+    <string name="limit_cancel_window_desc">Kafin nan, za ka iya gyara ko cire iyakar. Kashe don a kulle ta yanzu.</string>
+    <string name="block_type_limit_editable_until">Za a iya canza shi har zuwa %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

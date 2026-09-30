@@ -41,4 +41,43 @@ class TimeBlockCancelWindowTest {
             canCancelTimeBlock(BlockTypeUi.DOPAMINE_FAST, entry.copy(sessionId = null), start)
         ).isFalse()
     }
+
+    @Test
+    fun `limit with the option is editable for 48 h, then locked until the rule ends`() {
+        val lockAfter = MasterCredentialPolicy.limitLockAfter(start, cancelWindowEnabled = true)
+        val ruleEnd = start + 30L * 24 * 3_600_000L
+        fun gate(now: Long) = MasterCredentialPolicy.evaluateLimitMutation(
+            lockMode = "BLOCK_UNTIL_TOMORROW:com.example.app",
+            lockUntilTimestamp = ruleEnd,
+            safetyModeEnabled = false,
+            hasMasterCredential = false,
+            masterCredentialVerified = false,
+            nowMillis = now,
+            lockAfter = lockAfter
+        )
+
+        assertThat(lockAfter).isEqualTo(until)
+        assertThat(gate(start)).isEqualTo(MasterCredentialPolicy.MutationGate.ALLOWED)
+        assertThat(gate(until)).isEqualTo(MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING)
+        assertThat(gate(ruleEnd)).isEqualTo(MasterCredentialPolicy.MutationGate.ALLOWED)
+    }
+
+    @Test
+    fun `limit without the option is locked from the start, old limits never lock`() {
+        val ruleEnd = start + 3_600_000L
+        assertThat(
+            MasterCredentialPolicy.isLimitLockedAfterCancelWindow(
+                lockAfter = MasterCredentialPolicy.limitLockAfter(start, cancelWindowEnabled = false),
+                ruleEndMillis = ruleEnd,
+                nowMillis = start
+            )
+        ).isTrue()
+        assertThat(
+            MasterCredentialPolicy.isLimitLockedAfterCancelWindow(
+                lockAfter = null,
+                ruleEndMillis = ruleEnd,
+                nowMillis = start
+            )
+        ).isFalse()
+    }
 }

@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">ब्लॉक ठेवा</string>
     <string name="block_type_cancel_done">ब्लॉक रद्द केला.</string>
     <string name="block_type_cancel_failed">रद्द करण्याची मुदत संपली. ब्लॉक सुरू राहील.</string>
+    <string name="limit_cancel_window_desc">तोपर्यंत तुम्ही मर्यादा बदलू किंवा काढू शकता. आत्ताच लॉक करण्यासाठी बंद करा.</string>
+    <string name="block_type_limit_editable_until">%1$s पर्यंत बदलता येईल</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

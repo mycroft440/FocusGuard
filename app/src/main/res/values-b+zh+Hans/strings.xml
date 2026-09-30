@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">保留拦截</string>
     <string name="block_type_cancel_done">已取消拦截。</string>
     <string name="block_type_cancel_failed">取消期限已过，拦截将继续。</string>
+    <string name="limit_cancel_window_desc">在此之前，你可以编辑或删除该限制。关闭后将立即锁定。</string>
+    <string name="block_type_limit_editable_until">可在 %1$s 前更改</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

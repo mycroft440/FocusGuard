@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Giữ lệnh chặn</string>
     <string name="block_type_cancel_done">Đã hủy chặn.</string>
     <string name="block_type_cancel_failed">Đã hết thời hạn hủy. Lệnh chặn vẫn tiếp tục.</string>
+    <string name="limit_cancel_window_desc">Trước đó, bạn có thể sửa hoặc xóa giới hạn. Tắt để khóa ngay bây giờ.</string>
+    <string name="block_type_limit_editable_until">Có thể thay đổi đến %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

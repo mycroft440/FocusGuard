@@ -244,7 +244,9 @@ class BlockingSessionManager @Inject constructor(
                 isWebsite = false,
                 dailyLimitMinutes = limit.dailyLimitMinutes,
                 unlockAtMillis = limit.lockUntilTimestamp,
-                startAtMillis = limit.createdAt
+                startAtMillis = limit.createdAt,
+                // Nos limites, até quando ainda dá para alterar (opção das 48 h).
+                cancelableUntilMillis = limit.lockAfter
             )
         } + websiteLimits.map { limit ->
             BlockOverview.Entry(
@@ -252,7 +254,9 @@ class BlockingSessionManager @Inject constructor(
                 isWebsite = true,
                 dailyLimitMinutes = limit.dailyLimitMinutes,
                 unlockAtMillis = limit.lockUntilTimestamp,
-                startAtMillis = limit.createdAt
+                startAtMillis = limit.createdAt,
+                // Nos limites, até quando ainda dá para alterar (opção das 48 h).
+                cancelableUntilMillis = limit.lockAfter
             )
         }
 

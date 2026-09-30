@@ -33,7 +33,9 @@ data class UsageLimitAppUi(
     val usageMs: Long,
     val lockMode: String,
     val lockPasswordHash: String?,
-    val lockUntilTimestamp: Long?
+    val lockUntilTimestamp: Long?,
+    /** A partir de quando o limite fica travado até o fim; null = limite antigo. */
+    val lockAfter: Long? = null
 )
 
 /**

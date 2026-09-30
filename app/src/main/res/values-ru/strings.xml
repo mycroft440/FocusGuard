@@ -70,6 +70,8 @@
     <string name="block_type_cancel_keep">Оставить блокировку</string>
     <string name="block_type_cancel_done">Блокировка отменена.</string>
     <string name="block_type_cancel_failed">Срок отмены истёк. Блокировка продолжается.</string>
+    <string name="limit_cancel_window_desc">До этого лимит можно изменить или удалить. Выключите, чтобы сразу его заблокировать.</string>
+    <string name="block_type_limit_editable_until">Можно изменить до %1$s</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

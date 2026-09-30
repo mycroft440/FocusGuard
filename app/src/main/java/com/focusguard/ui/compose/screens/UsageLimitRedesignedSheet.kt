@@ -56,6 +56,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import com.focusguard.security.MasterCredentialPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,6 +75,7 @@ import com.focusguard.R
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentCyanInk
+import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkCard
@@ -157,9 +161,12 @@ fun AppLimitRedesignedSheet(
     hasMasterCredential: Boolean,
     onConfigureMasterPassword: () -> Unit,
     onDismiss: () -> Unit,
-    onSave: (Int?, Boolean, String, String?, Long?, Set<String>) -> Unit
+    /** minutos, ativo, modo, senha, fim da regra, sites, trava a partir de (lockAfter). */
+    onSave: (Int?, Boolean, String, String?, Long?, Set<String>, Long?) -> Unit
 ) {
     val editMode = app.currentLimitMinutes != null
+    // Só na criação: nas primeiras 48 h o limite ainda pode ser editado ou removido.
+    var cancelWindowEnabled by remember(app.packageName) { mutableStateOf(true) }
     val companionOptions = remember(app.packageName) {
         AssociatedBlockTargets.websiteCompanionsForApps(listOf(app.packageName))
     }
@@ -299,11 +306,13 @@ fun AppLimitRedesignedSheet(
                         nowMillis = now,
                         editMode = editMode,
                         currentRuleEnd = app.lockUntilTimestamp,
+                        cancelWindowEnabled = cancelWindowEnabled,
+                        onCancelWindowChange = { cancelWindowEnabled = it },
                         companionOptions = companionOptions,
                         selectedCompanionDomains = selectedCompanionDomains,
                         onSelectedCompanionDomainsChange = { selectedCompanionDomains = it },
                         onRemove = {
-                            onSave(null, false, "NONE", null, null, emptySet())
+                            onSave(null, false, "NONE", null, null, emptySet(), null)
                         },
                         onDismiss = onDismiss,
                         onContinue = { draft ->
@@ -340,7 +349,17 @@ fun AppLimitRedesignedSheet(
                                 persistedMode,
                                 null,
                                 ruleEnd,
-                                selectedCompanionDomains
+                                selectedCompanionDomains,
+                                // Na edição (só possível dentro das 48 h ou em limites
+                                // antigos) a trava marcada na criação é mantida.
+                                if (editMode) {
+                                    app.lockAfter
+                                } else {
+                                    MasterCredentialPolicy.limitLockAfter(
+                                        createdAtMillis = System.currentTimeMillis(),
+                                        cancelWindowEnabled = cancelWindowEnabled
+                                    )
+                                }
                             )
                         }
                     )
@@ -395,6 +414,8 @@ private fun AppLimitDetailsScreen(
     nowMillis: Long,
     editMode: Boolean,
     currentRuleEnd: Long?,
+    cancelWindowEnabled: Boolean,
+    onCancelWindowChange: (Boolean) -> Unit,
     companionOptions: List<AssociatedBlockTargets.WebsiteCompanion>,
     selectedCompanionDomains: Set<String>,
     onSelectedCompanionDomainsChange: (Set<String>) -> Unit,
@@ -460,6 +481,39 @@ private fun AppLimitDetailsScreen(
                     durationUnitState = durationUnitState,
                     durationEditedState = durationEditedState
                 )
+                if (!editMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(
+                                    R.string.time_block_cancel_window_title,
+                                    MasterCredentialPolicy.CANCEL_WINDOW_HOURS
+                                ),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                stringResource(R.string.limit_cancel_window_desc),
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = cancelWindowEnabled,
+                            onCheckedChange = onCancelWindowChange,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBg,
+                                checkedTrackColor = AccentCyan
+                            )
+                        )
+                    }
+                }
             }
 
             if (companionOptions.isNotEmpty()) {

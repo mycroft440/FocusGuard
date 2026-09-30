@@ -78,7 +78,13 @@ data class AppUsageLimit(
     val lastResetDate: Long = 0,
     val preventOpeningAfterLimit: Boolean = true,
     val durationDays: Int = 1,
-    val unlockWithPassword: Boolean = false
+    val unlockWithPassword: Boolean = false,
+    /**
+     * A partir de quando o limite fica travado (sem editar nem remover) até o fim da
+     * regra (lockUntilTimestamp). Criação + 48 h com a opção ligada; a própria
+     * criação com ela desligada. Null: limite antigo, alterável como antes.
+     */
+    val lockAfter: Long? = null
 )
 
 @Entity(tableName = "website_usage_limits")
@@ -90,7 +96,9 @@ data class WebsiteUsageLimit(
     val lockMode: String = "NONE",
     val lockPasswordHash: String? = null,
     val lockUntilTimestamp: Long? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Igual a [AppUsageLimit.lockAfter]. */
+    val lockAfter: Long? = null
 )
 
 @Entity(tableName = "usage_limits_locks")
