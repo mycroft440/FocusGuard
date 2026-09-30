@@ -40,6 +40,27 @@ object PasswordTargetAccessGrant {
     private const val POST_EXIT_ECHO_SUPPRESSION_MILLIS = 4_000L
     private const val POST_EXIT_USAGE_LOOKBACK_MILLIS = 1_500L
 
+    /**
+     * Telas de sistema que passam por cima sem tirar o app (ou o navegador) da frente:
+     * cortina de notificações, pedidos de permissão, caixa de compartilhar, login do
+     * Google. Não encerram a visita liberada por senha; sair por elas para outro app
+     * encerra, porque esse outro app entra na frente.
+     */
+    internal val VISIT_OVERLAY_PACKAGES = setOf(
+        "com.android.systemui",
+        "android",
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+        // Caixa de compartilhar do Android 14+.
+        "com.android.intentresolver",
+        // Login com o Google (One Tap) e preenchimento de senhas do Google.
+        "com.google.android.gms"
+    )
+
+    /** Se um app que entra na frente conta como saída da visita liberada. */
+    internal fun endsVisit(foregroundPackage: String?): Boolean =
+        !foregroundPackage.isNullOrBlank() && foregroundPackage !in VISIT_OVERLAY_PACKAGES
+
     internal data class AppVisitObservation(
         val latestForegroundPackage: String?,
         val latestTargetForegroundAt: Long,
@@ -270,9 +291,40 @@ object PasswordTargetAccessGrant {
      * usava a mesma liberação. Visitas ainda não vistas em primeiro plano (a troca da
      * tela de senha para o app em andamento) ficam com o monitor.
      */
-    fun endStartedVisitsOnLauncher() {
+    fun endStartedVisitsOnLauncher() = endStartedVisits(foregroundPackage = null)
+
+    fun hasStartedAppVisits(): Boolean = startedAppVisits.isNotEmpty()
+
+    /**
+     * A tela apagou: a visita liberada terminou, como ao sair do app. Ao desbloquear o
+     * celular, o app ou site que volta à frente pede a senha de novo.
+     */
+    fun endVisitsOnScreenOff() {
+        endStartedVisits(foregroundPackage = null)
+        // Liberação aceita mas ainda não vista em primeiro plano (a tela apagou logo
+        // depois da senha): também termina.
+        grantedPackages.toList().forEach(::revokePackage)
+        websiteGrantBrowsers.keys.toList().forEach(::revokeWebsiteRule)
+    }
+
+    /**
+     * A janela de outro app assumiu a frente (vista pela acessibilidade): as visitas
+     * liberadas de outros apps terminaram. Antes, só o monitor por UsageEvents
+     * percebia (até 200 ms, mais o atraso do UsageEvents); ao voltar rápido de outro
+     * app, o app protegido chegava a aparecer até a reconciliação bloquear de novo.
+     */
+    fun endStartedVisitsOnOtherApp(foregroundPackage: String) {
+        if (!endsVisit(foregroundPackage)) return
+        endStartedVisits(foregroundPackage = foregroundPackage)
+    }
+
+    /** As visitas que terminam quando [foregroundPackage] (null: tela inicial) entra na frente. */
+    internal fun visitsEndedBy(startedVisits: Collection<String>, foregroundPackage: String?) =
+        startedVisits.filter { it != foregroundPackage }
+
+    private fun endStartedVisits(foregroundPackage: String?) {
         if (startedAppVisits.isEmpty()) return
-        for (target in startedAppVisits.toList()) {
+        for (target in visitsEndedBy(startedAppVisits.toList(), foregroundPackage)) {
             if (target !in grantedPackages) {
                 startedAppVisits.remove(target)
                 continue
@@ -284,7 +336,7 @@ object PasswordTargetAccessGrant {
             revokePackageWithoutCancellingSelf(
                 target = target,
                 exitObservation = null,
-                launcherExit = true
+                accessibilityExit = true
             )
         }
     }
@@ -592,8 +644,13 @@ object PasswordTargetAccessGrant {
             events.getNextEvent(event)
             if (event.timeStamp < notBeforeMillis) continue
 
-            val foregroundEvent = event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND ||
-                event.eventType == UsageEvents.Event.ACTIVITY_RESUMED
+            // Uma tela de sistema por cima (permissão, compartilhar, login do Google) não
+            // é outro app na frente: antes, conceder uma permissão dentro do app liberado
+            // encerrava a visita e a senha era pedida de novo ao voltar.
+            val foregroundEvent = (
+                event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND ||
+                    event.eventType == UsageEvents.Event.ACTIVITY_RESUMED
+                ) && (event.packageName == target || endsVisit(event.packageName))
             if (foregroundEvent && event.timeStamp >= latestForegroundAt) {
                 latestForegroundAt = event.timeStamp
                 latestForegroundPackage = event.packageName
@@ -656,7 +713,7 @@ object PasswordTargetAccessGrant {
     private fun revokePackageWithoutCancellingSelf(
         target: String,
         exitObservation: AppVisitObservation? = null,
-        launcherExit: Boolean = false
+        accessibilityExit: Boolean = false
     ) {
         val queryFrom = (
             System.currentTimeMillis() - POST_EXIT_USAGE_LOOKBACK_MILLIS
@@ -667,7 +724,7 @@ object PasswordTargetAccessGrant {
                 queryFromWallClockMillis = queryFrom,
                 lastKnownForegroundPackage = exitObservation.latestForegroundPackage
             )
-            launcherExit -> RecentAppExit(
+            accessibilityExit -> RecentAppExit(
                 markedAtElapsedMillis = SystemClock.elapsedRealtime(),
                 queryFromWallClockMillis = queryFrom,
                 lastKnownForegroundPackage = null,

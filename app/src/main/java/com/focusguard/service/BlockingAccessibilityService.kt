@@ -371,9 +371,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
     private val screenStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
+        override fun onReceive(context: Context?, intent: Intent?) = guardReceiver {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    // Apagar a tela encerra a visita liberada por senha: ao desbloquear o
+                    // celular, o app (ou site) volta à frente e a senha é pedida de novo.
+                    PasswordTargetAccessGrant.endVisitsOnScreenOff()
                     foregroundPackageName = null
                     stopWebsiteTracking()
                     protectedPowerMenuController?.onScreenOff()
@@ -390,6 +393,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
                 Intent.ACTION_SCREEN_ON -> protectedPowerMenuController?.onScreenOn()
+                // Desbloqueado: o app que volta à frente é uma entrada. Nem sempre chega um
+                // evento de janela dele (o Android só troca o foco), então a tela da frente
+                // é conferida agora e logo depois, quando a tela de bloqueio já saiu.
+                Intent.ACTION_USER_PRESENT -> {
+                    enforceForegroundAfterUnlock()
+                    mainHandler.postDelayed(
+                        { guardReceiver(::enforceForegroundAfterUnlock) },
+                        UNLOCK_FOREGROUND_RECHECK_MILLIS
+                    )
+                }
             }
         }
     }
@@ -463,6 +476,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(screenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -757,6 +771,17 @@ class BlockingAccessibilityService : AccessibilityService() {
                 endWebsiteVisitsIfAppWindow(directPackage, event.windowId, recheck = true)
             }
 
+            // O mesmo para os apps liberados por senha: a janela de outro app na frente
+            // encerra a visita na hora (a tela inicial é tratada logo abaixo).
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                PasswordTargetAccessGrant.hasStartedAppVisits() &&
+                directPackage != defaultLauncherPackage &&
+                shouldEndWebsiteVisitsFor(directPackage, packageName) &&
+                !isTransientWindowClass(event.className?.toString().orEmpty())
+            ) {
+                endAppVisitsIfActiveAppWindow(directPackage, event.windowId, recheck = true)
+            }
+
             // A tela inicial em primeiro plano encerra na hora as visitas liberadas por
             // senha; esperar o monitor por UsageEvents deixava voltar ao app sem senha.
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
@@ -934,6 +959,37 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
     }
 
+    /**
+     * Encerra as visitas a apps liberados por senha quando a janela ativa passa a ser
+     * de outro app. Só age com a janela confirmada na lista (tipo aplicativo, ativa e
+     * fora do modo picture-in-picture); sem ela, o monitor por UsageEvents continua
+     * decidindo como antes. Assim nenhuma janela solta de outro app (sobreposição,
+     * vídeo flutuante) encerra a visita de quem ainda está no app.
+     */
+    private fun endAppVisitsIfActiveAppWindow(
+        foregroundPackage: String,
+        windowId: Int,
+        recheck: Boolean
+    ) {
+        if (!PasswordTargetAccessGrant.hasStartedAppVisits()) return
+        val window = runCatching { windows }.getOrNull()?.firstOrNull { it.id == windowId }
+        // A lista de janelas pode atrasar em relação ao evento: sem a janela, ou com ela
+        // ainda inativa, confere de novo um instante depois.
+        if (window == null || !(window.isActive || window.isFocused)) {
+            if (recheck) {
+                mainHandler.postDelayed(
+                    { endAppVisitsIfActiveAppWindow(foregroundPackage, windowId, recheck = false) },
+                    WEBSITE_VISIT_WINDOW_RECHECK_MILLIS
+                )
+            }
+            return
+        }
+        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION ||
+            window.isInPictureInPictureMode
+        ) return
+        PasswordTargetAccessGrant.endStartedVisitsOnOtherApp(foregroundPackage)
+    }
+
     private fun consumeInputUiEvent(
         event: AccessibilityEvent,
         directPackage: String,
@@ -978,6 +1034,36 @@ class BlockingAccessibilityService : AccessibilityService() {
         syncWarmOverlays()
         lastLoadTime = System.currentTimeMillis()
         enforceCurrentForegroundFromSnapshot()
+    }
+
+    private fun enforceForegroundAfterUnlock() {
+        // Uma cortina na tela é um bloqueio já em andamento (da primeira conferência ou
+        // do evento de janela do app): não abre outro ciclo.
+        if (!isBlockingSessionActive || instantBlockCurtainVisible) return
+        val root = rootInActiveWindow ?: return
+        val current = try {
+            root.packageName?.toString().orEmpty()
+        } finally {
+            recycleSafely(root)
+        }
+        if (current.isBlank() ||
+            current == packageName ||
+            current == defaultLauncherPackage ||
+            current in focusModeAllowedAppsSet
+        ) return
+        // windowStateChanged = true: é uma entrada, nunca o eco de uma saída.
+        if (ImmediateInterceptionPolicy.isBlockedTargetWindow(
+                current,
+                blockedAppsSet,
+                windowStateChanged = true
+            )
+        ) {
+            foregroundPackageName = current
+            // O evento de janela do app que chegar logo depois reaproveita esta cortina.
+            lastImmediateBlockedPackage = current
+            lastImmediateBlockElapsed = SystemClock.elapsedRealtime()
+            blockApp(current)
+        }
     }
 
     private fun enforceCurrentForegroundFromSnapshot() {
@@ -3111,6 +3197,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS = 700L
         private const val BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS = 150L
         private const val WEBSITE_VISIT_WINDOW_RECHECK_MILLIS = 50L
+        private const val UNLOCK_FOREGROUND_RECHECK_MILLIS = 400L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
@@ -3152,19 +3239,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val EXTRA_VERIFY_PASSWORD_OWNER = "VERIFY_PASSWORD_OWNER"
         const val EXTRA_BROWSER_PACKAGE = "BROWSER_PACKAGE"
 
-        // Janelas que passam por cima sem tirar o navegador da frente: a cortina de
-        // notificações, a caixa de compartilhar e os pedidos de permissão do site.
-        private val WEBSITE_VISIT_OVERLAY_PACKAGES = setOf(
-            "com.android.systemui",
-            "android",
-            "com.android.permissioncontroller",
-            "com.google.android.permissioncontroller",
-            // Caixa de compartilhar do Android 14+.
-            "com.android.intentresolver",
-            // Login com o Google (One Tap) e preenchimento de senhas do Google.
-            "com.google.android.gms"
-        )
-
         internal fun isTransientWindowClass(className: String): Boolean =
             className.contains("Toast") || className.contains("PopupWindow")
 
@@ -3173,7 +3247,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             ownPackage: String
         ): Boolean = foregroundPackage.isNotBlank() &&
             foregroundPackage != ownPackage &&
-            foregroundPackage !in WEBSITE_VISIT_OVERLAY_PACKAGES
+            // Mesmas telas de sistema que não encerram a visita a um app liberado.
+            PasswordTargetAccessGrant.endsVisit(foregroundPackage)
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
