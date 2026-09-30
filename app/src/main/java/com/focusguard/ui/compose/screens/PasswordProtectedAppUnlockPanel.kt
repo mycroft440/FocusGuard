@@ -54,6 +54,9 @@ import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.TextSecondary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 // Keep rejected scans inside Android's biometric prompt. Password/pattern is
@@ -133,47 +136,48 @@ internal fun PasswordProtectedTargetUnlockPanel(
         }
     }
 
-    fun completeUnlock(onInvalid: (() -> Unit)? = null) {
+    // Uma única checagem do dono na hora de liberar (fecha a corrida de um limite ou
+    // bloqueio por tempo começar com a tela aberta). Para apps, allowsPasswordVisit já
+    // implica uma sessão PASSWORD; para sites, activeWebsiteProtection só responde
+    // PASSWORD sem regra mais forte ou limite esgotado.
+    suspend fun passwordStillOwnsTarget(): Boolean = if (!blockedPackage.isNullOrBlank()) {
+        AppBlockSurfaceResolver(
+            context = context,
+            sessionManager = sessionManager
+        ).resolveAttempt(blockedPackage = blockedPackage).allowsPasswordVisit
+    } else {
+        sessionManager.activeWebsiteProtection(blockedDomain ?: websiteRule) ==
+            BlockingSessionManager.ActiveWebsiteProtection.PASSWORD
+    }
+
+    /**
+     * @param credential senha ou padrão digitado; null quando a digital já confirmou.
+     *   O hash (PBKDF2) roda fora da thread principal e em paralelo com a checagem do
+     *   dono: a espera é a maior das duas, não a soma, e a tela não congela.
+     */
+    fun completeUnlock(credential: String? = null, onInvalid: (() -> Unit)? = null) {
         if (verifying || targetId == null) return
         scope.launch {
             verifying = true
             error = null
             try {
-                val origin = sessionManager.credentialUnlockOrigin(
-                    blockedPackage = blockedPackage,
-                    blockedDomain = blockedDomain
-                )
-                if (origin != BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION) {
-                    error = failureMessage
+                val (credentialAccepted, ownerConfirmed) = coroutineScope {
+                    val credentialCheck = async(Dispatchers.Default) {
+                        credential == null || store.verifyTarget(targetId, credential)
+                    }
+                    val ownerCheck = async { passwordStillOwnsTarget() }
+                    credentialCheck.await() to ownerCheck.await()
+                }
+                if (!credentialAccepted) {
+                    error = wrongCredentialMessage
+                    onCredentialRejected()
                     onInvalid?.invoke()
                     return@launch
                 }
-
-                // Re-resolve ownership after the target credential has already been
-                // accepted. This closes the race where a daily allowance expires or
-                // a TIME layer starts while password/biometric UI is open. A limit
-                // with quota remaining is intentionally invisible here.
-                if (!blockedPackage.isNullOrBlank()) {
-                    val resolution = AppBlockSurfaceResolver(
-                        context = context,
-                        sessionManager = sessionManager
-                    ).resolveAttempt(
-                        blockedPackage = blockedPackage
-                    )
-                    if (!resolution.allowsPasswordVisit) {
-                        error = failureMessage
-                        onInvalid?.invoke()
-                        return@launch
-                    }
-                } else {
-                    val websiteOwner = sessionManager.activeWebsiteProtection(
-                        blockedDomain ?: websiteRule
-                    )
-                    if (websiteOwner != BlockingSessionManager.ActiveWebsiteProtection.PASSWORD) {
-                        error = failureMessage
-                        onInvalid?.invoke()
-                        return@launch
-                    }
+                if (!ownerConfirmed) {
+                    error = failureMessage
+                    onInvalid?.invoke()
+                    return@launch
                 }
 
                 if (websiteRule != null) {
@@ -450,14 +454,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
                         error = null
                     }
                 },
-                onSubmit = { password ->
-                    if (store.verifyTarget(targetId, password)) {
-                        completeUnlock()
-                    } else {
-                        error = wrongCredentialMessage
-                        onCredentialRejected()
-                    }
-                }
+                onSubmit = { password -> completeUnlock(credential = password) }
             )
 
             PasswordAppUnlockMode.PATTERN -> PatternUnlockDialog(
@@ -475,13 +472,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     }
                 },
                 onSubmit = { pattern, reset ->
-                    if (store.verifyTarget(targetId, pattern)) {
-                        completeUnlock(onInvalid = reset)
-                    } else {
-                        error = wrongCredentialMessage
-                        onCredentialRejected()
-                        reset()
-                    }
+                    completeUnlock(credential = pattern, onInvalid = reset)
                 }
             )
 

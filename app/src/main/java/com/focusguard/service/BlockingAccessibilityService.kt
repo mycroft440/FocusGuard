@@ -69,6 +69,7 @@ import com.focusguard.ui.PasswordUnlockActivity
 import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
+import com.focusguard.utils.SecurePrefsManager
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -318,9 +319,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                 if (shouldDismissCurtain(instantBlockCurtainGeneration, generation)) {
                     if (pendingReadyWindowValidationGeneration != generation) {
                         pendingReadyWindowValidationGeneration = generation
+                        // Com o quadro da tela já na tela (frame commit), bastam alguns
+                        // quadros; sem essa garantia, vale a espera cheia de antes. A
+                        // checagem de janelas inseguras roda do mesmo jeito.
                         mainHandler.postDelayed(
                             readyWindowValidation,
-                            SAFE_WINDOW_SETTLE_MILLIS
+                            if (CurtainDestinationReadyCoordinator.isFrameCommitted(generation)) {
+                                FRAME_COMMITTED_SETTLE_MILLIS
+                            } else {
+                                SAFE_WINDOW_SETTLE_MILLIS
+                            }
                         )
                     }
                 }
@@ -494,6 +502,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             SiteBlockEngine.applyServiceInfo(this)
         }
         siteBlockEngine.onServiceConnected()
+        // A tela de senha abre o cofre criptografado na primeira composição; abri-lo
+        // aqui, fora da thread principal, tira esse custo do caminho do bloqueio.
+        scope.launch { SecurePrefsManager.prewarm(applicationContext) }
         syncWarmOverlays()
     }
 
@@ -699,6 +710,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                         eventDeliveredAtUptimeMillis
                     )
                 ) return
+            }
+
+            // A tela inicial em primeiro plano encerra na hora as visitas liberadas por
+            // senha; esperar o monitor por UsageEvents deixava voltar ao app sem senha.
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                directPackage.isNotEmpty() &&
+                directPackage == defaultLauncherPackage
+            ) {
+                PasswordTargetAccessGrant.endStartedVisitsOnLauncher(directPackage)
+                siteBlockEngine.onLauncherShown()
             }
 
             // Caminho imediato do bloqueio de apps (inclusive por senha): o evento do app
@@ -1282,10 +1303,16 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val nowElapsed = SystemClock.elapsedRealtime()
         foregroundPackageName = directPackage
-        // Uma rajada de eventos do mesmo app vira um só bloqueio: a cortina já está
-        // na tela e a tela de bloqueio/senha já foi pedida.
-        if (directPackage == lastImmediateBlockedPackage &&
-            nowElapsed - lastImmediateBlockElapsed < IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS
+        // Uma rajada de eventos do mesmo app vira um só bloqueio, mas só enquanto a
+        // cortina ainda cobre a tela esperando a tela de bloqueio/senha. Sem cortina,
+        // o evento é uma volta ao app (troca rápida pelos recentes) e precisa bloquear
+        // de novo: antes, voltar em menos de 700 ms mostrava o app sem senha.
+        if (shouldCoalesceImmediateBlock(
+                samePackage = directPackage == lastImmediateBlockedPackage,
+                elapsedSinceLastBlock = nowElapsed - lastImmediateBlockElapsed,
+                curtainVisible = instantBlockCurtainVisible,
+                awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration
+            )
         ) return true
         lastImmediateBlockedPackage = directPackage
         lastImmediateBlockElapsed = nowElapsed
@@ -1355,6 +1382,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             return true
         }
 
+        // O evento de janela do próprio app chega 100–300 ms depois do toque no ícone;
+        // registrar o bloqueio aqui faz esse evento reaproveitar a cortina já na tela
+        // em vez de abrir um segundo ciclo (nova cortina, nova tela, novos timers).
+        lastImmediateBlockedPackage = blockedPackage
+        lastImmediateBlockElapsed = SystemClock.elapsedRealtime()
         launchBlockNotice(
             blockedPackage = blockedPackage,
             blockedDomain = null,
@@ -2488,7 +2520,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                     eventUptimeMillis = eventUptimeMillis,
                     directPasswordUnlock = blockedDomain == null &&
                         blockedPackage != null &&
-                        blockedPackage in passwordOnlyAppsSet
+                        blockedPackage in passwordOnlyAppsSet &&
+                        !focusModeFallbackActive &&
+                        // Atualizado a cada segundo pelo pulso dos limites: pega um
+                        // limite que esgotou depois do último refresh.
+                        !PasswordTargetAccessGrant.isAppStronglyProtected(blockedPackage)
                 )
             )
             true
@@ -2824,6 +2860,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 releaseInstantBlockCurtain()
             }
         instantBlockCurtainVisible = false
+        // A tela de senha abre a digital assim que a cortina sai, sem esperar um
+        // tempo fixo (o quadro do sistema não pode nascer embaixo da cortina).
+        CurtainDestinationReadyCoordinator.notifyCurtainHidden(instantBlockCurtainGeneration)
     }
 
     private fun releaseInstantBlockCurtain() {
@@ -2932,6 +2971,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
         internal const val SAFE_WINDOW_SETTLE_MILLIS = 160L
+        internal const val FRAME_COMMITTED_SETTLE_MILLIS = 48L
         internal const val UNSAFE_WINDOW_RECHECK_MILLIS = 240L
         private const val SLOW_ACCESSIBILITY_CALLBACK_MILLIS = 250L
         private const val SLOW_CALLBACK_LOG_INTERVAL_MILLIS = 5_000L
@@ -3018,6 +3058,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_CLICKED or
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
+
+        internal fun shouldCoalesceImmediateBlock(
+            samePackage: Boolean,
+            elapsedSinceLastBlock: Long,
+            curtainVisible: Boolean,
+            awaitingSafeSurfaceGeneration: Long
+        ): Boolean = samePackage &&
+            elapsedSinceLastBlock < IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS &&
+            curtainVisible &&
+            awaitingSafeSurfaceGeneration > 0L
 
         internal fun shouldDismissCurtain(
             currentGeneration: Long,
@@ -3159,10 +3209,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
             )
-            if (directPasswordUnlock) {
-                addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-                putExtra(EXTRA_VERIFY_PASSWORD_OWNER, true)
-            }
+            // Sem animação de abertura: ela passava por baixo da cortina e só
+            // atrasava o primeiro quadro da tela de bloqueio/senha.
+            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            if (directPasswordUnlock) putExtra(EXTRA_VERIFY_PASSWORD_OWNER, true)
             putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
             putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
             putExtra(EXTRA_BLOCK_EVENT_UPTIME_MILLIS, eventUptimeMillis)

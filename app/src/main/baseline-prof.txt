@@ -11,3 +11,19 @@ HPLcom/focusguard/security/SelfProtectionStateStore;->**(**)**
 HPLcom/focusguard/security/AuthenticatedRemovalWindow;->**(**)**
 HPLcom/focusguard/security/DeviceAdminActivationWindow;->**(**)**
 HPLcom/focusguard/admin/DeviceOwnerManager;->**(**)**
+# Caminho do bloqueio por senha: do evento até a tela de senha e o desbloqueio.
+HSPLcom/focusguard/ui/BlockNoticeActivity;->**(**)**
+HSPLcom/focusguard/ui/PasswordUnlockActivity;->**(**)**
+HSPLcom/focusguard/ui/PasswordUnlockActivityKt;->**(**)**
+HSPLcom/focusguard/ui/PasswordUnlockPresentationState;->**(**)**
+HSPLcom/focusguard/ui/compose/screens/PasswordProtectedAppUnlockPanelKt;->**(**)**
+HSPLcom/focusguard/service/AppBlockSurfaceResolver;->**(**)**
+HPLcom/focusguard/security/AppBlockSurfacePolicy;->**(**)**
+HPLcom/focusguard/security/PasswordAppUnlockStore;->**(**)**
+HPLcom/focusguard/security/PasswordTargetAccessGrant;->**(**)**
+HPLcom/focusguard/security/CurtainDestinationReadyCoordinator;->**(**)**
+HPLcom/focusguard/security/SafeSurfaceReadinessPolicy;->**(**)**
+HPLcom/focusguard/security/AppUnlockBiometricAuthenticator;->**(**)**
+HPLcom/focusguard/utils/SecurePrefsManager;->**(**)**
+HPLcom/focusguard/sitesblocker/SiteBlockEngine;->**(**)**
+HPLcom/focusguard/sitesblocker/DomainMatcher;->**(**)**

@@ -128,6 +128,16 @@ public final class SiteBlockEngine {
     private String lastPasswordKey = "";
     private long lastPasswordAt = 0L;
 
+    /**
+     * A tela inicial (ou os recentes, no launcher) apareceu: a próxima página com senha precisa
+     * pedir a senha de novo, mesmo dentro do intervalo que junta leituras repetidas da mesma
+     * página. Sem isso, cancelar a senha e voltar ao navegador em até 1,5 s mostrava a página.
+     */
+    public void onLauncherShown() {
+        lastPasswordKey = "";
+        lastPasswordAt = 0L;
+    }
+
     public SiteBlockEngine(AccessibilityService service, ExternalRules externalRules) {
         this.service = service;
         this.externalRules = externalRules;

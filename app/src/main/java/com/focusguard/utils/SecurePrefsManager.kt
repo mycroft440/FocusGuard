@@ -21,7 +21,12 @@ class SecurePrefsManager(context: Context) {
     private val recoveryPrefsName = "focusguard_secure_prefs_recovery"
     private val recoveryAlias = "focusguard_recovery_master_key"
 
-    private val result = createPrefs()
+    private val result = cachedFor(appContext) ?: synchronized(lock) {
+        cachedFor(appContext) ?: createPrefs().also {
+            cachedResult = it
+            cachedContext = appContext
+        }
+    }
     val prefs: SharedPreferences = result.prefs
     val isUsingRecovery: Boolean = result.usingRecovery
 
@@ -33,6 +38,24 @@ class SecurePrefsManager(context: Context) {
         val prefs: SharedPreferences,
         val usingRecovery: Boolean
     )
+
+    companion object {
+        // Abrir o cofre custa uma chamada ao Keystore (MasterKey) e a decifragem dos
+        // conjuntos de chaves do Tink: 10–45 ms por instância. A tela de senha criava
+        // duas na primeira composição. O cofre aberto é reaproveitado no processo; as
+        // leituras e gravações continuam indo ao mesmo arquivo, então nada fica velho.
+        private val lock = Any()
+        @Volatile private var cachedResult: PrefsResult? = null
+        @Volatile private var cachedContext: Context? = null
+
+        private fun cachedFor(appContext: Context): PrefsResult? =
+            cachedResult?.takeIf { cachedContext === appContext }
+
+        /** Abre o cofre fora da thread principal antes de ele ser necessário. */
+        fun prewarm(context: Context) {
+            runCatching { SecurePrefsManager(context) }
+        }
+    }
 
     private fun createPrefs(): PrefsResult {
         return try {

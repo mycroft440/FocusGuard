@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.OnBackPressedCallback
@@ -67,7 +68,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -109,8 +109,22 @@ class PasswordUnlockActivity : AppCompatActivity() {
     private var accessAttemptAuthenticated = false
     private var intruderCaptureArmedForAttempt = false
 
+    // Geração e pedido cuja cortina ainda não saiu; ao sair, a digital/senha libera.
+    private var awaitingCurtainHidden: Pair<Long, Long>? = null
+    private val curtainHiddenListener =
+        CurtainDestinationReadyCoordinator.CurtainHiddenListener { generation ->
+            window.decorView.post {
+                val (awaitedGeneration, request) = awaitingCurtainHidden
+                    ?: return@post
+                if (generation != awaitedGeneration || isFinishing || isDestroyed) return@post
+                awaitingCurtainHidden = null
+                if (presentation.finishCurtainSettle(request)) authenticationReady = true
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CurtainDestinationReadyCoordinator.setCurtainHiddenListener(curtainHiddenListener)
         intruderCaptureController = IntruderAttemptCaptureController(this, authManager)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -137,6 +151,12 @@ class PasswordUnlockActivity : AppCompatActivity() {
         ) {
             intruderCaptureController.startCaptureIfEligible(accessAttemptId)
         }
+    }
+
+    override fun onDestroy() {
+        CurtainDestinationReadyCoordinator.clearCurtainHiddenListener(curtainHiddenListener)
+        ownerCheckJob?.cancel()
+        super.onDestroy()
     }
 
     override fun onPause() {
@@ -222,8 +242,8 @@ class PasswordUnlockActivity : AppCompatActivity() {
             }
         }
 
-        window.decorView.doOnPreDraw {
-            if (curtainRequestId != presentation.curtainRequestId) return@doOnPreDraw
+        val onFramePresented: () -> Unit = onFramePresented@{
+            if (curtainRequestId != presentation.curtainRequestId) return@onFramePresented
             noticeDrawn = true
             if (
                 presentation.pendingCurtainGeneration == pendingGeneration &&
@@ -243,6 +263,18 @@ class PasswordUnlockActivity : AppCompatActivity() {
                 )
             }
             acknowledgePendingNoticeIfPresented()
+        }
+        // No Android 10+ o aviso sai quando o quadro foi de fato para a tela (frame
+        // commit), não antes de desenhar: o serviço então solta a cortina com uma
+        // espera curta em vez de adivinhar com 160 ms.
+        window.decorView.doOnPreDraw {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.decorView.viewTreeObserver.registerFrameCommitCallback {
+                    onFramePresented()
+                }
+            } else {
+                onFramePresented()
+            }
         }
         window.decorView.invalidate()
 
@@ -359,12 +391,17 @@ class PasswordUnlockActivity : AppCompatActivity() {
 
         presentation.acknowledgeCurtain()
         freshFrameGeneration = 0L
-        CurtainDestinationReadyCoordinator.notifyReady(generation)
-
-        // The target panel auto-opens BiometricPrompt. Give the accessibility
-        // curtain its normal safe-window settle interval first so the system prompt
-        // is never born underneath a touch-consuming overlay.
         val acknowledgedRequest = presentation.curtainRequestId
+        awaitingCurtainHidden = generation to acknowledgedRequest
+        CurtainDestinationReadyCoordinator.notifyReady(
+            generation,
+            frameCommitted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        )
+
+        // The target panel auto-opens BiometricPrompt, which must never be born
+        // underneath the touch-consuming curtain. The service reports the moment the
+        // curtain is hidden (curtainHiddenListener); this timer is only the fallback
+        // for when that report never comes.
         decor.postDelayed(
             {
                 if (
@@ -552,8 +589,9 @@ private fun PasswordUnlockContent(
                             textAlign = TextAlign.Center
                         )
                     }
+                    // A liberação já foi publicada antes daqui: nada espera por uma
+                    // pausa, então o app volta na hora (antes eram 180 ms parados).
                     LaunchedEffect(blockAttemptId) {
-                        delay(180L)
                         onUnlocked()
                     }
                 }

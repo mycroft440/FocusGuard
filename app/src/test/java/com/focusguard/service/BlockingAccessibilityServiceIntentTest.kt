@@ -235,6 +235,24 @@ class BlockingAccessibilityServiceIntentTest {
     }
 
     @Test
+    fun `repeat events coalesce only while the curtain still waits for the block screen`() {
+        fun coalesce(visible: Boolean, awaiting: Long, elapsed: Long = 100L, same: Boolean = true) =
+            BlockingAccessibilityService.shouldCoalesceImmediateBlock(
+                samePackage = same,
+                elapsedSinceLastBlock = elapsed,
+                curtainVisible = visible,
+                awaitingSafeSurfaceGeneration = awaiting
+            )
+
+        assertThat(coalesce(visible = true, awaiting = 5L)).isTrue()
+        // Cortina já saiu: voltar ao app pelos recentes precisa bloquear de novo.
+        assertThat(coalesce(visible = false, awaiting = 0L)).isFalse()
+        assertThat(coalesce(visible = true, awaiting = 0L)).isFalse()
+        assertThat(coalesce(visible = true, awaiting = 5L, elapsed = 800L)).isFalse()
+        assertThat(coalesce(visible = true, awaiting = 5L, same = false)).isFalse()
+    }
+
+    @Test
     fun `password-only target opens the unlock screen directly and asks it to verify the owner`() {
         val context = RuntimeEnvironment.getApplication().applicationContext
         val direct = BlockingAccessibilityService.createBlockNoticeIntent(

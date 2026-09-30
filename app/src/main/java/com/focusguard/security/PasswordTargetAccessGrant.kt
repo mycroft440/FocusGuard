@@ -59,6 +59,8 @@ object PasswordTargetAccessGrant {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val grantedPackages = ConcurrentHashMap.newKeySet<String>()
     private val appMonitorJobs = ConcurrentHashMap<String, Job>()
+    // Visitas já confirmadas em primeiro plano pelo monitor (e não só liberadas).
+    private val startedAppVisits = ConcurrentHashMap.newKeySet<String>()
     private val recentAppExits = ConcurrentHashMap<String, RecentAppExit>()
     private val websiteExpiryElapsed = ConcurrentHashMap<String, Long>()
     private val websiteMonitorJobs = ConcurrentHashMap<String, Job>()
@@ -141,6 +143,7 @@ object PasswordTargetAccessGrant {
         val appContext = context.applicationContext
         applicationContext = appContext
         recentAppExits.remove(target)
+        startedAppVisits.remove(target)
         grantedPackages.add(target)
         appMonitorJobs.remove(target)?.cancel()
 
@@ -196,9 +199,38 @@ object PasswordTargetAccessGrant {
         return suppress
     }
 
+    /**
+     * A tela inicial apareceu: toda visita liberada que já estava em primeiro plano
+     * terminou. O monitor por UsageEvents só percebe isso no próximo ciclo (até 200 ms,
+     * mais o atraso do próprio UsageEvents); nesse intervalo, voltar ao app ainda
+     * usava a mesma liberação. Visitas ainda não vistas em primeiro plano (a troca da
+     * tela de senha para o app em andamento) ficam com o monitor.
+     */
+    fun endStartedVisitsOnLauncher(launcherPackage: String) {
+        if (startedAppVisits.isEmpty()) return
+        for (target in startedAppVisits.toList()) {
+            if (target !in grantedPackages) {
+                startedAppVisits.remove(target)
+                continue
+            }
+            appMonitorJobs.remove(target)?.cancel()
+            revokePackageWithoutCancellingSelf(
+                target = target,
+                exitObservation = AppVisitObservation(
+                    latestForegroundPackage = launcherPackage,
+                    latestTargetForegroundAt = Long.MIN_VALUE,
+                    latestNonTargetForegroundAt = Long.MIN_VALUE,
+                    latestTargetPackageBackgroundAt = Long.MIN_VALUE,
+                    latestTargetStoppedAt = Long.MIN_VALUE
+                )
+            )
+        }
+    }
+
     fun revokePackage(packageName: String?) {
         val target = packageName?.takeIf(String::isNotBlank) ?: return
         recentAppExits.remove(target)
+        startedAppVisits.remove(target)
         grantedPackages.remove(target)
         appMonitorJobs.remove(target)?.cancel()
         reconcileProtection()
@@ -274,6 +306,7 @@ object PasswordTargetAccessGrant {
 
     fun clear() {
         grantedPackages.clear()
+        startedAppVisits.clear()
         appMonitorJobs.values.forEach(Job::cancel)
         appMonitorJobs.clear()
         recentAppExits.clear()
@@ -403,6 +436,7 @@ object PasswordTargetAccessGrant {
                     if (targetIsCurrentlyForeground) {
                         targetSeenForeground = true
                         visitStartedAt = observation.latestTargetForegroundAt
+                        startedAppVisits.add(target)
                     } else if (
                         SystemClock.elapsedRealtime() - grantedAtElapsed >= APP_OPEN_TIMEOUT_MILLIS
                     ) {
@@ -431,6 +465,7 @@ object PasswordTargetAccessGrant {
             revokePackageWithoutCancellingSelf(target)
         } finally {
             appMonitorJobs.remove(target)
+            if (target !in grantedPackages) startedAppVisits.remove(target)
         }
     }
 
@@ -539,6 +574,7 @@ object PasswordTargetAccessGrant {
             recentAppExits[target] = exitMarker
         }
 
+        startedAppVisits.remove(target)
         val existed = grantedPackages.remove(target)
         if (!existed) {
             if (exitMarker != null) recentAppExits.remove(target, exitMarker)
@@ -553,6 +589,7 @@ object PasswordTargetAccessGrant {
 
     /** Drops a PASSWORD visit while a stronger layer is already reconciling. */
     private fun dropPackageGrantForStrongerProtection(target: String) {
+        startedAppVisits.remove(target)
         recentAppExits.remove(target)
         grantedPackages.remove(target)
         appMonitorJobs.remove(target)?.cancel()

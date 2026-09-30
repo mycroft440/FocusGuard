@@ -22,4 +22,31 @@ class CurtainDestinationReadyCoordinatorTest {
         CurtainDestinationReadyCoordinator.notifyReady(20L)
         assertThat(received).containsExactly(19L)
     }
+
+    @Test
+    fun `only a frame-committed acknowledgement marks its generation as committed`() {
+        CurtainDestinationReadyCoordinator.notifyReady(30L)
+        assertThat(CurtainDestinationReadyCoordinator.isFrameCommitted(30L)).isFalse()
+
+        CurtainDestinationReadyCoordinator.notifyReady(31L, frameCommitted = true)
+        assertThat(CurtainDestinationReadyCoordinator.isFrameCommitted(31L)).isTrue()
+        assertThat(CurtainDestinationReadyCoordinator.isFrameCommitted(30L)).isFalse()
+        assertThat(CurtainDestinationReadyCoordinator.isFrameCommitted(0L)).isFalse()
+    }
+
+    @Test
+    fun `curtain hidden reaches only the registered destination`() {
+        val hidden = mutableListOf<Long>()
+        val listener = CurtainDestinationReadyCoordinator.CurtainHiddenListener { hidden += it }
+        CurtainDestinationReadyCoordinator.setCurtainHiddenListener(listener)
+        try {
+            CurtainDestinationReadyCoordinator.notifyCurtainHidden(0L)
+            CurtainDestinationReadyCoordinator.notifyCurtainHidden(40L)
+            assertThat(hidden).containsExactly(40L)
+        } finally {
+            CurtainDestinationReadyCoordinator.clearCurtainHiddenListener(listener)
+        }
+        CurtainDestinationReadyCoordinator.notifyCurtainHidden(41L)
+        assertThat(hidden).containsExactly(40L)
+    }
 }
