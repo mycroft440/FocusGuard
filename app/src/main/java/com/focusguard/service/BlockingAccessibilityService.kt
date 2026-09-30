@@ -1301,7 +1301,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         ) return false
         val className = event.className?.toString().orEmpty()
         if (className.contains("Toast") || className.contains("PopupWindow")) return false
-        if (!ImmediateInterceptionPolicy.isBlockedTargetWindow(directPackage, blockedAppsSet)) {
+        if (!ImmediateInterceptionPolicy.isBlockedTargetWindow(
+                directPackage,
+                blockedAppsSet,
+                windowStateChanged = true
+            )
+        ) {
             return false
         }
 
@@ -1359,7 +1364,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             PasswordTargetAccessGrant.isPackageGranted(packageName) -> Unit
             ImmediateInterceptionPolicy.isBlockedTargetWindow(
                 packageName,
-                blockedAppsSet
+                blockedAppsSet,
+                windowStateChanged =
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             ) -> blockApp(packageName, event.eventTime)
         }
     }

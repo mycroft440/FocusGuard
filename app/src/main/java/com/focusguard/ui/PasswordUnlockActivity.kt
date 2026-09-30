@@ -152,13 +152,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
         super.onResume()
         activityResumed = true
         acknowledgePendingNoticeIfPresented()
-        if (
-            accessAttemptId > 0L &&
-            intruderCaptureArmedForAttempt &&
-            !accessAttemptAuthenticated
-        ) {
-            intruderCaptureController.startCaptureIfEligible(accessAttemptId)
-        }
+        startIntruderCaptureIfVerified(accessAttemptId)
     }
 
     override fun onDestroy() {
@@ -304,14 +298,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
 
         // onNewIntent can start a genuinely new access while this singleTop Activity
         // is already resumed. Do not wait for another lifecycle callback to stage it.
-        if (
-            activityResumed &&
-            currentAccessAttemptId > 0L &&
-            intruderCaptureArmedForAttempt &&
-            !accessAttemptAuthenticated
-        ) {
-            intruderCaptureController.startCaptureIfEligible(currentAccessAttemptId)
-        }
+        if (activityResumed) startIntruderCaptureIfVerified(currentAccessAttemptId)
     }
 
     private fun beginOrContinueAccessAttempt(
@@ -337,6 +324,19 @@ class PasswordUnlockActivity : AppCompatActivity() {
             intruderCaptureController.beginAttempt(accessAttemptId)
         }
         return accessAttemptId
+    }
+
+    // Só fotografa depois de confirmar o dono: uma tentativa que volta ao roteador
+    // (tempo/limite) vira a tela genérica e não é um acesso à senha.
+    private fun startIntruderCaptureIfVerified(attemptId: Long) {
+        if (
+            ownerVerified &&
+            attemptId > 0L &&
+            intruderCaptureArmedForAttempt &&
+            !accessAttemptAuthenticated
+        ) {
+            intruderCaptureController.startCaptureIfEligible(attemptId)
+        }
     }
 
     private fun verifyPasswordOwnerIfNeeded(sourceIntent: Intent, packageName: String?) {
@@ -370,6 +370,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
             if (isFinishing || isDestroyed) return@launch
             if (allowed) {
                 ownerVerified = true
+                if (activityResumed) startIntruderCaptureIfVerified(accessAttemptId)
             } else {
                 rerouteThroughBlockRouter(sourceIntent)
             }

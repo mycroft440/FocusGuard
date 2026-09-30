@@ -82,4 +82,18 @@ class PasswordUnlockPresentationStateTest {
         assertThat(state.present(1L, 0L)).isTrue()
         assertThat(state.authenticationReady).isTrue()
     }
+
+    @Test
+    fun `relaunch with the already acknowledged curtain does not re-arm the handshake`() {
+        val state = PasswordUnlockPresentationState()
+        state.present(1L, 10L)
+        state.acknowledgeCurtain()
+        val request = state.curtainRequestId
+
+        assertThat(state.present(1L, 10L)).isFalse()
+        assertThat(state.curtainRequestId).isEqualTo(request)
+        assertThat(state.pendingCurtainGeneration).isEqualTo(0L)
+        // O aviso de cortina oculta, feito com o pedido já confirmado, ainda libera.
+        assertThat(state.finishCurtainSettle(request)).isTrue()
+    }
 }

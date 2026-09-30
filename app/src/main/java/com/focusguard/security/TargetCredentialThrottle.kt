@@ -4,7 +4,8 @@ import android.os.SystemClock
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Limita tentativas de senha/padrão por alvo protegido por PASSWORD.
+ * Limita tentativas de senha/padrão por credencial de bloqueio PASSWORD (a chave vem
+ * de [PasswordAppUnlockStore.throttleKey]: todos os alvos com a mesma senha somam).
  *
  * Senhas de 4 caracteres e padrões de 4 pontos têm poucas combinações; sem limite,
  * dava para testar todas em sequência. Após [FREE_ATTEMPTS] erros seguidos, novas

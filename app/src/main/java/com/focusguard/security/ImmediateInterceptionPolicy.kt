@@ -137,11 +137,15 @@ object ImmediateInterceptionPolicy {
 
     fun isBlockedTargetWindow(
         foregroundPackageName: String,
-        blockedPackages: Set<String>
+        blockedPackages: Set<String>,
+        windowStateChanged: Boolean = false
     ): Boolean = foregroundPackageName.isNotBlank() &&
         foregroundPackageName in blockedPackages &&
         !PasswordTargetAccessGrant.isPackageGranted(foregroundPackageName) &&
-        !PasswordTargetAccessGrant.shouldSuppressPostExitWindow(foregroundPackageName)
+        !PasswordTargetAccessGrant.shouldSuppressPostExitWindow(
+            foregroundPackageName,
+            windowStateChanged
+        )
 
     fun classifySettingsClick(
         packageName: String,

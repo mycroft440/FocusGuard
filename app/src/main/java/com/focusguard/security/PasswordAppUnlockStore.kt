@@ -120,6 +120,21 @@ class PasswordAppUnlockStore(context: Context) {
     fun verifyWebsite(websiteOrRule: String?, credential: String): Boolean =
         resolveWebsiteTargetId(websiteOrRule)?.let { verifyTarget(it, credential) } == true
 
+    /**
+     * Chave do limite de tentativas: a mesma senha protege todos os alvos de uma
+     * sessão, então o limite é da credencial, não do app. Sem isso, alternar entre os
+     * apps protegidos dava 5 tentativas a mais por app. Guarda só um resumo do
+     * verificador, nunca o verificador em si.
+     */
+    fun throttleKey(targetId: String?): String? {
+        val target = targetId?.takeIf(String::isNotBlank) ?: return null
+        val verifier = preferences.getString(prefix(target) + KEY_VERIFIER, null)
+            ?: return target
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(verifier.toByteArray(Charsets.UTF_8))
+        return "credential:" + digest.joinToString("") { "%02x".format(it) }
+    }
+
     fun verifyTarget(targetId: String?, credential: String): Boolean {
         val target = targetId?.takeIf(String::isNotBlank) ?: return false
         val prefix = prefix(target)

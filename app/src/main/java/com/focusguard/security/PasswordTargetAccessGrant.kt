@@ -53,7 +53,13 @@ object PasswordTargetAccessGrant {
     private data class RecentAppExit(
         val markedAtElapsedMillis: Long,
         val queryFromWallClockMillis: Long,
-        val lastKnownForegroundPackage: String?
+        val lastKnownForegroundPackage: String?,
+        /**
+         * Saída vista pelo launcher, não pelo UsageEvents: só suprime com prova do
+         * UsageEvents de que outro app está na frente. Sem essa prova (volta pelos
+         * recentes ainda não registrada), o evento conta como entrada e pede a senha.
+         */
+        val requiresUsageEvidence: Boolean = false
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -178,9 +184,19 @@ object PasswordTargetAccessGrant {
      * latest UsageEvents foreground owner is checked again and the guard is removed
      * as soon as the protected package itself is foreground.
      */
-    fun shouldSuppressPostExitWindow(packageName: String): Boolean {
+    fun shouldSuppressPostExitWindow(
+        packageName: String,
+        windowStateChanged: Boolean = false
+    ): Boolean {
         val target = packageName.takeIf(String::isNotBlank) ?: return false
         val recentExit = recentAppExits[target] ?: return false
+        // Saída vista pelo launcher: o eco da janela que fechou chega como
+        // WINDOWS_CHANGED. Uma nova janela do próprio app (WINDOW_STATE_CHANGED, como
+        // a volta pelo cartão dos recentes) é sempre uma entrada e pede a senha.
+        if (recentExit.requiresUsageEvidence && windowStateChanged) {
+            recentAppExits.remove(target, recentExit)
+            return false
+        }
         val nowElapsed = SystemClock.elapsedRealtime()
         val elapsedSinceExit = nowElapsed - recentExit.markedAtElapsedMillis
         if (elapsedSinceExit < 0L || elapsedSinceExit > POST_EXIT_ECHO_SUPPRESSION_MILLIS) {
@@ -189,7 +205,12 @@ object PasswordTargetAccessGrant {
         }
 
         val observedForegroundPackage = observeForegroundAfterExit(target, recentExit)
-            ?: recentExit.lastKnownForegroundPackage
+            ?: if (recentExit.requiresUsageEvidence) {
+                recentAppExits.remove(target, recentExit)
+                return false
+            } else {
+                recentExit.lastKnownForegroundPackage
+            }
         val suppress = shouldSuppressPostExitEcho(
             target = target,
             observedForegroundPackage = observedForegroundPackage,
@@ -219,10 +240,14 @@ object PasswordTargetAccessGrant {
                 continue
             }
             appMonitorJobs.remove(target)?.cancel()
-            // Sem marcador de saída: ele suprimiria por 4 s um evento de volta pelo
-            // cartão dos recentes (que é do launcher) se o UsageEvents ainda não tiver
-            // registrado a volta. Um eco velho da saída, no máximo, pede a senha de novo.
-            revokePackageWithoutCancellingSelf(target = target, exitObservation = null)
+            // O marcador filtra o eco atrasado da janela que fechou (senão a senha
+            // aparecia por cima da tela inicial), mas só com prova do UsageEvents: uma
+            // volta pelo cartão dos recentes ainda não registrada nunca é suprimida.
+            revokePackageWithoutCancellingSelf(
+                target = target,
+                exitObservation = null,
+                launcherExit = true
+            )
         }
     }
 
@@ -554,16 +579,25 @@ object PasswordTargetAccessGrant {
 
     private fun revokePackageWithoutCancellingSelf(
         target: String,
-        exitObservation: AppVisitObservation? = null
+        exitObservation: AppVisitObservation? = null,
+        launcherExit: Boolean = false
     ) {
-        val exitMarker = exitObservation?.let { observation ->
-            RecentAppExit(
+        val queryFrom = (
+            System.currentTimeMillis() - POST_EXIT_USAGE_LOOKBACK_MILLIS
+        ).coerceAtLeast(0L)
+        val exitMarker = when {
+            exitObservation != null -> RecentAppExit(
                 markedAtElapsedMillis = SystemClock.elapsedRealtime(),
-                queryFromWallClockMillis = (
-                    System.currentTimeMillis() - POST_EXIT_USAGE_LOOKBACK_MILLIS
-                ).coerceAtLeast(0L),
-                lastKnownForegroundPackage = observation.latestForegroundPackage
+                queryFromWallClockMillis = queryFrom,
+                lastKnownForegroundPackage = exitObservation.latestForegroundPackage
             )
+            launcherExit -> RecentAppExit(
+                markedAtElapsedMillis = SystemClock.elapsedRealtime(),
+                queryFromWallClockMillis = queryFrom,
+                lastKnownForegroundPackage = null,
+                requiresUsageEvidence = true
+            )
+            else -> null
         }
 
         // Publish the exit marker before dropping the grant. Accessibility runs on

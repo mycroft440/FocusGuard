@@ -13,6 +13,7 @@ internal class PasswordUnlockPresentationState {
         private set
     var authenticationReady = false
         private set
+    private var acknowledgedGeneration = 0L
 
     /** Returns true only when the credential UI needs a new composition. */
     fun present(accessAttemptId: Long, curtainGeneration: Long): Boolean {
@@ -20,6 +21,12 @@ internal class PasswordUnlockPresentationState {
         if (newAttempt) {
             attemptId = accessAttemptId
             authenticationReady = curtainGeneration <= 0L
+            acknowledgedGeneration = 0L
+        } else if (curtainGeneration > 0L && curtainGeneration == acknowledgedGeneration) {
+            // O serviço reenviou a tela com a mesma cortina já confirmada (evento
+            // juntado): nada a refazer. Rearmar invalidaria o aviso de cortina oculta e
+            // a digital cairia na reserva de 240 ms.
+            return false
         }
 
         // A duplicate intent without a curtain cannot release an earlier pending
@@ -35,6 +42,7 @@ internal class PasswordUnlockPresentationState {
     fun acknowledgeCurtain(): Long {
         val generation = pendingCurtainGeneration
         pendingCurtainGeneration = 0L
+        if (generation > 0L) acknowledgedGeneration = generation
         return generation
     }
 

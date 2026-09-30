@@ -160,10 +160,14 @@ internal fun PasswordProtectedTargetUnlockPanel(
      */
     fun completeUnlock(credential: String? = null, onInvalid: (() -> Unit)? = null) {
         if (verifying || targetId == null) return
+        val throttleKey = store.throttleKey(targetId) ?: targetId
         if (credential != null) {
-            val waitMillis = TargetCredentialThrottle.remainingLockoutMillis(targetId)
+            val waitMillis = TargetCredentialThrottle.remainingLockoutMillis(throttleKey)
             if (waitMillis > 0L) {
-                error = "Muitas tentativas erradas. Tente de novo em ${(waitMillis + 999L) / 1000L} s."
+                error = context.getString(
+                    R.string.password_unlock_too_many_attempts,
+                    ((waitMillis + 999L) / 1000L).toInt()
+                )
                 onInvalid?.invoke()
                 return
             }
@@ -181,9 +185,9 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 }
                 if (credential != null) {
                     if (credentialAccepted) {
-                        TargetCredentialThrottle.recordSuccess(targetId)
+                        TargetCredentialThrottle.recordSuccess(throttleKey)
                     } else {
-                        TargetCredentialThrottle.recordFailure(targetId)
+                        TargetCredentialThrottle.recordFailure(throttleKey)
                     }
                 }
                 if (!credentialAccepted) {
