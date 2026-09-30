@@ -43,10 +43,10 @@ import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
-import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.PasswordAppUnlockMode
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.PasswordTargetAccessGrant
+import com.focusguard.security.TargetCredentialThrottle
 import com.focusguard.service.AppBlockSurfaceResolver
 import com.focusguard.ui.compose.components.PatternLockInput
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -116,8 +116,11 @@ internal fun PasswordProtectedTargetUnlockPanel(
     var biometricRetryOnResume by remember(targetId) { mutableStateOf(false) }
 
     val globalBiometricUnlockEnabled = authManager.isBiometricAppUnlockEnabled()
-    val biometricAvailable = activity != null &&
-        AppUnlockBiometricAuthenticator.isAvailable(context)
+    // Uma consulta ao BiometricManager por tentativa, não a cada recomposição. Se a
+    // digital for removida no meio, authenticate() confere de novo e recusa.
+    val biometricAvailable = remember(activity, targetId) {
+        activity != null && AppUnlockBiometricAuthenticator.isAvailable(context)
+    }
     val failureMessage = stringResource(R.string.password_app_unlock_failed)
     val wrongCredentialMessage = stringResource(R.string.sessions_wrong_password)
     val promptTitle = stringResource(R.string.password_app_unlock_biometric_prompt_title)
@@ -157,6 +160,14 @@ internal fun PasswordProtectedTargetUnlockPanel(
      */
     fun completeUnlock(credential: String? = null, onInvalid: (() -> Unit)? = null) {
         if (verifying || targetId == null) return
+        if (credential != null) {
+            val waitMillis = TargetCredentialThrottle.remainingLockoutMillis(targetId)
+            if (waitMillis > 0L) {
+                error = "Muitas tentativas erradas. Tente de novo em ${(waitMillis + 999L) / 1000L} s."
+                onInvalid?.invoke()
+                return
+            }
+        }
         scope.launch {
             verifying = true
             error = null
@@ -167,6 +178,13 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     }
                     val ownerCheck = async { passwordStillOwnsTarget() }
                     credentialCheck.await() to ownerCheck.await()
+                }
+                if (credential != null) {
+                    if (credentialAccepted) {
+                        TargetCredentialThrottle.recordSuccess(targetId)
+                    } else {
+                        TargetCredentialThrottle.recordFailure(targetId)
+                    }
                 }
                 if (!credentialAccepted) {
                     error = wrongCredentialMessage

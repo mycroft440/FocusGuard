@@ -424,6 +424,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
+    /** Se o próprio FocusGuard suspendeu este pacote (leitura só das preferências). */
+    fun isManagedSuspended(packageName: String): Boolean =
+        packageName in managedSuspendedApps()
+
     private fun managedSuspendedApps(): Set<String> {
         return suspendedAppsPreferences
             .getStringSet(MANAGED_SUSPENDED_APPS_KEY, emptySet())

@@ -153,6 +153,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             )
         }
 
+        override fun isBlockSurfacePending(): Boolean =
+            instantBlockCurtainVisible && awaitingSafeSurfaceGeneration > 0L
+
         override fun onVisibleUrl(packageName: String, visibleUrl: String) {
             if (limitedWebsiteDomains.isEmpty()) return
             updateWebsiteTracking(visibleUrl, packageName, System.currentTimeMillis())
@@ -284,6 +287,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastUnknownSourcesBlockElapsed = 0L
     private var lastImmediateBlockedPackage: String? = null
     private var lastImmediateBlockElapsed = 0L
+    private var lastBlockSurfaceRelaunchElapsed = 0L
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -718,7 +722,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 directPackage.isNotEmpty() &&
                 directPackage == defaultLauncherPackage
             ) {
-                PasswordTargetAccessGrant.endStartedVisitsOnLauncher(directPackage)
+                PasswordTargetAccessGrant.endStartedVisitsOnLauncher()
                 siteBlockEngine.onLauncherShown()
             }
 
@@ -1313,7 +1317,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                 curtainVisible = instantBlockCurtainVisible,
                 awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration
             )
-        ) return true
+        ) {
+            // Mesma cortina, mas a tela de bloqueio é pedida de novo: um app com tela de
+            // abertura (Splash → Main) pode ter subido a segunda tela por cima da nossa,
+            // e sem isso a checagem de janelas mandava a pessoa para a tela inicial.
+            // A Activity é singleTop e o aviso repetido da mesma geração é ignorado.
+            relaunchAwaitedBlockSurface(directPackage, event.eventTime)
+            return true
+        }
         lastImmediateBlockedPackage = directPackage
         lastImmediateBlockElapsed = nowElapsed
         blockApp(directPackage, event.eventTime)
@@ -2491,6 +2502,37 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun relaunchAwaitedBlockSurface(blockedPackage: String, eventUptimeMillis: Long) {
+        val generation = awaitingSafeSurfaceGeneration.takeIf { it > 0L } ?: return
+        // Cada reenvio refaz o aviso de pronto da tela; numa rajada, um por intervalo.
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (nowElapsed - lastBlockSurfaceRelaunchElapsed < BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS) {
+            return
+        }
+        lastBlockSurfaceRelaunchElapsed = nowElapsed
+        runCatching {
+            startActivity(
+                createBlockNoticeIntent(
+                    context = this,
+                    blockedPackage = blockedPackage,
+                    blockedDomain = null,
+                    curtainGeneration = generation,
+                    eventUptimeMillis = eventUptimeMillis,
+                    directPasswordUnlock = isDirectPasswordUnlockTarget(blockedPackage)
+                )
+            )
+        }.onFailure { error ->
+            FocusGuardLogger.logError("A11y", "Falha ao reenviar tela de bloqueio", error)
+        }
+    }
+
+    private fun isDirectPasswordUnlockTarget(blockedPackage: String): Boolean =
+        blockedPackage in passwordOnlyAppsSet &&
+            !focusModeFallbackActive &&
+            // Atualizado a cada segundo pelo pulso dos limites: pega um limite que
+            // esgotou depois do último refresh.
+            !PasswordTargetAccessGrant.isAppStronglyProtected(blockedPackage)
+
     private fun launchBlockNotice(
         blockedPackage: String?,
         blockedDomain: String?,
@@ -2520,11 +2562,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     eventUptimeMillis = eventUptimeMillis,
                     directPasswordUnlock = blockedDomain == null &&
                         blockedPackage != null &&
-                        blockedPackage in passwordOnlyAppsSet &&
-                        !focusModeFallbackActive &&
-                        // Atualizado a cada segundo pelo pulso dos limites: pega um
-                        // limite que esgotou depois do último refresh.
-                        !PasswordTargetAccessGrant.isAppStronglyProtected(blockedPackage)
+                        isDirectPasswordUnlockTarget(blockedPackage)
                 )
             )
             true
@@ -2967,6 +3005,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
         private const val UNKNOWN_SOURCES_BLOCK_DEBOUNCE_MILLIS = 800L
         private const val IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS = 700L
+        private const val BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS = 150L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L

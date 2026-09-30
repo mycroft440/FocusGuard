@@ -119,6 +119,9 @@ public final class SiteBlockEngine {
         /** Página que exige a senha do bloqueio: o FocusGuard mostra a tela de senha. */
         void onPasswordSite(String packageName, String visibleUrl);
 
+        /** Se a cortina ainda cobre a tela esperando a tela de bloqueio/senha pedida. */
+        boolean isBlockSurfacePending();
+
         /** Cada URL lida da barra, para contar o tempo dos limites de uso. */
         void onVisibleUrl(String packageName, String visibleUrl);
     }
@@ -480,7 +483,13 @@ public final class SiteBlockEngine {
             if (decision == ExternalRules.PASSWORD) {
                 String key = packageName + "|" + DomainMatcher.extractHost(visibleUrl);
                 long now = SystemClock.elapsedRealtime();
-                if (!key.equals(lastPasswordKey) || now - lastPasswordAt >= PASSWORD_DEBOUNCE_MS) {
+                // Leituras repetidas da mesma página só se juntam enquanto a tela de senha
+                // ainda está sendo aberta (cortina esperando). Com a cortina fora, a página
+                // na barra é uma volta ao navegador e precisa pedir a senha de novo.
+                boolean samePendingRequest = key.equals(lastPasswordKey)
+                        && now - lastPasswordAt < PASSWORD_DEBOUNCE_MS
+                        && externalRules.isBlockSurfacePending();
+                if (!samePendingRequest) {
                     lastPasswordKey = key;
                     lastPasswordAt = now;
                     externalRules.onPasswordSite(packageName, visibleUrl);

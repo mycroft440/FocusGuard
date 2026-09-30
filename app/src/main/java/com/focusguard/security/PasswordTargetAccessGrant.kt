@@ -150,7 +150,12 @@ object PasswordTargetAccessGrant {
         // Device Owner can suspend the package independently of Accessibility.
         // Temporarily unsuspend only this authenticated target; the normal
         // reconciliation re-suspends it as soon as the one-visit grant ends.
-        DeviceOwnerManager.getInstance(appContext).unblockApps(listOf(target))
+        // Um PASSWORD puro nunca suspende o pacote: só há o que desfazer se o
+        // FocusGuard o suspendeu, e assim a liberação não faz chamada ao DPM na main.
+        val deviceOwnerManager = DeviceOwnerManager.getInstance(appContext)
+        if (deviceOwnerManager.isManagedSuspended(target)) {
+            deviceOwnerManager.unblockApps(listOf(target))
+        }
 
         appMonitorJobs[target] = scope.launch {
             monitorSingleAppVisit(appContext, target)
@@ -206,7 +211,7 @@ object PasswordTargetAccessGrant {
      * usava a mesma liberação. Visitas ainda não vistas em primeiro plano (a troca da
      * tela de senha para o app em andamento) ficam com o monitor.
      */
-    fun endStartedVisitsOnLauncher(launcherPackage: String) {
+    fun endStartedVisitsOnLauncher() {
         if (startedAppVisits.isEmpty()) return
         for (target in startedAppVisits.toList()) {
             if (target !in grantedPackages) {
@@ -214,16 +219,10 @@ object PasswordTargetAccessGrant {
                 continue
             }
             appMonitorJobs.remove(target)?.cancel()
-            revokePackageWithoutCancellingSelf(
-                target = target,
-                exitObservation = AppVisitObservation(
-                    latestForegroundPackage = launcherPackage,
-                    latestTargetForegroundAt = Long.MIN_VALUE,
-                    latestNonTargetForegroundAt = Long.MIN_VALUE,
-                    latestTargetPackageBackgroundAt = Long.MIN_VALUE,
-                    latestTargetStoppedAt = Long.MIN_VALUE
-                )
-            )
+            // Sem marcador de saída: ele suprimiria por 4 s um evento de volta pelo
+            // cartão dos recentes (que é do launcher) se o UsageEvents ainda não tiver
+            // registrado a volta. Um eco velho da saída, no máximo, pede a senha de novo.
+            revokePackageWithoutCancellingSelf(target = target, exitObservation = null)
         }
     }
 

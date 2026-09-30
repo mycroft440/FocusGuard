@@ -23,8 +23,12 @@ class SecurePrefsManager(context: Context) {
 
     private val result = cachedFor(appContext) ?: synchronized(lock) {
         cachedFor(appContext) ?: createPrefs().also {
-            cachedResult = it
-            cachedContext = appContext
+            // Só o cofre principal fica guardado: numa falha passageira do Keystore,
+            // a próxima instância ainda tenta o principal, como antes do cache.
+            if (!it.usingRecovery) {
+                cachedResult = it
+                cachedContext = appContext
+            }
         }
     }
     val prefs: SharedPreferences = result.prefs

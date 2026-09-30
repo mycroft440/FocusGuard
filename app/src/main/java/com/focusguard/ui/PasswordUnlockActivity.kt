@@ -88,14 +88,18 @@ class PasswordUnlockActivity : AppCompatActivity() {
     private lateinit var intruderCaptureController: IntruderAttemptCaptureController
     private val presentation = PasswordUnlockPresentationState()
     private var noticeDrawn = false
+    // Se o desenho que marcou noticeDrawn foi confirmado na tela (frame commit).
+    private var drawnFrameCommitted = false
     private var activityResumed = false
     private var windowFocused = false
     private var freshFrameGeneration = 0L
     private var authenticationReady by mutableStateOf(false)
 
     // Aberta direto pelo serviço (sem o roteador), a tela confere o dono do bloqueio
-    // antes de soltar a cortina: se outro bloqueio mais forte assumiu o app desde o
-    // último refresh do serviço, o pedido volta para o roteador e a senha nunca aparece.
+    // antes de liberar senha ou digital: se outro bloqueio mais forte assumiu o app
+    // desde o último refresh do serviço, o pedido volta para o roteador e a senha nunca
+    // aparece. A cortina não espera essa checagem: ela protege o app, e esta tela opaca
+    // já o cobre; assim a consulta ao banco sai do caminho até a tela aparecer.
     private var ownerVerified by mutableStateOf(true)
     private var ownerCheckJob: Job? = null
 
@@ -121,6 +125,10 @@ class PasswordUnlockActivity : AppCompatActivity() {
                 if (presentation.finishCurtainSettle(request)) authenticationReady = true
             }
         }
+
+    private companion object {
+        const val FRAME_COMMIT_ACK_TIMEOUT_MILLIS = 100L
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -269,10 +277,26 @@ class PasswordUnlockActivity : AppCompatActivity() {
         // espera curta em vez de adivinhar com 160 ms.
         window.decorView.doOnPreDraw {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                var presented = false
                 window.decorView.viewTreeObserver.registerFrameCommitCallback {
-                    onFramePresented()
+                    if (!presented) {
+                        presented = true
+                        drawnFrameCommitted = true
+                        onFramePresented()
+                    }
                 }
+                // Reserva: se nenhum quadro chegar a ser confirmado (tela parada), o
+                // aviso sai assim mesmo, sem a marca de commit, e o serviço volta à
+                // espera cheia em vez de segurar a cortina até o failsafe de 5 s.
+                window.decorView.postDelayed({
+                    if (!presented) {
+                        presented = true
+                        drawnFrameCommitted = false
+                        onFramePresented()
+                    }
+                }, FRAME_COMMIT_ACK_TIMEOUT_MILLIS)
             } else {
+                drawnFrameCommitted = false
                 onFramePresented()
             }
         }
@@ -346,7 +370,6 @@ class PasswordUnlockActivity : AppCompatActivity() {
             if (isFinishing || isDestroyed) return@launch
             if (allowed) {
                 ownerVerified = true
-                acknowledgePendingNoticeIfPresented()
             } else {
                 rerouteThroughBlockRouter(sourceIntent)
             }
@@ -373,8 +396,6 @@ class PasswordUnlockActivity : AppCompatActivity() {
     }
 
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
-        // A cortina fica até o dono ser confirmado (ver verifyPasswordOwnerIfNeeded).
-        if (!ownerVerified) return false
         val generation = presentation.pendingCurtainGeneration
         // No pending acknowledgement can also mean that its settle timer is
         // still running. Focus/resume callbacks must not bypass that timer.
@@ -395,7 +416,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
         awaitingCurtainHidden = generation to acknowledgedRequest
         CurtainDestinationReadyCoordinator.notifyReady(
             generation,
-            frameCommitted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            frameCommitted = drawnFrameCommitted
         )
 
         // The target panel auto-opens BiometricPrompt, which must never be born
