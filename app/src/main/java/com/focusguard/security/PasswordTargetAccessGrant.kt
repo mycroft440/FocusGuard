@@ -368,9 +368,10 @@ object PasswordTargetAccessGrant {
 
     /** Testes: simula a saída que o monitor registra ao ver outro app na frente. */
     internal fun recordExitForTest(target: String, lastKnownForegroundPackage: String) {
+        // Sem SystemClock: os testes de unidade rodam fora do Android.
         recentAppExits[target] = RecentAppExit(
-            markedAtElapsedMillis = SystemClock.elapsedRealtime(),
-            queryFromWallClockMillis = System.currentTimeMillis(),
+            markedAtElapsedMillis = 0L,
+            queryFromWallClockMillis = 0L,
             lastKnownForegroundPackage = lastKnownForegroundPackage
         )
     }
