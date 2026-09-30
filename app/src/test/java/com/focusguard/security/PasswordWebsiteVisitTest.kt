@@ -58,11 +58,27 @@ class PasswordWebsiteVisitTest {
     @Test
     fun `notification shade, share sheet and own screens do not end the visit`() {
         val own = "com.focusguard"
-        listOf("com.android.systemui", "android", own).forEach { pkg ->
+        listOf(
+            "com.android.systemui",
+            "android",
+            "com.android.intentresolver",
+            "com.google.android.gms",
+            own
+        ).forEach { pkg ->
             assertThat(BlockingAccessibilityService.shouldEndWebsiteVisitsFor(pkg, own)).isFalse()
         }
         assertThat(
             BlockingAccessibilityService.shouldEndWebsiteVisitsFor("com.whatsapp", own)
         ).isTrue()
+    }
+
+    @Test
+    fun `toasts and popups never count as leaving the browser`() {
+        assertThat(BlockingAccessibilityService.isTransientWindowClass("android.widget.Toast\$TN"))
+            .isTrue()
+        assertThat(BlockingAccessibilityService.isTransientWindowClass("android.widget.PopupWindow"))
+            .isTrue()
+        assertThat(BlockingAccessibilityService.isTransientWindowClass("com.whatsapp.HomeActivity"))
+            .isFalse()
     }
 }

@@ -28,6 +28,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -730,7 +731,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             // Outra janela na frente encerra as visitas a sites liberadas por senha em
             // outros navegadores (o teclado já saiu acima, em consumeInputUiEvent).
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-                shouldEndWebsiteVisitsFor(directPackage, packageName)
+                PasswordTargetAccessGrant.hasWebsiteGrants() &&
+                shouldEndWebsiteVisitsFor(directPackage, packageName) &&
+                !isTransientWindowClass(event.className?.toString().orEmpty()) &&
+                (directPackage == defaultLauncherPackage ||
+                    !isOverlayWindow(event.windowId))
             ) {
                 PasswordTargetAccessGrant.endWebsiteVisitsOnForeground(
                     foregroundPackage = directPackage,
@@ -878,6 +883,20 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             }
         }
+    }
+
+    /**
+     * Se a janela do evento fica por cima sem tirar o navegador da frente: balões de
+     * conversa, painéis laterais e seletores de preenchimento de senha são janelas de
+     * sistema, não de app. Uma janela que ainda não aparece na lista (recém-aberta)
+     * conta como app: na dúvida, a visita termina e a senha é pedida de novo.
+     * Consulta as janelas só quando há um site liberado (ver o chamador).
+     */
+    private fun isOverlayWindow(windowId: Int): Boolean {
+        val window = runCatching { windows }.getOrNull()
+            ?.firstOrNull { it.id == windowId }
+            ?: return false
+        return window.type != AccessibilityWindowInfo.TYPE_APPLICATION
     }
 
     private fun consumeInputUiEvent(
@@ -3102,8 +3121,15 @@ class BlockingAccessibilityService : AccessibilityService() {
             "com.android.systemui",
             "android",
             "com.android.permissioncontroller",
-            "com.google.android.permissioncontroller"
+            "com.google.android.permissioncontroller",
+            // Caixa de compartilhar do Android 14+.
+            "com.android.intentresolver",
+            // Login com o Google (One Tap) e preenchimento de senhas do Google.
+            "com.google.android.gms"
         )
+
+        internal fun isTransientWindowClass(className: String): Boolean =
+            className.contains("Toast") || className.contains("PopupWindow")
 
         internal fun shouldEndWebsiteVisitsFor(
             foregroundPackage: String,

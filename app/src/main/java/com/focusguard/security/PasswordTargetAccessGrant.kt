@@ -320,6 +320,8 @@ object PasswordTargetAccessGrant {
      * Outra janela assumiu a frente (tela inicial, recentes, outro app): as visitas
      * liberadas em navegadores que não são esse pacote terminam, como nos apps.
      */
+    fun hasWebsiteGrants(): Boolean = websiteGrantBrowsers.isNotEmpty()
+
     fun endWebsiteVisitsOnForeground(foregroundPackage: String, foregroundIsBrowser: Boolean) {
         if (websiteGrantBrowsers.isEmpty() || foregroundPackage.isBlank()) return
         if (foregroundIsBrowser) onWebsiteBrowserObserved(foregroundPackage)
