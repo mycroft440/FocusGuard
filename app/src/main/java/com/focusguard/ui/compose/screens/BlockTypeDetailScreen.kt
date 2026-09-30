@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
@@ -831,11 +832,12 @@ private fun entryScheduleLines(
     entry: BlockingSessionManager.BlockOverview.Entry
 ): List<String> {
     val context = LocalContext.current
-    val locale = remember(context) { context.resources.configuration.locales[0] }
+    val configuration = LocalConfiguration.current
+    val locale = remember(configuration) { configuration.locales[0] }
     val dateTimeFormat = remember(locale) {
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, locale)
     }
-    val timeFormat = remember(context) {
+    val timeFormat = remember(context, configuration) {
         android.text.format.DateFormat.getTimeFormat(context)
     }
 
