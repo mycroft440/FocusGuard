@@ -297,6 +297,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            AppLabelCache.invalidate(intent?.data?.schemeSpecificPart)
             refreshLauncherIndex(force = true)
             lastLoadTime = 0L
             scope.launch {

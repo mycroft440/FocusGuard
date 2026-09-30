@@ -25,6 +25,11 @@ object AppLabelCache {
         }
     }
 
+    /** Um app foi instalado, atualizado ou removido: o nome pode ter mudado. */
+    fun invalidate(packageName: String?) {
+        if (packageName.isNullOrBlank()) labels.clear() else labels.remove(packageName)
+    }
+
     private fun load(context: Context, packageName: String): String? {
         val packageManager = context.applicationContext.packageManager
         return runCatching {
