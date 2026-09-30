@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.withLock
 object FocusGuardLogger {
     private const val TAG = "FocusGuardLogger"
     private const val MAX_BREADCRUMBS = 50
+    private const val MAX_LOG_FILE_BYTES = 8L * 1024 * 1024
     private val mutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val breadcrumbs = ConcurrentLinkedQueue<String>()
@@ -145,6 +146,9 @@ object FocusGuardLogger {
         scope.launch {
             mutex.withLock {
                 try {
+                    // Um processo que fica dias aberto escreve sempre no mesmo arquivo; acima
+                    // do teto, só os erros fatais (logFatal) continuam sendo gravados.
+                    if (target.length() > MAX_LOG_FILE_BYTES) return@withLock
                     FileOutputStream(target, true).use { stream ->
                         stream.write("$message\n".toByteArray())
                     }

@@ -246,6 +246,17 @@ public final class SiteBlockEngine {
             return;
         }
 
+        // Sem nenhum site bloqueado, a decisão abaixo seria "não fazer nada" de qualquer jeito.
+        // Conferir antes evita as consultas à árvore (chamadas síncronas ao outro app, na
+        // thread principal, que é a mesma da interface do FocusGuard) a cada evento de
+        // qualquer app, como a barra de status e as notificações.
+        if (!isBlockingActive()) {
+            cancelFirefoxRetry();
+            cancelReread();
+            cancelPageScan();
+            return;
+        }
+
         AccessibilityNodeInfo source = event.getSource();
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
 

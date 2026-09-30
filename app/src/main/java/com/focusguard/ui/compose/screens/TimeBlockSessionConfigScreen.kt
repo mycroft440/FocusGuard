@@ -79,6 +79,7 @@ import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AppLabelCache
 import com.focusguard.utils.AssociatedBlockTargets
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
@@ -1040,10 +1041,7 @@ private fun formatBlockTime(hour: Int, minute: Int): String =
     "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
 
 private fun resolveAppLabel(context: Context, packageName: String): String {
-    val installed = runCatching {
-        val pm = context.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-    }.getOrNull()
+    val installed = AppLabelCache.get(context, packageName)
     if (!installed.isNullOrBlank()) return installed
 
     return PredefinedApps.PREVENTIVE_APPS

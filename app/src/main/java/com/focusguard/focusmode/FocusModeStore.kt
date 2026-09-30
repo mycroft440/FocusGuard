@@ -93,13 +93,20 @@ object FocusModeStore {
     private fun preferences(context: Context) = storageContext(context)
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
+    // Lido a cada troca de janela pelo serviço: o contexto do armazenamento protegido
+    // é criado uma vez por processo em vez de a cada leitura.
+    @Volatile private var cachedStorage: Pair<Context, Context>? = null
+
     private fun storageContext(context: Context): Context {
         val appContext = context.applicationContext
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        cachedStorage?.let { (source, storage) -> if (source === appContext) return storage }
+        val storage = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             runCatching { appContext.createDeviceProtectedStorageContext() }
                 .getOrDefault(appContext)
         } else {
             appContext
         }
+        cachedStorage = appContext to storage
+        return storage
     }
 }

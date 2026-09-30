@@ -6,9 +6,11 @@ import android.content.Context
 import android.os.SystemClock
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,7 +63,11 @@ object PasswordTargetAccessGrant {
         val requiresUsageEvidence: Boolean = false
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, error ->
+            FocusGuardLogger.logError("PasswordTargetAccessGrant", "Erro em tarefa em segundo plano", error)
+        }
+    )
     private val grantedPackages = ConcurrentHashMap.newKeySet<String>()
     private val appMonitorJobs = ConcurrentHashMap<String, Job>()
     // Visitas já confirmadas em primeiro plano pelo monitor (e não só liberadas).

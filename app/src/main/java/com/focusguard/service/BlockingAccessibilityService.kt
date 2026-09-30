@@ -84,6 +84,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -118,7 +119,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     private val serviceJob = SupervisorJob()
-    private val scope = CoroutineScope(serviceJob + Dispatchers.IO)
+    // Um erro solto numa corrotina do serviço derrubaria o processo inteiro, com a
+    // interface junto (o serviço roda no mesmo processo do app).
+    private val scope = CoroutineScope(
+        serviceJob + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
+            FocusGuardLogger.logError("A11y", "Erro em tarefa do serviço", error)
+        }
+    )
     private val inputEventFilter = AccessibilityInputEventFilter()
     private val isRefreshing = AtomicBoolean(false)
     private val refreshRequested = AtomicBoolean(false)
@@ -301,7 +308,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var trailingBlockSurfaceRelaunchPending = false
 
     private val packageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
+        override fun onReceive(context: Context?, intent: Intent?) = guardReceiver {
             AppLabelCache.invalidate(intent?.data?.schemeSpecificPart)
             refreshLauncherIndex(force = true)
             lastLoadTime = 0L
@@ -312,20 +319,29 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private val launcherReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
+        override fun onReceive(context: Context?, intent: Intent?) = guardReceiver {
             refreshLauncherIndex(force = true)
         }
     }
 
     private val refreshReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
+        override fun onReceive(context: Context?, intent: Intent?) = guardReceiver {
             if (intent?.action == ACTION_DEV_RELINQUISH_ACCESSIBILITY) {
                 relinquishAccessibilityForDevelopment()
-                return
+                return@guardReceiver
             }
             intent?.let(::applyImmediateBlockingSnapshot)
             lastLoadTime = 0L
             refreshData()
+        }
+    }
+
+    /** Um erro num receptor não pode derrubar o processo (e a interface do app junto). */
+    private fun guardReceiver(block: () -> Unit) {
+        try {
+            block()
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError("A11y", "Erro ao tratar aviso do sistema", error)
         }
     }
 
@@ -1195,6 +1211,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                             it != enforcementFingerprint
                         } == true
 
+                        // Lidos ainda em IO: são preferências e o DevicePolicyManager, que
+                        // não precisam segurar a thread principal (a mesma da interface).
+                        val persistedArmed = SelfProtectionStateStore.isArmed(applicationContext)
+                        val focusModeStoredActive = FocusModeStore.isActive(applicationContext)
+                        val armoredDeviceOwnerActive = deviceOwnerActiveNow &&
+                            deviceOwnerManager.isArmoredProtectionArmed()
+
                         withContext(Dispatchers.Main) {
                             focusModeSessionActive = focusModeSession != null
                             focusModeFallbackActive = focusFallbackActive
@@ -1212,15 +1235,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 cachedActive = enforcingSessions.isNotEmpty() ||
                                     limitApps.isNotEmpty() ||
                                     exceededWebsiteDomains.isNotEmpty(),
-                                persistedActive = SelfProtectionStateStore.isArmed(
-                                    applicationContext
-                                ),
-                                focusModeActive = FocusModeStore.isActive(
-                                    applicationContext
-                                ),
-                                armoredDeviceOwnerActive =
-                                    deviceOwnerActiveNow &&
-                                        deviceOwnerManager.isArmoredProtectionArmed()
+                                persistedActive = persistedArmed,
+                                focusModeActive = focusModeStoredActive,
+                                armoredDeviceOwnerActive = armoredDeviceOwnerActive
                             )
                             lastEnforcementFingerprint = enforcementFingerprint
                             lastLoadTime = System.currentTimeMillis()

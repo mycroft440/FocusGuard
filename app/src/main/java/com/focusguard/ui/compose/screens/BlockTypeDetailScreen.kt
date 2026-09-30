@@ -73,6 +73,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import com.focusguard.security.MasterCredentialPolicy
+import com.focusguard.utils.AppLabelCache
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
@@ -105,6 +108,7 @@ import java.text.DateFormatSymbols
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.withContext
 
 /**
  * The four protection choices shown on the Home screen.
@@ -225,8 +229,22 @@ fun BlockTypeDetailScreen(
     // `entries` não volta a null nas recargas: manter a lista anterior na tela
     // evita um piscar de spinner a cada retorno para uma tela que já tem dados.
     LaunchedEffect(type, reloadTrigger) {
-        entries = runCatching { type.entriesOf(sessionManager.getBlockOverview()) }
-            .getOrDefault(emptyList())
+        entries = try {
+            type.entriesOf(sessionManager.getBlockOverview()).also { loaded ->
+                // Os nomes dos apps saem do PackageManager (2–20 ms cada): ficam prontos
+                // fora da thread principal antes de as linhas aparecerem.
+                withContext(Dispatchers.IO) {
+                    AppLabelCache.prewarm(
+                        context,
+                        loaded.filterNot { it.isWebsite }.map { it.identifier }
+                    )
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     // O halo do topo usa a cor do próprio tipo de bloqueio: entrar na tela da
@@ -778,10 +796,7 @@ private fun BlockedEntryRow(
             installedLabel = if (entry.isWebsite) {
                 null
             } else {
-                runCatching {
-                    val pm = context.packageManager
-                    pm.getApplicationLabel(pm.getApplicationInfo(entry.identifier, 0)).toString()
-                }.getOrNull()
+                AppLabelCache.get(context, entry.identifier)
             }
         )
     }

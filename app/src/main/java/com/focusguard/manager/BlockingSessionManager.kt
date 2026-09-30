@@ -49,6 +49,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -506,7 +507,11 @@ class BlockingSessionManager @Inject constructor(
 
     private val database = AppDatabase.getDatabase(context)
     private val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
+            FocusGuardLogger.logError("BlockingSessionManager", "Erro em tarefa em segundo plano", error)
+        }
+    )
     private val enforcementMutex = Mutex()
     private val statePreferences = context.getSharedPreferences(
         STATE_PREFERENCES,
