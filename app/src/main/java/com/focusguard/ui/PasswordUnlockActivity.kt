@@ -62,6 +62,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AppLabelCache
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import dagger.hilt.android.AndroidEntryPoint
@@ -198,7 +199,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
         freshFrameGeneration = 0L
         if (newAttempt) noticeDrawn = false
         authenticationReady = presentation.authenticationReady
-        if (newAttempt) verifyPasswordOwnerIfNeeded(sourceIntent, packageName)
+        if (newAttempt) verifyPasswordOwnerIfNeeded(sourceIntent, packageName, blockedDomain)
 
         // Accessibility can repeat this request for the same visible access.
         // Keep its Compose state (and BiometricPrompt) instead of replacing the
@@ -339,30 +340,40 @@ class PasswordUnlockActivity : AppCompatActivity() {
         }
     }
 
-    private fun verifyPasswordOwnerIfNeeded(sourceIntent: Intent, packageName: String?) {
+    private fun verifyPasswordOwnerIfNeeded(
+        sourceIntent: Intent,
+        packageName: String?,
+        blockedDomain: String?
+    ) {
         ownerCheckJob?.cancel()
         ownerCheckJob = null
         val needsCheck = sourceIntent.getBooleanExtra(
             BlockingAccessibilityService.EXTRA_VERIFY_PASSWORD_OWNER,
             false
         )
-        if (!needsCheck || packageName == null) {
+        if (!needsCheck || (packageName == null && blockedDomain == null)) {
             ownerVerified = true
             return
         }
         ownerVerified = false
         ownerCheckJob = lifecycleScope.launch {
             val allowed = try {
-                AppBlockSurfaceResolver(
-                    context = applicationContext,
-                    sessionManager = blockingSessionManager
-                ).resolveAttempt(blockedPackage = packageName).allowsPasswordVisit
+                if (packageName != null) {
+                    AppBlockSurfaceResolver(
+                        context = applicationContext,
+                        sessionManager = blockingSessionManager
+                    ).resolveAttempt(blockedPackage = packageName).allowsPasswordVisit
+                } else {
+                    // Mesma decisão do roteador (websiteSurfaceFor): só PASSWORD fica aqui.
+                    blockingSessionManager.activeWebsiteProtection(blockedDomain) ==
+                        BlockingSessionManager.ActiveWebsiteProtection.PASSWORD
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
                     "PasswordUnlock",
-                    "Falha ao conferir o dono do bloqueio de $packageName",
+                    "Falha ao conferir o dono do bloqueio de ${packageName ?: blockedDomain}",
                     error
                 )
                 false
@@ -439,13 +450,9 @@ class PasswordUnlockActivity : AppCompatActivity() {
         return true
     }
 
-    private fun resolveAppLabel(packageName: String?): String? {
-        val target = packageName?.takeIf(String::isNotBlank) ?: return null
-        return runCatching {
-            val info = packageManager.getApplicationInfo(target, 0)
-            packageManager.getApplicationLabel(info).toString()
-        }.getOrNull()?.takeIf(String::isNotBlank)
-    }
+    // Normalmente já pré-carregado pelo serviço (sem chamada ao PackageManager aqui).
+    private fun resolveAppLabel(packageName: String?): String? =
+        AppLabelCache.get(this, packageName)
 
     /**
      * A successful target credential grants one visit without deleting the block.

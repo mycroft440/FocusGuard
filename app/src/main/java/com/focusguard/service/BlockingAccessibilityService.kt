@@ -66,6 +66,7 @@ import com.focusguard.sitesblocker.SiteBlockEngine
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.PasswordUnlockActivity
+import com.focusguard.utils.AppLabelCache
 import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -149,7 +150,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             stopWebsiteTracking()
             launchBlockNotice(
                 blockedPackage = null,
-                blockedDomain = WebsiteBlocker.displayRule(rule)
+                blockedDomain = WebsiteBlocker.displayRule(rule),
+                // decide() só responde PASSWORD sem regra mais forte ou limite
+                // esgotado; a tela de senha confere o dono (inclusive o filtro de
+                // pornografia) antes de liberar e volta ao roteador se não for PASSWORD.
+                directPasswordSite = true
             )
         }
 
@@ -288,6 +293,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastImmediateBlockedPackage: String? = null
     private var lastImmediateBlockElapsed = 0L
     private var lastBlockSurfaceRelaunchElapsed = 0L
+    private var trailingBlockSurfaceRelaunchPending = false
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -1096,6 +1102,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val activeAppLimits = database.appUsageLimitDao()
                             .getAllActiveLimitsStatic()
                         val limitApps = calculateExceededAppLimits(activeAppLimits)
+                        // Já em IO: deixa o nome dos apps com senha pronto para a tela.
+                        AppLabelCache.prewarm(applicationContext, passwordSessionApps)
                         val passwordOnlyApps = passwordSessionApps -
                             strongerSessionApps -
                             limitApps -
@@ -2512,8 +2520,21 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun relaunchAwaitedBlockSurface(blockedPackage: String, eventUptimeMillis: Long) {
         val generation = awaitingSafeSurfaceGeneration.takeIf { it > 0L } ?: return
         // Cada reenvio refaz o aviso de pronto da tela; numa rajada, um por intervalo.
+        // O evento que cai dentro do intervalo não é descartado: vira um reenvio no fim
+        // dele, para a segunda tela de um app com abertura (Splash → Main) que chegue
+        // nesse meio tempo ainda ser coberta pela tela de bloqueio.
         val nowElapsed = SystemClock.elapsedRealtime()
-        if (nowElapsed - lastBlockSurfaceRelaunchElapsed < BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS) {
+        val sinceLast = nowElapsed - lastBlockSurfaceRelaunchElapsed
+        if (sinceLast < BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS) {
+            if (!trailingBlockSurfaceRelaunchPending) {
+                trailingBlockSurfaceRelaunchPending = true
+                mainHandler.postDelayed({
+                    trailingBlockSurfaceRelaunchPending = false
+                    if (awaitingSafeSurfaceGeneration == generation) {
+                        relaunchAwaitedBlockSurface(blockedPackage, eventUptimeMillis)
+                    }
+                }, BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS - sinceLast)
+            }
             return
         }
         lastBlockSurfaceRelaunchElapsed = nowElapsed
@@ -2544,7 +2565,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         blockedPackage: String?,
         blockedDomain: String?,
         eventUptimeMillis: Long = SystemClock.uptimeMillis(),
-        isCurrent: (() -> Boolean)? = null
+        isCurrent: (() -> Boolean)? = null,
+        directPasswordSite: Boolean = false
     ): Boolean {
         if (isCurrent?.invoke() == false) return false
         // Every attempt renews the touch-blocking curtain. BlockNoticeActivity
@@ -2567,9 +2589,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                     blockedDomain = blockedDomain,
                     curtainGeneration = generation,
                     eventUptimeMillis = eventUptimeMillis,
-                    directPasswordUnlock = blockedDomain == null &&
-                        blockedPackage != null &&
-                        isDirectPasswordUnlockTarget(blockedPackage)
+                    directPasswordUnlock = if (blockedDomain != null) {
+                        directPasswordSite
+                    } else {
+                        blockedPackage != null && isDirectPasswordUnlockTarget(blockedPackage)
+                    }
                 )
             )
             true

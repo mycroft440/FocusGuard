@@ -89,7 +89,7 @@ class PasswordAppUnlockStore(context: Context) {
                 biometricEnabled || mode == PasswordAppUnlockMode.BIOMETRIC_ONLY
             )
         }
-        return editor.commit()
+        return editor.commit().also { cachedWebsiteRules = null }
     }
 
     fun get(packageName: String?): PasswordAppUnlockConfig? =
@@ -204,6 +204,7 @@ class PasswordAppUnlockStore(context: Context) {
             editor.remove(prefix + KEY_BIOMETRIC_OFFER_SHOWN)
         }
         editor.commit()
+        cachedWebsiteRules = null
     }
 
     fun clearAll() {
@@ -212,9 +213,16 @@ class PasswordAppUnlockStore(context: Context) {
         val editor = preferences.edit()
         keys.forEach(editor::remove)
         editor.commit()
+        cachedWebsiteRules = null
     }
 
-    private fun storedWebsiteRules(): Set<String> = preferences.all.keys.asSequence()
+    // preferences.all decifra todas as entradas do cofre; a tela de senha de um site
+    // fazia isso duas vezes por composição. As regras só mudam pelos métodos de
+    // gravação desta classe, que limpam o cache.
+    private fun storedWebsiteRules(): Set<String> =
+        cachedWebsiteRules ?: readStoredWebsiteRules().also { cachedWebsiteRules = it }
+
+    private fun readStoredWebsiteRules(): Set<String> = preferences.all.keys.asSequence()
         .filter { it.startsWith(KEY_NAMESPACE) && it.endsWith(KEY_MODE) }
         .map { key -> key.removePrefix(KEY_NAMESPACE).removeSuffix(KEY_MODE) }
         .mapNotNull(::websiteRuleFromTargetId)
@@ -232,6 +240,8 @@ class PasswordAppUnlockStore(context: Context) {
         private const val KEY_BIOMETRIC_ENABLED = ".biometric_enabled"
         private const val KEY_HIDE_PATTERN = ".hide_pattern"
         private const val KEY_BIOMETRIC_OFFER_SHOWN = ".biometric_offer_shown"
+
+        @Volatile private var cachedWebsiteRules: Set<String>? = null
 
         fun targetIdForPackage(packageName: String?): String? =
             packageName?.trim()?.takeIf(String::isNotBlank)
