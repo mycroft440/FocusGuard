@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Jam: %1$s sampai %2$s</string>
     <string name="block_type_schedule_days">Hari: %1$s</string>
     <string name="block_type_schedule_every_day">Setiap hari</string>
+    <string name="time_block_cancel_window_title">Baru permanen setelah %1$d jam</string>
+    <string name="time_block_cancel_window_desc">Sampai saat itu, Anda bisa membatalkan blokir. Matikan agar langsung permanen.</string>
+    <string name="block_type_cancelable_until">Bisa dibatalkan sampai %1$s</string>
+    <string name="block_type_cancel_action">Batalkan blokir</string>
+    <string name="block_type_cancel_confirm_title">Batalkan blokir ini?</string>
+    <string name="block_type_cancel_confirm_message">Semua aplikasi dan situs di blokir ini akan dibuka sekarang.</string>
+    <string name="block_type_cancel_keep">Pertahankan blokir</string>
+    <string name="block_type_cancel_done">Blokir dibatalkan.</string>
+    <string name="block_type_cancel_failed">Batas waktu pembatalan sudah lewat. Blokir tetap berjalan.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

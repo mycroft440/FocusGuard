@@ -49,6 +49,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import com.focusguard.security.MasterCredentialPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -169,6 +173,8 @@ fun TimeBlockSessionConfigScreen(
         durationUnit = BlockDurationPolicy.Unit.DAYS
     }
     var amountText by remember { mutableStateOf("") }
+    // Ligado por padrão: nas primeiras 48 h o bloqueio ainda pode ser cancelado.
+    var cancelWindowEnabled by remember { mutableStateOf(true) }
     var termsAccepted by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var selectedDays by remember {
@@ -340,6 +346,8 @@ fun TimeBlockSessionConfigScreen(
                     canSave = canSave,
                     onDurationUnitChange = { durationUnit = it },
                     onAmountChange = { amountText = it },
+                    cancelWindowEnabled = cancelWindowEnabled,
+                    onCancelWindowChange = { cancelWindowEnabled = it },
                     onEditStartTime = {
                         TimePickerDialog(
                             context,
@@ -396,7 +404,12 @@ fun TimeBlockSessionConfigScreen(
                                     endMinute = if (isScheduled) endMinute else 0,
                                     daysOfWeek = if (isScheduled) selectedDaysSerialized else "",
                                     apps = effectiveApps,
-                                    sites = effectiveSites
+                                    sites = effectiveSites,
+                                    cancelWindowHours = if (cancelWindowEnabled) {
+                                        MasterCredentialPolicy.CANCEL_WINDOW_HOURS
+                                    } else {
+                                        0
+                                    }
                                 )
                                 isSaving = false
                                 Toast.makeText(
@@ -528,6 +541,8 @@ private fun TimeBlockSchedulePage(
     canSave: Boolean,
     onDurationUnitChange: (BlockDurationPolicy.Unit) -> Unit,
     onAmountChange: (String) -> Unit,
+    cancelWindowEnabled: Boolean,
+    onCancelWindowChange: (Boolean) -> Unit,
     onEditStartTime: () -> Unit,
     onEditEndTime: () -> Unit,
     onSelectedCompanionDomainsChange: (Set<String>) -> Unit,
@@ -614,6 +629,39 @@ private fun TimeBlockSchedulePage(
                     color = DangerRed,
                     modifier = Modifier.padding(12.dp),
                     textAlign = TextAlign.Start
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            R.string.time_block_cancel_window_title,
+                            MasterCredentialPolicy.CANCEL_WINDOW_HOURS
+                        ),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.time_block_cancel_window_desc),
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Switch(
+                    checked = cancelWindowEnabled,
+                    onCheckedChange = onCancelWindowChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = DarkBg,
+                        checkedTrackColor = AccentCyan
+                    )
                 )
             }
         }

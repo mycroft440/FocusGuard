@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">సమయం: %1$s నుండి %2$s</string>
     <string name="block_type_schedule_days">రోజులు: %1$s</string>
     <string name="block_type_schedule_every_day">ప్రతిరోజూ</string>
+    <string name="time_block_cancel_window_title">%1$d గంటల తర్వాతే మార్చలేనిదిగా మారుతుంది</string>
+    <string name="time_block_cancel_window_desc">అప్పటివరకు మీరు బ్లాక్‌ను రద్దు చేయవచ్చు. ఇప్పుడే మార్చలేనిదిగా చేయడానికి ఆఫ్ చేయండి.</string>
+    <string name="block_type_cancelable_until">%1$s వరకు రద్దు చేయవచ్చు</string>
+    <string name="block_type_cancel_action">బ్లాక్ రద్దు చేయండి</string>
+    <string name="block_type_cancel_confirm_title">ఈ బ్లాక్‌ను రద్దు చేయాలా?</string>
+    <string name="block_type_cancel_confirm_message">ఈ బ్లాక్‌లోని అన్ని యాప్‌లు, సైట్‌లు ఇప్పుడే విడుదల అవుతాయి.</string>
+    <string name="block_type_cancel_keep">బ్లాక్ ఉంచండి</string>
+    <string name="block_type_cancel_done">బ్లాక్ రద్దు చేయబడింది.</string>
+    <string name="block_type_cancel_failed">రద్దు చేసే గడువు ముగిసింది. బ్లాక్ కొనసాగుతుంది.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

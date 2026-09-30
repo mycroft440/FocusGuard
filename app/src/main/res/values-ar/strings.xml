@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">الوقت: من %1$s إلى %2$s</string>
     <string name="block_type_schedule_days">الأيام: %1$s</string>
     <string name="block_type_schedule_every_day">كل يوم</string>
+    <string name="time_block_cancel_window_title">لا يصبح نهائيًا إلا بعد %1$d ساعة</string>
+    <string name="time_block_cancel_window_desc">حتى ذلك الحين يمكنك إلغاء الحظر. أوقف الخيار ليصبح نهائيًا فورًا.</string>
+    <string name="block_type_cancelable_until">يمكن إلغاؤه حتى %1$s</string>
+    <string name="block_type_cancel_action">إلغاء الحظر</string>
+    <string name="block_type_cancel_confirm_title">هل تريد إلغاء هذا الحظر؟</string>
+    <string name="block_type_cancel_confirm_message">سيتم تحرير كل التطبيقات والمواقع في هذا الحظر الآن.</string>
+    <string name="block_type_cancel_keep">إبقاء الحظر</string>
+    <string name="block_type_cancel_done">تم إلغاء الحظر.</string>
+    <string name="block_type_cancel_failed">انتهت مهلة الإلغاء. يستمر الحظر.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

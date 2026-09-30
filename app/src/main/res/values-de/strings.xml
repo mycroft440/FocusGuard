@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Uhrzeit: %1$s bis %2$s</string>
     <string name="block_type_schedule_days">Tage: %1$s</string>
     <string name="block_type_schedule_every_day">Jeden Tag</string>
+    <string name="time_block_cancel_window_title">Erst nach %1$d h unwiderruflich</string>
+    <string name="time_block_cancel_window_desc">Bis dahin kannst du die Sperre aufheben. Ausschalten, damit sie sofort unwiderruflich ist.</string>
+    <string name="block_type_cancelable_until">Kann bis %1$s aufgehoben werden</string>
+    <string name="block_type_cancel_action">Sperre aufheben</string>
+    <string name="block_type_cancel_confirm_title">Diese Sperre aufheben?</string>
+    <string name="block_type_cancel_confirm_message">Alle Apps und Websites dieser Sperre werden jetzt freigegeben.</string>
+    <string name="block_type_cancel_keep">Sperre behalten</string>
+    <string name="block_type_cancel_done">Sperre aufgehoben.</string>
+    <string name="block_type_cancel_failed">Die Frist zum Aufheben ist abgelaufen. Die Sperre bleibt bestehen.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Hours: %1$s to %2$s</string>
     <string name="block_type_schedule_days">Days: %1$s</string>
     <string name="block_type_schedule_every_day">Every day</string>
+    <string name="time_block_cancel_window_title">Only irreversible after %1$d h</string>
+    <string name="time_block_cancel_window_desc">Until then, you can cancel the block. Turn off to make it irreversible right away.</string>
+    <string name="block_type_cancelable_until">Can be cancelled until %1$s</string>
+    <string name="block_type_cancel_action">Cancel block</string>
+    <string name="block_type_cancel_confirm_title">Cancel this block?</string>
+    <string name="block_type_cancel_confirm_message">Every app and site in this block will be released now.</string>
+    <string name="block_type_cancel_keep">Keep block</string>
+    <string name="block_type_cancel_done">Block cancelled.</string>
+    <string name="block_type_cancel_failed">The time to cancel is over. The block stays on.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

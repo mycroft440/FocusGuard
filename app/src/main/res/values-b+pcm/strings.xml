@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Time: %1$s reach %2$s</string>
     <string name="block_type_schedule_days">Days: %1$s</string>
     <string name="block_type_schedule_every_day">Every day</string>
+    <string name="time_block_cancel_window_title">E go dey permanent only after %1$d h</string>
+    <string name="time_block_cancel_window_desc">Before then, you fit cancel the block. Off am make e permanent now now.</string>
+    <string name="block_type_cancelable_until">You fit cancel am until %1$s</string>
+    <string name="block_type_cancel_action">Cancel block</string>
+    <string name="block_type_cancel_confirm_title">You wan cancel this block?</string>
+    <string name="block_type_cancel_confirm_message">All the apps and sites for this block go free now.</string>
+    <string name="block_type_cancel_keep">Keep block</string>
+    <string name="block_type_cancel_done">Block don cancel.</string>
+    <string name="block_type_cancel_failed">Time to cancel don finish. The block still dey.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

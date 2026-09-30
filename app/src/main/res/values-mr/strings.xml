@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">वेळ: %1$s ते %2$s</string>
     <string name="block_type_schedule_days">दिवस: %1$s</string>
     <string name="block_type_schedule_every_day">दररोज</string>
+    <string name="time_block_cancel_window_title">फक्त %1$d तासांनंतर अपरिवर्तनीय होईल</string>
+    <string name="time_block_cancel_window_desc">तोपर्यंत तुम्ही ब्लॉक रद्द करू शकता. आत्ताच अपरिवर्तनीय करण्यासाठी बंद करा.</string>
+    <string name="block_type_cancelable_until">%1$s पर्यंत रद्द करता येईल</string>
+    <string name="block_type_cancel_action">ब्लॉक रद्द करा</string>
+    <string name="block_type_cancel_confirm_title">हा ब्लॉक रद्द करायचा?</string>
+    <string name="block_type_cancel_confirm_message">या ब्लॉकमधील सर्व अ‍ॅप्स आणि साइट्स आत्ता मुक्त होतील.</string>
+    <string name="block_type_cancel_keep">ब्लॉक ठेवा</string>
+    <string name="block_type_cancel_done">ब्लॉक रद्द केला.</string>
+    <string name="block_type_cancel_failed">रद्द करण्याची मुदत संपली. ब्लॉक सुरू राहील.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

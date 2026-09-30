@@ -68,6 +68,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.widget.Toast
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import com.focusguard.security.MasterCredentialPolicy
+import kotlinx.coroutines.launch
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
@@ -188,6 +194,11 @@ fun BlockTypeDetailScreen(
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var entries by remember {
         mutableStateOf<List<BlockingSessionManager.BlockOverview.Entry>?>(null)
+    }
+    val scope = rememberCoroutineScope()
+    // Bloqueio por tempo ainda no prazo de cancelamento escolhido na criação (48 h).
+    var cancelTarget by remember(type) {
+        mutableStateOf<BlockingSessionManager.BlockOverview.Entry?>(null)
     }
     var removalTarget by remember(type) {
         mutableStateOf<BlockingSessionManager.BlockOverview.Entry?>(null)
@@ -356,6 +367,11 @@ fun BlockTypeDetailScreen(
                                         entry = entry,
                                         accent = type.accent,
                                         showSchedule = type != BlockTypeUi.PASSWORD,
+                                        onCancelBlock = if (canCancelTimeBlock(type, entry)) {
+                                            { cancelTarget = entry }
+                                        } else {
+                                            null
+                                        },
                                         onRemove = if (type == BlockTypeUi.PASSWORD) {
                                             { removalTarget = entry }
                                         } else {
@@ -379,6 +395,11 @@ fun BlockTypeDetailScreen(
                                         entry = entry,
                                         accent = type.accent,
                                         showSchedule = type != BlockTypeUi.PASSWORD,
+                                        onCancelBlock = if (canCancelTimeBlock(type, entry)) {
+                                            { cancelTarget = entry }
+                                        } else {
+                                            null
+                                        },
                                         onRemove = if (type == BlockTypeUi.PASSWORD) {
                                             { removalTarget = entry }
                                         } else {
@@ -391,6 +412,43 @@ fun BlockTypeDetailScreen(
                     }
                 }
             }
+        }
+
+        cancelTarget?.let { target ->
+            val sessionId = target.sessionId
+            AlertDialog(
+                onDismissRequest = { cancelTarget = null },
+                title = { Text(stringResource(R.string.block_type_cancel_confirm_title)) },
+                text = { Text(stringResource(R.string.block_type_cancel_confirm_message)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            cancelTarget = null
+                            if (sessionId == null) return@TextButton
+                            scope.launch {
+                                val result = sessionManager.endSessionAndWait(sessionId)
+                                Toast.makeText(
+                                    context,
+                                    if (result == BlockingSessionManager.EndSessionResult.ENDED) {
+                                        R.string.block_type_cancel_done
+                                    } else {
+                                        R.string.block_type_cancel_failed
+                                    },
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                reloadTrigger++
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.block_type_cancel_action), color = DangerRed)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { cancelTarget = null }) {
+                        Text(stringResource(R.string.block_type_cancel_keep))
+                    }
+                }
+            )
         }
 
         if (type == BlockTypeUi.PASSWORD) {
@@ -709,6 +767,7 @@ private fun BlockedEntryRow(
     entry: BlockingSessionManager.BlockOverview.Entry,
     accent: Color,
     showSchedule: Boolean = false,
+    onCancelBlock: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -774,6 +833,34 @@ private fun BlockedEntryRow(
                         )
                     }
                 }
+                val cancelableUntil = entry.cancelableUntilMillis
+                if (onCancelBlock != null && cancelableUntil != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.block_type_cancelable_until,
+                            DateFormat.getDateTimeInstance(
+                                DateFormat.SHORT,
+                                DateFormat.SHORT,
+                                LocalConfiguration.current.locales[0]
+                            ).format(Date(cancelableUntil))
+                        ),
+                        color = accent,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                    TextButton(
+                        onClick = onCancelBlock,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.block_type_cancel_action),
+                            color = DangerRed,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
             onRemove?.let { remove ->
                 Spacer(Modifier.width(8.dp))
@@ -791,6 +878,18 @@ private fun BlockedEntryRow(
         }
     }
 }
+
+/**
+ * Um bloqueio por tempo (sem senha ou por períodos) criado com o prazo de 48 h ainda
+ * pode ser cancelado enquanto esse prazo não passou; depois disso é sem volta.
+ */
+internal fun canCancelTimeBlock(
+    type: BlockTypeUi,
+    entry: BlockingSessionManager.BlockOverview.Entry,
+    nowMillis: Long = System.currentTimeMillis()
+): Boolean = (type == BlockTypeUi.DOPAMINE_FAST || type == BlockTypeUi.DAILY_PERIODS) &&
+    entry.sessionId != null &&
+    MasterCredentialPolicy.isWithinCancelWindow(entry.cancelableUntilMillis, nowMillis)
 
 /**
  * The "how long is left" line.

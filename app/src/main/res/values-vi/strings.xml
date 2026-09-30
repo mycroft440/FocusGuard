@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Giờ: %1$s đến %2$s</string>
     <string name="block_type_schedule_days">Ngày: %1$s</string>
     <string name="block_type_schedule_every_day">Hằng ngày</string>
+    <string name="time_block_cancel_window_title">Chỉ không thể hoàn tác sau %1$d giờ</string>
+    <string name="time_block_cancel_window_desc">Trước đó, bạn có thể hủy chặn. Tắt để không thể hoàn tác ngay bây giờ.</string>
+    <string name="block_type_cancelable_until">Có thể hủy đến %1$s</string>
+    <string name="block_type_cancel_action">Hủy chặn</string>
+    <string name="block_type_cancel_confirm_title">Hủy lệnh chặn này?</string>
+    <string name="block_type_cancel_confirm_message">Tất cả ứng dụng và trang web trong lệnh chặn này sẽ được mở ngay.</string>
+    <string name="block_type_cancel_keep">Giữ lệnh chặn</string>
+    <string name="block_type_cancel_done">Đã hủy chặn.</string>
+    <string name="block_type_cancel_failed">Đã hết thời hạn hủy. Lệnh chặn vẫn tiếp tục.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

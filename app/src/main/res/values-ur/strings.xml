@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">وقت: %1$s سے %2$s</string>
     <string name="block_type_schedule_days">دن: %1$s</string>
     <string name="block_type_schedule_every_day">ہر روز</string>
+    <string name="time_block_cancel_window_title">صرف %1$d گھنٹے بعد ناقابلِ واپسی ہوگا</string>
+    <string name="time_block_cancel_window_desc">تب تک آپ بلاک منسوخ کر سکتے ہیں۔ ابھی سے ناقابلِ واپسی بنانے کے لیے بند کریں۔</string>
+    <string name="block_type_cancelable_until">%1$s تک منسوخ کیا جا سکتا ہے</string>
+    <string name="block_type_cancel_action">بلاک منسوخ کریں</string>
+    <string name="block_type_cancel_confirm_title">یہ بلاک منسوخ کریں؟</string>
+    <string name="block_type_cancel_confirm_message">اس بلاک کی تمام ایپس اور سائٹس ابھی آزاد ہو جائیں گی۔</string>
+    <string name="block_type_cancel_keep">بلاک برقرار رکھیں</string>
+    <string name="block_type_cancel_done">بلاک منسوخ ہو گیا۔</string>
+    <string name="block_type_cancel_failed">منسوخی کا وقت ختم ہو گیا۔ بلاک جاری رہے گا۔</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

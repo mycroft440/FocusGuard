@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Lokaci: daga %1$s zuwa %2$s</string>
     <string name="block_type_schedule_days">Kwanaki: %1$s</string>
     <string name="block_type_schedule_every_day">Kowace rana</string>
+    <string name="time_block_cancel_window_title">Ba zai zama na dindindin ba sai bayan awa %1$d</string>
+    <string name="time_block_cancel_window_desc">Kafin nan, za ka iya soke toshewar. Kashe don ya zama na dindindin yanzu.</string>
+    <string name="block_type_cancelable_until">Za a iya soke shi har zuwa %1$s</string>
+    <string name="block_type_cancel_action">Soke toshewa</string>
+    <string name="block_type_cancel_confirm_title">Soke wannan toshewar?</string>
+    <string name="block_type_cancel_confirm_message">Duk manhajoji da shafukan wannan toshewar za a sake su yanzu.</string>
+    <string name="block_type_cancel_keep">Ci gaba da toshewa</string>
+    <string name="block_type_cancel_done">An soke toshewa.</string>
+    <string name="block_type_cancel_failed">Lokacin soke ya wuce. Toshewar tana ci gaba.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

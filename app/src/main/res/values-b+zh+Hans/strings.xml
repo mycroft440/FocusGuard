@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">时间：%1$s 至 %2$s</string>
     <string name="block_type_schedule_days">日期：%1$s</string>
     <string name="block_type_schedule_every_day">每天</string>
+    <string name="time_block_cancel_window_title">%1$d 小时后才不可撤销</string>
+    <string name="time_block_cancel_window_desc">在此之前，你可以取消拦截。关闭后将立即不可撤销。</string>
+    <string name="block_type_cancelable_until">可在 %1$s 前取消</string>
+    <string name="block_type_cancel_action">取消拦截</string>
+    <string name="block_type_cancel_confirm_title">要取消此拦截吗？</string>
+    <string name="block_type_cancel_confirm_message">此拦截中的所有应用和网站将立即解除。</string>
+    <string name="block_type_cancel_keep">保留拦截</string>
+    <string name="block_type_cancel_done">已取消拦截。</string>
+    <string name="block_type_cancel_failed">取消期限已过，拦截将继续。</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

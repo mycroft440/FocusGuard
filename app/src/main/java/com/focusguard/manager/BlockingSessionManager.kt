@@ -139,7 +139,11 @@ class BlockingSessionManager @Inject constructor(
             val unlockAtMillis: Long? = null,
             val startAtMillis: Long? = null,
             val dailyWindow: DailyWindow? = null,
-            val daysOfWeek: List<Int> = emptyList()
+            val daysOfWeek: List<Int> = emptyList(),
+            /** Sessão de origem (bloqueios por tempo), para cancelar dentro do prazo. */
+            val sessionId: Int? = null,
+            /** Até quando o bloqueio por tempo ainda pode ser cancelado; null: sem volta. */
+            val cancelableUntilMillis: Long? = null
         )
 
         /** Blocked hours of the day, in minutes since midnight; may cross midnight. */
@@ -266,7 +270,15 @@ class BlockingSessionManager @Inject constructor(
             appPackages = getAppsForSessions(listOf(session.id)),
             websiteRules = getSitesForSessions(listOf(session.id)),
             unlockAtMillis = session.endTime
-        ).map { it.copy(startAtMillis = startAt, dailyWindow = window, daysOfWeek = days) }
+        ).map {
+            it.copy(
+                startAtMillis = startAt,
+                dailyWindow = window,
+                daysOfWeek = days,
+                sessionId = session.id,
+                cancelableUntilMillis = session.cancelableUntil
+            )
+        }
     }
 
     private fun buildEntries(
@@ -796,7 +808,12 @@ class BlockingSessionManager @Inject constructor(
         endMinute: Int = 0,
         daysOfWeek: String = "",
         apps: List<String>,
-        sites: List<String>
+        sites: List<String>,
+        /**
+         * Período em que o bloqueio ainda pode ser cancelado (opção "só fica sem volta
+         * depois de 48 h", ligada por padrão). Zero: sem volta desde o início.
+         */
+        cancelWindowHours: Int = 0
     ) = withContext(Dispatchers.IO) {
         val protectionWasAlreadyArmed = deviceOwnerManager.isBlockingProtectionArmed()
         var sessionCreated = false
@@ -840,7 +857,10 @@ class BlockingSessionManager @Inject constructor(
                     blockedAppsCount = normalizedApps.size,
                     blockedWebsitesCount = normalizedSites.size,
                     sessionType = "TIME",
-                    isFixed24h = isFixed24h
+                    isFixed24h = isFixed24h,
+                    cancelableUntil = cancelWindowHours.takeIf { it > 0 }?.let {
+                        startMillis + TimeUnit.HOURS.toMillis(it.toLong())
+                    }
                 )
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
                 normalizedApps.forEach {
@@ -1071,7 +1091,8 @@ class BlockingSessionManager @Inject constructor(
                     sessionType = session.sessionType,
                     isActive = session.isActive,
                     endTime = session.endTime
-                ) -> EndSessionResult.TIME_NOT_REVOCABLE
+                ) && !MasterCredentialPolicy.isWithinCancelWindow(session.cancelableUntil) ->
+                    EndSessionResult.TIME_NOT_REVOCABLE
                 database.blockSessionDao().deactivateSession(sessionId) == 0 ->
                     EndSessionResult.NOT_FOUND
                 else -> {

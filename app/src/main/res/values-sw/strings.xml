@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Saa: %1$s hadi %2$s</string>
     <string name="block_type_schedule_days">Siku: %1$s</string>
     <string name="block_type_schedule_every_day">Kila siku</string>
+    <string name="time_block_cancel_window_title">Haitabadilika tu baada ya saa %1$d</string>
+    <string name="time_block_cancel_window_desc">Hadi wakati huo, unaweza kughairi kizuizi. Zima ili kisitabadilike sasa hivi.</string>
+    <string name="block_type_cancelable_until">Kinaweza kughairiwa hadi %1$s</string>
+    <string name="block_type_cancel_action">Ghairi kizuizi</string>
+    <string name="block_type_cancel_confirm_title">Ughairi kizuizi hiki?</string>
+    <string name="block_type_cancel_confirm_message">Programu na tovuti zote za kizuizi hiki zitaachiliwa sasa.</string>
+    <string name="block_type_cancel_keep">Endelea na kizuizi</string>
+    <string name="block_type_cancel_done">Kizuizi kimeghairiwa.</string>
+    <string name="block_type_cancel_failed">Muda wa kughairi umeisha. Kizuizi kinaendelea.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -13,7 +13,9 @@ import com.focusguard.database.BlockSession
  * boundaries.
  *
  * Two protection invariants remain load-bearing:
- *  1. Dopamine Fast (`TIME`) cannot be ended early by a credential.
+ *  1. Dopamine Fast (`TIME`) cannot be ended early by a credential. The only way
+ *     out before its end is the optional cancel window chosen at creation (48 h by
+ *     default); once it passes, the block cannot be undone.
  *  2. A time-hardened usage limit and Safety Mode cannot be mutated before their
  *     own protection rules permit it.
  */
@@ -181,6 +183,18 @@ object MasterCredentialPolicy {
         }
         return endTime == null || endTime > nowMillis
     }
+
+    /** Número de horas em que um bloqueio por tempo recém-criado ainda pode ser cancelado. */
+    const val CANCEL_WINDOW_HOURS = 48
+
+    /**
+     * Se um bloqueio por tempo ainda está no período em que pode ser cancelado. Depois
+     * dele (ou sem ele, nos bloqueios criados sem a opção), o bloqueio é sem volta.
+     */
+    fun isWithinCancelWindow(
+        cancelableUntil: Long?,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = cancelableUntil != null && nowMillis < cancelableUntil
 
     fun blocksUninstall(sessionType: String): Boolean =
         sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)

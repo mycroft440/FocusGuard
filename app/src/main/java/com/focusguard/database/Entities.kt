@@ -44,7 +44,12 @@ data class BlockSession(
     val recurringDurationMonths: Int = 1,
     val sessionType: String = "PASSWORD", // "PASSWORD" or "TIME"
     val isFixed24h: Boolean = true,
-    val isBlockingEnabled: Boolean = true
+    val isBlockingEnabled: Boolean = true,
+    /**
+     * Até quando um bloqueio por tempo ainda pode ser cancelado (período de 48 h
+     * escolhido na criação). Null: sem volta desde o início, como antes.
+     */
+    val cancelableUntil: Long? = null
 )
 
 @Entity(tableName = "session_app_cross_ref", primaryKeys = ["sessionId", "packageName"])

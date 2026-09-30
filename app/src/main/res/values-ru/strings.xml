@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Время: с %1$s до %2$s</string>
     <string name="block_type_schedule_days">Дни: %1$s</string>
     <string name="block_type_schedule_every_day">Каждый день</string>
+    <string name="time_block_cancel_window_title">Необратима только через %1$d ч</string>
+    <string name="time_block_cancel_window_desc">До этого блокировку можно отменить. Выключите, чтобы она сразу стала необратимой.</string>
+    <string name="block_type_cancelable_until">Можно отменить до %1$s</string>
+    <string name="block_type_cancel_action">Отменить блокировку</string>
+    <string name="block_type_cancel_confirm_title">Отменить эту блокировку?</string>
+    <string name="block_type_cancel_confirm_message">Все приложения и сайты этой блокировки будут сразу разблокированы.</string>
+    <string name="block_type_cancel_keep">Оставить блокировку</string>
+    <string name="block_type_cancel_done">Блокировка отменена.</string>
+    <string name="block_type_cancel_failed">Срок отмены истёк. Блокировка продолжается.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">Horário: %1$s às %2$s</string>
     <string name="block_type_schedule_days">Dias: %1$s</string>
     <string name="block_type_schedule_every_day">Todos os dias</string>
+    <string name="time_block_cancel_window_title">Só fica sem volta depois de %1$d h</string>
+    <string name="time_block_cancel_window_desc">Até lá, você pode cancelar o bloqueio. Desligue para que ele fique sem volta desde já.</string>
+    <string name="block_type_cancelable_until">Pode ser cancelado até %1$s</string>
+    <string name="block_type_cancel_action">Cancelar bloqueio</string>
+    <string name="block_type_cancel_confirm_title">Cancelar este bloqueio?</string>
+    <string name="block_type_cancel_confirm_message">Todos os apps e sites deste bloqueio serão liberados agora.</string>
+    <string name="block_type_cancel_keep">Manter bloqueio</string>
+    <string name="block_type_cancel_done">Bloqueio cancelado.</string>
+    <string name="block_type_cancel_failed">O prazo para cancelar acabou. O bloqueio continua.</string>
 
     <!-- Seletor de duração -->
     <string name="duration_unit_hours">horas</string>

@@ -61,6 +61,15 @@
     <string name="block_type_schedule_hours">時間: %1$s〜%2$s</string>
     <string name="block_type_schedule_days">曜日: %1$s</string>
     <string name="block_type_schedule_every_day">毎日</string>
+    <string name="time_block_cancel_window_title">%1$d 時間後に取り消し不可になります</string>
+    <string name="time_block_cancel_window_desc">それまではブロックを取り消せます。オフにすると今すぐ取り消し不可になります。</string>
+    <string name="block_type_cancelable_until">%1$s まで取り消せます</string>
+    <string name="block_type_cancel_action">ブロックを取り消す</string>
+    <string name="block_type_cancel_confirm_title">このブロックを取り消しますか？</string>
+    <string name="block_type_cancel_confirm_message">このブロックのすべてのアプリとサイトが今すぐ解除されます。</string>
+    <string name="block_type_cancel_keep">ブロックを続ける</string>
+    <string name="block_type_cancel_done">ブロックを取り消しました。</string>
+    <string name="block_type_cancel_failed">取り消し期限が過ぎました。ブロックは続きます。</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

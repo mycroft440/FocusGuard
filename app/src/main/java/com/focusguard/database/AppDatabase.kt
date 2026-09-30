@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AppUsageLimit::class, WebsiteUsageLimit::class, UsageLimitsLock::class,
         DailyUsageStat::class, AppPassword::class, PomodoroSession::class
     ],
-    version = 10,
+    version = 11,
     // ANTIGO: exportSchema = false — impossível auditar schema em produção.
     // NOVO: true — Room exporta o schema JSON em app/schemas/ a cada build.
     // Esses JSONs podem (e devem) ser commitados no repo para permitir:
@@ -109,6 +109,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Nulo nos bloqueios existentes: continuam sem volta, como foram criados.
+                database.execSQL("ALTER TABLE block_sessions ADD COLUMN cancelableUntil INTEGER")
+            }
+        }
+
         /**
          * Singleton accessor legado — DELEGADO ao Hilt para garantir uma única
          * instância de AppDatabase em todo o app.
@@ -141,7 +148,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_6_7,
                         MIGRATION_7_8,
                         MIGRATION_8_9,
-                        MIGRATION_9_10
+                        MIGRATION_9_10,
+                        MIGRATION_10_11
                     )
                     // fallbackToDestructiveMigration só em debug builds — em produção
                     // se uma migração faltar, preferimos crashar a perder dados de
