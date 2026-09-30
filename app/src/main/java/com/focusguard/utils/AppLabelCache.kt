@@ -13,21 +13,43 @@ import java.util.concurrent.ConcurrentHashMap
 object AppLabelCache {
     private val labels = ConcurrentHashMap<String, String>()
 
+    // Apps sem nome (não instalados): guardados por um minuto, para não voltar ao
+    // PackageManager a cada tela. Instalar o app também passa por invalidate().
+    private val misses = ConcurrentHashMap<String, Long>()
+    private const val MISS_TTL_NANOS = 60_000_000_000L
+
+    private fun isRecentMiss(packageName: String): Boolean {
+        val at = misses[packageName] ?: return false
+        if (System.nanoTime() - at < MISS_TTL_NANOS) return true
+        misses.remove(packageName)
+        return false
+    }
+
     fun get(context: Context, packageName: String?): String? {
         val target = packageName?.takeIf(String::isNotBlank) ?: return null
         labels[target]?.let { return it }
+        if (isRecentMiss(target)) return null
         return load(context, target)
     }
 
     fun prewarm(context: Context, packageNames: Collection<String>) {
         packageNames.forEach { packageName ->
-            if (packageName.isNotBlank() && !labels.containsKey(packageName)) load(context, packageName)
+            if (packageName.isNotBlank() &&
+                !labels.containsKey(packageName) &&
+                !isRecentMiss(packageName)
+            ) load(context, packageName)
         }
     }
 
     /** Um app foi instalado, atualizado ou removido: o nome pode ter mudado. */
     fun invalidate(packageName: String?) {
-        if (packageName.isNullOrBlank()) labels.clear() else labels.remove(packageName)
+        if (packageName.isNullOrBlank()) {
+            labels.clear()
+            misses.clear()
+        } else {
+            labels.remove(packageName)
+            misses.remove(packageName)
+        }
     }
 
     private fun load(context: Context, packageName: String): String? {
@@ -37,6 +59,8 @@ object AppLabelCache {
             packageManager.getApplicationLabel(info).toString()
         }.getOrNull()
             ?.takeIf(String::isNotBlank)
-            ?.also { labels[packageName] = it }
+            .also { label ->
+                if (label != null) labels[packageName] = label else misses[packageName] = System.nanoTime()
+            }
     }
 }

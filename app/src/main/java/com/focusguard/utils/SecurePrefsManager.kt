@@ -23,16 +23,11 @@ class SecurePrefsManager(context: Context) {
 
     private val result = cachedFor(appContext) ?: synchronized(lock) {
         cachedFor(appContext) ?: createPrefs().also {
-            cachedResult = it
-            cachedContext = appContext
-            // O cofre de recuperação fica guardado só por um instante: numa falha
-            // passageira do Keystore, a instância seguinte volta a tentar o principal,
-            // como antes, mas sem repetir a tentativa (Keystore + Tink + log) a cada
-            // tela aberta no mesmo segundo.
-            cachedRecoveryUntilElapsed = if (it.usingRecovery) {
-                android.os.SystemClock.elapsedRealtime() + RECOVERY_RETRY_INTERVAL_MILLIS
-            } else {
-                0L
+            // Só o cofre principal fica guardado: numa falha passageira do Keystore,
+            // a próxima instância ainda tenta o principal, como antes do cache.
+            if (!it.usingRecovery) {
+                cachedResult = it
+                cachedContext = appContext
             }
         }
     }
@@ -56,18 +51,9 @@ class SecurePrefsManager(context: Context) {
         private val lock = Any()
         @Volatile private var cachedResult: PrefsResult? = null
         @Volatile private var cachedContext: Context? = null
-        @Volatile private var cachedRecoveryUntilElapsed = 0L
-        private const val RECOVERY_RETRY_INTERVAL_MILLIS = 30_000L
 
-        private fun cachedFor(appContext: Context): PrefsResult? {
-            val cached = cachedResult?.takeIf { cachedContext === appContext } ?: return null
-            if (cached.usingRecovery &&
-                android.os.SystemClock.elapsedRealtime() >= cachedRecoveryUntilElapsed
-            ) {
-                return null
-            }
-            return cached
-        }
+        private fun cachedFor(appContext: Context): PrefsResult? =
+            cachedResult?.takeIf { cachedContext === appContext }
 
         /** Abre o cofre fora da thread principal antes de ele ser necessário. */
         fun prewarm(context: Context) {

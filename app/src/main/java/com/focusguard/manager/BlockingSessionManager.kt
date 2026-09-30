@@ -1090,10 +1090,10 @@ class BlockingSessionManager @Inject constructor(
         scope.launch { endSessionAndWait(sessionId) }
     }
 
-    suspend fun endSessionAndWait(sessionId: Int): EndSessionResult {
-        return try {
+    suspend fun endSessionAndWait(sessionId: Int): EndSessionResult = withContext(Dispatchers.IO) {
+        try {
             val session = database.blockSessionDao().getActiveSessionById(sessionId)
-                ?: return EndSessionResult.NOT_FOUND
+                ?: return@withContext EndSessionResult.NOT_FOUND
             when {
                 session.sessionType == "POMODORO" -> EndSessionResult.POMODORO_NOT_REVOCABLE
                 MasterCredentialPolicy.isTimeCommitmentActive(
@@ -1410,8 +1410,11 @@ class BlockingSessionManager @Inject constructor(
         checkAndEnforceOrThrow()
     }
 
+    // Várias telas chamam daqui com o escopo da interface (Main); o trabalho (DPM,
+    // alarmes, banco, commit de preferências) vai sempre para IO, na mesma ordem.
     private suspend fun checkAndEnforceOrThrow() {
-        enforcementMutex.withLock {
+        withContext(Dispatchers.IO) {
+            enforcementMutex.withLock {
                 val now = System.currentTimeMillis()
                 val focusModeSession = FocusModeStore.readSession(context)
                     ?.takeIf { it.isActive(now) }
@@ -1602,6 +1605,7 @@ class BlockingSessionManager @Inject constructor(
                         blockingActive = selfProtectionRequired
                     )
                 )
+        }
         }
     }
 

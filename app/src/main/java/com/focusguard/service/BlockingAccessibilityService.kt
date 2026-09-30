@@ -330,9 +330,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                 relinquishAccessibilityForDevelopment()
                 return@guardReceiver
             }
-            intent?.let(::applyImmediateBlockingSnapshot)
-            lastLoadTime = 0L
-            refreshData()
+            try {
+                intent?.let(::applyImmediateBlockingSnapshot)
+            } finally {
+                lastLoadTime = 0L
+                refreshData()
+            }
         }
     }
 

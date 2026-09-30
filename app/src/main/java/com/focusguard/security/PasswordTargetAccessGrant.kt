@@ -66,6 +66,9 @@ object PasswordTargetAccessGrant {
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, error ->
             FocusGuardLogger.logError("PasswordTargetAccessGrant", "Erro em tarefa em segundo plano", error)
+            // Como no fechamento do processo que esse erro causava antes: sem o monitor,
+            // nenhuma liberação fica valendo e a senha é pedida de novo.
+            clear()
         }
     )
     private val grantedPackages = ConcurrentHashMap.newKeySet<String>()
