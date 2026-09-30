@@ -235,6 +235,37 @@ class BlockingAccessibilityServiceIntentTest {
     }
 
     @Test
+    fun `password-only target opens the unlock screen directly and asks it to verify the owner`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val direct = BlockingAccessibilityService.createBlockNoticeIntent(
+            context = context,
+            blockedPackage = "com.example.blocked",
+            blockedDomain = null,
+            curtainGeneration = 7L,
+            directPasswordUnlock = true
+        )
+        val routed = BlockingAccessibilityService.createBlockNoticeIntent(
+            context = context,
+            blockedPackage = "com.example.blocked",
+            blockedDomain = null,
+            curtainGeneration = 7L
+        )
+
+        assertThat(direct.component?.className)
+            .isEqualTo(com.focusguard.ui.PasswordUnlockActivity::class.java.name)
+        assertThat(
+            direct.getBooleanExtra(BlockingAccessibilityService.EXTRA_VERIFY_PASSWORD_OWNER, false)
+        ).isTrue()
+        assertThat(direct.getLongExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 0L))
+            .isEqualTo(7L)
+        assertThat(routed.component?.className)
+            .isEqualTo(com.focusguard.ui.BlockNoticeActivity::class.java.name)
+        assertThat(
+            routed.hasExtra(BlockingAccessibilityService.EXTRA_VERIFY_PASSWORD_OWNER)
+        ).isFalse()
+    }
+
+    @Test
     fun `refresh intent persists targets before accessibility service receives broadcast`() {
         val context = RuntimeEnvironment.getApplication().applicationContext
 

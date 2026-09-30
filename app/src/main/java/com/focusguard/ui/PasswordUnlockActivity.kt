@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.doOnPreDraw
+import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
@@ -50,6 +51,7 @@ import com.focusguard.security.IntruderAttemptCaptureController
 import com.focusguard.security.PasswordAppUnlockMode
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.SafeSurfaceReadinessPolicy
+import com.focusguard.service.AppBlockSurfaceResolver
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.compose.screens.PasswordProtectedTargetUnlockPanel
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -63,7 +65,10 @@ import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Exclusive authentication surface for PASSWORD-session targets.
@@ -87,6 +92,12 @@ class PasswordUnlockActivity : AppCompatActivity() {
     private var windowFocused = false
     private var freshFrameGeneration = 0L
     private var authenticationReady by mutableStateOf(false)
+
+    // Aberta direto pelo serviço (sem o roteador), a tela confere o dono do bloqueio
+    // antes de soltar a cortina: se outro bloqueio mais forte assumiu o app desde o
+    // último refresh do serviço, o pedido volta para o roteador e a senha nunca aparece.
+    private var ownerVerified by mutableStateOf(true)
+    private var ownerCheckJob: Job? = null
 
     // Accessibility can send more than one intent while the same unlock surface is
     // visible. Keep a stable access id for apps and websites. Intruder capture is
@@ -165,6 +176,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
         freshFrameGeneration = 0L
         if (newAttempt) noticeDrawn = false
         authenticationReady = presentation.authenticationReady
+        if (newAttempt) verifyPasswordOwnerIfNeeded(sourceIntent, packageName)
 
         // Accessibility can repeat this request for the same visible access.
         // Keep its Compose state (and BiometricPrompt) instead of replacing the
@@ -180,7 +192,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
                             blockedPackage = packageName,
                             blockedDomain = blockedDomain,
                             targetLabel = targetLabel,
-                            authenticationReady = authenticationReady,
+                            authenticationReady = authenticationReady && ownerVerified,
                             authManager = authManager,
                             blockingSessionManager = blockingSessionManager,
                             onAuthenticationSucceeded = {
@@ -271,7 +283,66 @@ class PasswordUnlockActivity : AppCompatActivity() {
         return accessAttemptId
     }
 
+    private fun verifyPasswordOwnerIfNeeded(sourceIntent: Intent, packageName: String?) {
+        ownerCheckJob?.cancel()
+        ownerCheckJob = null
+        val needsCheck = sourceIntent.getBooleanExtra(
+            BlockingAccessibilityService.EXTRA_VERIFY_PASSWORD_OWNER,
+            false
+        )
+        if (!needsCheck || packageName == null) {
+            ownerVerified = true
+            return
+        }
+        ownerVerified = false
+        ownerCheckJob = lifecycleScope.launch {
+            val allowed = try {
+                AppBlockSurfaceResolver(
+                    context = applicationContext,
+                    sessionManager = blockingSessionManager
+                ).resolveAttempt(blockedPackage = packageName).allowsPasswordVisit
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                FocusGuardLogger.logError(
+                    "PasswordUnlock",
+                    "Falha ao conferir o dono do bloqueio de $packageName",
+                    error
+                )
+                false
+            }
+            if (isFinishing || isDestroyed) return@launch
+            if (allowed) {
+                ownerVerified = true
+                acknowledgePendingNoticeIfPresented()
+            } else {
+                rerouteThroughBlockRouter(sourceIntent)
+            }
+        }
+    }
+
+    /** O dono não é mais uma sessão PASSWORD: o roteador escolhe a tela certa. */
+    private fun rerouteThroughBlockRouter(sourceIntent: Intent) {
+        val routed = runCatching {
+            startActivity(
+                Intent(this, BlockNoticeActivity::class.java).apply {
+                    sourceIntent.extras?.let { putExtras(it) }
+                    removeExtra(BlockingAccessibilityService.EXTRA_VERIFY_PASSWORD_OWNER)
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                            Intent.FLAG_ACTIVITY_NO_ANIMATION
+                    )
+                }
+            )
+        }.isSuccess
+        if (routed) finish() else goHome()
+    }
+
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
+        // A cortina fica até o dono ser confirmado (ver verifyPasswordOwnerIfNeeded).
+        if (!ownerVerified) return false
         val generation = presentation.pendingCurtainGeneration
         // No pending acknowledgement can also mean that its settle timer is
         // still running. Focus/resume callbacks must not bypass that timer.

@@ -65,6 +65,7 @@ import com.focusguard.sitesblocker.BrowserProfiles
 import com.focusguard.sitesblocker.SiteBlockEngine
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
+import com.focusguard.ui.PasswordUnlockActivity
 import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -167,6 +168,13 @@ class BlockingAccessibilityService : AccessibilityService() {
      */
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
     @Volatile private var passwordWebsiteDomainSet: Set<String> = emptySet()
+    /**
+     * Apps cujo único dono no último refresh era uma sessão PASSWORD (sem sessão mais
+     * forte, limite esgotado ou Modo Foco). Para eles a tela de senha abre direto, sem a
+     * Activity roteadora e sua consulta ao banco; a própria tela confere o dono de novo
+     * antes de liberar senha ou digital.
+     */
+    @Volatile private var passwordOnlyAppsSet: Set<String> = emptySet()
     @Volatile private var strongerWebsiteDomainSet: Set<String> = emptySet()
     /** Sites cujo tempo não conta para limite porque uma camada acima os segura. */
     @Volatile private var limitWaitingWebsiteRules: Set<String> = emptySet()
@@ -1043,6 +1051,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                             .map { it.id }
 
                         val sessionApps = getAppsForSessions(enforcingIds).toSet()
+                        val passwordSessionApps =
+                            getAppsForSessions(passwordSessionIds).toSet()
+                        val strongerSessionApps =
+                            getAppsForSessions(strongerSessionIds).toSet()
                         val sessionSites = WebsiteBlocker.normalizeRules(
                             getSitesForSessions(enforcingIds)
                         )
@@ -1059,6 +1071,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val activeAppLimits = database.appUsageLimitDao()
                             .getAllActiveLimitsStatic()
                         val limitApps = calculateExceededAppLimits(activeAppLimits)
+                        val passwordOnlyApps = passwordSessionApps -
+                            strongerSessionApps -
+                            limitApps -
+                            focusModeSession?.blockedPackages.orEmpty()
                         val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
                             .filter { it.isEnabled }
                         val configuredWebsiteDomains = WebsiteBlocker.normalizeRules(
@@ -1103,6 +1119,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                             blockedAppsSet = accessibilityApps
                             blockedWebsitesDomainSet = blockedWebsiteDomains
                             passwordWebsiteDomainSet = passwordSessionSites
+                            passwordOnlyAppsSet = passwordOnlyApps
                             strongerWebsiteDomainSet = strongerWebsiteDomains
                             limitedWebsiteDomains = configuredWebsiteDomains
                             activeAppLimitsByPackage = activeAppLimits.associateBy { it.packageName }
@@ -2468,7 +2485,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                     blockedPackage = blockedPackage,
                     blockedDomain = blockedDomain,
                     curtainGeneration = generation,
-                    eventUptimeMillis = eventUptimeMillis
+                    eventUptimeMillis = eventUptimeMillis,
+                    directPasswordUnlock = blockedDomain == null &&
+                        blockedPackage != null &&
+                        blockedPackage in passwordOnlyAppsSet
                 )
             )
             true
@@ -2945,6 +2965,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
         const val EXTRA_BLOCK_EVENT_UPTIME_MILLIS = "BLOCK_EVENT_UPTIME_MILLIS"
         const val EXTRA_CURTAIN_GENERATION = "CURTAIN_GENERATION"
+        internal const val EXTRA_VERIFY_PASSWORD_OWNER = "VERIFY_PASSWORD_OWNER"
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
@@ -3120,14 +3141,28 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedPackage: String?,
             blockedDomain: String?,
             curtainGeneration: Long = 0L,
-            eventUptimeMillis: Long = SystemClock.uptimeMillis()
-        ): Intent = Intent(context, BlockNoticeActivity::class.java).apply {
+            eventUptimeMillis: Long = SystemClock.uptimeMillis(),
+            /**
+             * O dono já é conhecido em memória como PASSWORD: pula a Activity roteadora
+             * (uma Activity a menos e uma consulta ao banco a menos até a senha). A tela
+             * de senha refaz a checagem do dono e devolve ao roteador se ela falhar.
+             */
+            directPasswordUnlock: Boolean = false
+        ): Intent = Intent(
+            context,
+            if (directPasswordUnlock) PasswordUnlockActivity::class.java
+            else BlockNoticeActivity::class.java
+        ).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
             )
+            if (directPasswordUnlock) {
+                addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                putExtra(EXTRA_VERIFY_PASSWORD_OWNER, true)
+            }
             putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
             putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
             putExtra(EXTRA_BLOCK_EVENT_UPTIME_MILLIS, eventUptimeMillis)
