@@ -43,6 +43,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -63,10 +65,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentCyanInk
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
+import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.TextHint
@@ -107,8 +111,11 @@ fun AddUsageLimitRuleDialog(
     hasMasterCredential: Boolean,
     onConfigureMasterPassword: () -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, Int, String, String?, Long?) -> Unit
+    /** O último valor é a partir de quando o limite fica travado (opção das 48 h). */
+    onSave: (String, Int, String, String?, Long?, Long) -> Unit
 ) {
+    // Ligado por padrão: nas primeiras 48 h o limite ainda pode ser editado ou removido.
+    var cancelWindowEnabled by remember { mutableStateOf(true) }
     WebsiteUsageLimitEditorSheet(
         initialRule = initialRule,
         keywordMode = keywordMode,
@@ -118,10 +125,22 @@ fun AddUsageLimitRuleDialog(
         initialLockUntilTimestamp = null,
         allowTargetEditing = true,
         allowRemove = false,
+        cancelWindowEnabled = cancelWindowEnabled,
+        onCancelWindowChange = { cancelWindowEnabled = it },
         onDismiss = onDismiss,
         onSave = { rule, minutes, enabled, lockMode, lockUntil ->
             if (enabled && minutes != null && minutes > 0) {
-                onSave(rule, minutes, lockMode, null, lockUntil)
+                onSave(
+                    rule,
+                    minutes,
+                    lockMode,
+                    null,
+                    lockUntil,
+                    MasterCredentialPolicy.limitLockAfter(
+                        createdAtMillis = System.currentTimeMillis(),
+                        cancelWindowEnabled = cancelWindowEnabled
+                    )
+                )
             }
         }
     )
@@ -146,7 +165,10 @@ internal fun WebsiteUsageLimitEditorSheet(
     allowTargetEditing: Boolean,
     allowRemove: Boolean,
     onDismiss: () -> Unit,
-    onSave: (String, Int?, Boolean, String, Long?) -> Unit
+    onSave: (String, Int?, Boolean, String, Long?) -> Unit,
+    /** Opção das 48 h, mostrada só na criação; null esconde. */
+    cancelWindowEnabled: Boolean? = null,
+    onCancelWindowChange: (Boolean) -> Unit = {}
 ) {
     val initialTarget = remember(initialRule, keywordMode) {
         val normalized = initialRule?.let(WebsiteBlocker::normalizeRule).orEmpty()
@@ -299,6 +321,8 @@ internal fun WebsiteUsageLimitEditorSheet(
                         currentRuleEnd = initialLockUntilTimestamp,
                         editMode = editMode,
                         allowRemove = allowRemove,
+                        cancelWindowEnabled = cancelWindowEnabled,
+                        onCancelWindowChange = onCancelWindowChange,
                         onRemove = {
                             if (targetValid) {
                                 onSave(normalizedRule, null, false, "NONE", null)
@@ -408,6 +432,8 @@ private fun WebsiteLimitDetailsScreen(
     currentRuleEnd: Long?,
     editMode: Boolean,
     allowRemove: Boolean,
+    cancelWindowEnabled: Boolean?,
+    onCancelWindowChange: (Boolean) -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
     onContinue: (WebsiteLimitDetailsDraft) -> Unit
@@ -500,6 +526,39 @@ private fun WebsiteLimitDetailsScreen(
                         durationEdited = true
                     }
                 )
+                if (cancelWindowEnabled != null && !editMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(
+                                    R.string.time_block_cancel_window_title,
+                                    MasterCredentialPolicy.CANCEL_WINDOW_HOURS
+                                ),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                stringResource(R.string.limit_cancel_window_desc),
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = cancelWindowEnabled,
+                            onCheckedChange = onCancelWindowChange,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBg,
+                                checkedTrackColor = AccentCyan
+                            )
+                        )
+                    }
+                }
             }
 
             formattedCurrentRuleEnd?.let { formatted ->

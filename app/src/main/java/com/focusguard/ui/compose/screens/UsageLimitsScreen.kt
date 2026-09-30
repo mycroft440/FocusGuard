@@ -1101,13 +1101,21 @@ fun WebsiteLimitsTab(
                 showAddDialog = false
                 initialRuleForAdd = null
             },
-            onSave = { rule, minutes, lockMode, _, lockUntil ->
+            onSave = { rule, minutes, lockMode, _, lockUntil, lockAfter ->
                 val clean = WebsiteBlocker.normalizeRule(rule)
                 if (clean.isEmpty() || WebsiteBlocker.isKeywordRule(clean) != keywordMode) {
                     return@AddUsageLimitRuleDialog
                 }
-                val targetAlreadyConfigured = sites.any {
+                // Digitar um alvo que já tem limite substitui esse limite: passa pela
+                // mesma trava da edição e mantém o prazo das 48 h que ele já tinha.
+                val existingSite = sites.firstOrNull {
                     WebsiteBlocker.normalizeRule(it.domain) == clean
+                }
+                val targetAlreadyConfigured = existingSite != null
+                val effectiveLockAfter = if (existingSite != null) {
+                    existingSite.lockAfter
+                } else {
+                    lockAfter
                 }
                 val monetizedAction: () -> Unit = {
                     scope.launch(Dispatchers.IO) {
@@ -1128,7 +1136,8 @@ fun WebsiteLimitsTab(
                                 isEnabled = true,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
-                                lockUntilTimestamp = lockUntil
+                                lockUntilTimestamp = lockUntil,
+                                lockAfter = effectiveLockAfter
                             )
                         )
                         blockingSessionManager.checkAndEnforce()
@@ -1142,7 +1151,8 @@ fun WebsiteLimitsTab(
                                 usageMs = 0L,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
-                                lockUntilTimestamp = lockUntil
+                                lockUntilTimestamp = lockUntil,
+                                lockAfter = effectiveLockAfter
                             )
                             if (!targetAlreadyConfigured) allConfiguredCount++
                             showAddDialog = false
@@ -1151,7 +1161,13 @@ fun WebsiteLimitsTab(
                     }
                 }
                 val isCreatingLimit = minutes > 0 && !targetAlreadyConfigured
-                if (
+                if (existingSite != null) {
+                    requestSiteMutation(
+                        existingSite,
+                        R.string.master_credential_required_to_change_limit,
+                        monetizedAction
+                    )
+                } else if (
                     isCreatingLimit &&
                     MonetizationPolicy.requiresExtraUsageLimitAd(
                         allConfiguredCount,
