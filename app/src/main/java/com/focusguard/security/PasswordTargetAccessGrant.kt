@@ -291,7 +291,7 @@ object PasswordTargetAccessGrant {
     fun isWebsiteRuleGranted(ruleOrDomain: String): Boolean {
         val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
         if (rule.isBlank()) return false
-        if (rule !in websiteGrantBrowsers) return false
+        if (!websiteGrantBrowsers.containsKey(rule)) return false
         if (strongerWebsiteRules.any { strongerRule ->
                 websiteRulesOverlap(rule, strongerRule)
             }

@@ -21,7 +21,7 @@ object AppLabelCache {
 
     fun prewarm(context: Context, packageNames: Collection<String>) {
         packageNames.forEach { packageName ->
-            if (packageName.isNotBlank() && packageName !in labels) load(context, packageName)
+            if (packageName.isNotBlank() && !labels.containsKey(packageName)) load(context, packageName)
         }
     }
 
