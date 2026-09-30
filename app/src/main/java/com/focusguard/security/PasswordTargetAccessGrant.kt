@@ -195,10 +195,13 @@ object PasswordTargetAccessGrant {
     ): Boolean {
         val target = packageName.takeIf(String::isNotBlank) ?: return false
         val recentExit = recentAppExits[target] ?: return false
-        // Saída vista pelo launcher: o eco da janela que fechou chega como
-        // WINDOWS_CHANGED. Uma nova janela do próprio app (WINDOW_STATE_CHANGED, como
-        // a volta pelo cartão dos recentes) é sempre uma entrada e pede a senha.
-        if (recentExit.requiresUsageEvidence && windowStateChanged) {
+        // O eco da janela que fechou chega como WINDOWS_CHANGED. Uma nova janela do
+        // próprio app (WINDOW_STATE_CHANGED: toque no ícone, cartão dos recentes, troca
+        // rápida) é sempre uma entrada e pede a senha, qualquer que seja o marcador.
+        // Antes, só a saída pelo launcher tinha essa regra: numa saída vista pelo
+        // monitor, se o UsageEvents ainda não tinha registrado a volta, a volta real
+        // era tomada pelo eco e o app abria sem senha (e nada conferia de novo).
+        if (windowStateChanged) {
             recentAppExits.remove(target, recentExit)
             return false
         }
@@ -361,6 +364,15 @@ object PasswordTargetAccessGrant {
             ?: return
         val existed = websiteGrantBrowsers.remove(rule) != null
         if (existed) reconcileProtection(invalidateWebsitePolicy = true)
+    }
+
+    /** Testes: simula a saída que o monitor registra ao ver outro app na frente. */
+    internal fun recordExitForTest(target: String, lastKnownForegroundPackage: String) {
+        recentAppExits[target] = RecentAppExit(
+            markedAtElapsedMillis = SystemClock.elapsedRealtime(),
+            queryFromWallClockMillis = System.currentTimeMillis(),
+            lastKnownForegroundPackage = lastKnownForegroundPackage
+        )
     }
 
     fun clear() {
