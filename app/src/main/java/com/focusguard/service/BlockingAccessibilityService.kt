@@ -733,14 +733,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
                 PasswordTargetAccessGrant.hasWebsiteGrants() &&
                 shouldEndWebsiteVisitsFor(directPackage, packageName) &&
-                !isTransientWindowClass(event.className?.toString().orEmpty()) &&
-                (directPackage == defaultLauncherPackage ||
-                    !isOverlayWindow(event.windowId))
+                !isTransientWindowClass(event.className?.toString().orEmpty())
             ) {
-                PasswordTargetAccessGrant.endWebsiteVisitsOnForeground(
-                    foregroundPackage = directPackage,
-                    foregroundIsBrowser = BrowserProfiles.forPackage(directPackage) != null
-                )
+                endWebsiteVisitsIfAppWindow(directPackage, event.windowId, recheck = true)
             }
 
             // A tela inicial em primeiro plano encerra na hora as visitas liberadas por
@@ -886,17 +881,38 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Se a janela do evento fica por cima sem tirar o navegador da frente: balões de
-     * conversa, painéis laterais e seletores de preenchimento de senha são janelas de
-     * sistema, não de app. Uma janela que ainda não aparece na lista (recém-aberta)
-     * conta como app: na dúvida, a visita termina e a senha é pedida de novo.
+     * Encerra as visitas a sites liberados quando outra janela de app assume a frente.
+     * Balões de conversa, painéis laterais e seletores de preenchimento de senha são
+     * janelas de sistema e não contam. A lista de janelas pode atrasar em relação a uma
+     * janela recém-aberta: sem achá-la, confere de novo um instante depois; se ainda
+     * não aparecer, conta como app (na dúvida, a senha é pedida de novo).
      * Consulta as janelas só quando há um site liberado (ver o chamador).
      */
-    private fun isOverlayWindow(windowId: Int): Boolean {
-        val window = runCatching { windows }.getOrNull()
-            ?.firstOrNull { it.id == windowId }
-            ?: return false
-        return window.type != AccessibilityWindowInfo.TYPE_APPLICATION
+    private fun endWebsiteVisitsIfAppWindow(
+        foregroundPackage: String,
+        windowId: Int,
+        recheck: Boolean
+    ) {
+        if (!PasswordTargetAccessGrant.hasWebsiteGrants()) return
+        val window = if (foregroundPackage == defaultLauncherPackage) {
+            null
+        } else {
+            runCatching { windows }.getOrNull()?.firstOrNull { it.id == windowId }
+        }
+        when {
+            window != null && window.type != AccessibilityWindowInfo.TYPE_APPLICATION -> return
+            window == null && recheck && foregroundPackage != defaultLauncherPackage -> {
+                mainHandler.postDelayed(
+                    { endWebsiteVisitsIfAppWindow(foregroundPackage, windowId, recheck = false) },
+                    WEBSITE_VISIT_WINDOW_RECHECK_MILLIS
+                )
+                return
+            }
+        }
+        PasswordTargetAccessGrant.endWebsiteVisitsOnForeground(
+            foregroundPackage = foregroundPackage,
+            foregroundIsBrowser = BrowserProfiles.forPackage(foregroundPackage) != null
+        )
     }
 
     private fun consumeInputUiEvent(
@@ -3074,6 +3090,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val UNKNOWN_SOURCES_BLOCK_DEBOUNCE_MILLIS = 800L
         private const val IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS = 700L
         private const val BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS = 150L
+        private const val WEBSITE_VISIT_WINDOW_RECHECK_MILLIS = 50L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
