@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -538,7 +539,11 @@ private fun PasswordUnlockDialog(
     // O campo já abre com foco e teclado: antes era preciso tocar nele primeiro.
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
+    // Espera um quadro para a janela da caixa ter foco; depois de uma senha errada
+    // (campo desabilitado durante a conferência), o foco e o teclado voltam sozinhos.
+    LaunchedEffect(error, verifying) {
+        if (verifying) return@LaunchedEffect
+        withFrameNanos { }
         runCatching { focusRequester.requestFocus() }
         keyboardController?.show()
     }
