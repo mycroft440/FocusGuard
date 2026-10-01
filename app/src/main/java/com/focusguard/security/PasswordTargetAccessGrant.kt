@@ -69,7 +69,9 @@ object PasswordTargetAccessGrant {
         val latestTargetStoppedAt: Long,
         val latestTargetForegroundClassName: String? = null,
         val latestTargetBackgroundClassName: String? = null,
-        val latestTargetStoppedClassName: String? = null
+        val latestTargetStoppedClassName: String? = null,
+        /** Outro app na frente, sem contar o próprio FocusGuard (a tela de senha). */
+        val latestOtherAppForegroundAt: Long = Long.MIN_VALUE
     )
 
     private data class RecentAppExit(
@@ -527,6 +529,20 @@ object PasswordTargetAccessGrant {
         return observation.latestNonTargetForegroundAt > visitStartedAt
     }
 
+    /**
+     * A senha foi aceita, mas o app não chegou à frente: outro app (a tela inicial, por
+     * exemplo) entrou depois dela. A senha foi digitada com a pessoa fora do app, e a
+     * liberação não pode ficar esperando a próxima abertura: essa abertura pede a senha.
+     * O próprio FocusGuard (a tela de senha voltando depois da digital) e as telas de
+     * sistema por cima não contam.
+     */
+    internal fun isPendingGrantAbandoned(
+        targetSeenForeground: Boolean,
+        observation: AppVisitObservation
+    ): Boolean = !targetSeenForeground &&
+        observation.latestOtherAppForegroundAt != Long.MIN_VALUE &&
+        observation.latestOtherAppForegroundAt > observation.latestTargetForegroundAt
+
     private fun isInternalTargetActivityHandoff(
         target: String,
         observation: AppVisitObservation,
@@ -563,7 +579,8 @@ object PasswordTargetAccessGrant {
                 val observation = observeAppVisit(
                     manager = usage,
                     target = target,
-                    notBeforeMillis = grantedAtWallClock
+                    notBeforeMillis = grantedAtWallClock,
+                    ownPackage = context.packageName
                 )
                 if (!targetSeenForeground) {
                     val backgroundAt = observation.latestTargetPackageBackgroundAt
@@ -589,6 +606,13 @@ object PasswordTargetAccessGrant {
                         targetSeenForeground = true
                         visitStartedAt = observation.latestTargetForegroundAt
                         startedAppVisits.add(target)
+                    } else if (isPendingGrantAbandoned(targetSeenForeground, observation)) {
+                        FocusGuardLogger.log(
+                            "PasswordTargetAccessGrant",
+                            "Senha aceita com $target fora da frente: liberação desfeita"
+                        )
+                        revokePackageWithoutCancellingSelf(target)
+                        return
                     } else if (
                         SystemClock.elapsedRealtime() - grantedAtElapsed >= APP_OPEN_TIMEOUT_MILLIS
                     ) {
@@ -624,7 +648,8 @@ object PasswordTargetAccessGrant {
     private fun observeAppVisit(
         manager: UsageStatsManager,
         target: String,
-        notBeforeMillis: Long
+        notBeforeMillis: Long,
+        ownPackage: String? = null
     ): AppVisitObservation {
         val end = System.currentTimeMillis()
         val start = maxOf(end - EVENT_LOOKBACK_MILLIS, notBeforeMillis)
@@ -634,6 +659,7 @@ object PasswordTargetAccessGrant {
         var latestForegroundAt = Long.MIN_VALUE
         var latestTargetForegroundAt = Long.MIN_VALUE
         var latestNonTargetForegroundAt = Long.MIN_VALUE
+        var latestOtherAppForegroundAt = Long.MIN_VALUE
         var latestTargetPackageBackgroundAt = Long.MIN_VALUE
         var latestTargetStoppedAt = Long.MIN_VALUE
         var latestTargetForegroundClassName: String? = null
@@ -662,6 +688,9 @@ object PasswordTargetAccessGrant {
                 }
             } else if (foregroundEvent && event.packageName != target) {
                 latestNonTargetForegroundAt = maxOf(latestNonTargetForegroundAt, event.timeStamp)
+                if (event.packageName != ownPackage) {
+                    latestOtherAppForegroundAt = maxOf(latestOtherAppForegroundAt, event.timeStamp)
+                }
             }
 
             if (
@@ -690,7 +719,8 @@ object PasswordTargetAccessGrant {
             latestTargetStoppedAt = latestTargetStoppedAt,
             latestTargetForegroundClassName = latestTargetForegroundClassName,
             latestTargetBackgroundClassName = latestTargetBackgroundClassName,
-            latestTargetStoppedClassName = latestTargetStoppedClassName
+            latestTargetStoppedClassName = latestTargetStoppedClassName,
+            latestOtherAppForegroundAt = latestOtherAppForegroundAt
         )
     }
 
