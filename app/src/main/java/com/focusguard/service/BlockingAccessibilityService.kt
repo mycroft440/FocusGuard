@@ -305,6 +305,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastImmediateBlockedPackage: String? = null
     private var lastImmediateBlockElapsed = 0L
     private var lastBlockSurfaceRelaunchElapsed = 0L
+    private var lastMissedEntryCheckElapsed = 0L
+    private val activeWindowCheck = Runnable { guardReceiver(::enforceActiveWindowNotBlocked) }
     private var trailingBlockSurfaceRelaunchPending = false
 
     private val packageReceiver = object : BroadcastReceiver() {
@@ -397,9 +399,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 // evento de janela dele (o Android só troca o foco), então a tela da frente
                 // é conferida agora e logo depois, quando a tela de bloqueio já saiu.
                 Intent.ACTION_USER_PRESENT -> {
-                    enforceForegroundAfterUnlock()
+                    enforceActiveWindowNotBlocked()
                     mainHandler.postDelayed(
-                        { guardReceiver(::enforceForegroundAfterUnlock) },
+                        { guardReceiver(::enforceActiveWindowNotBlocked) },
                         UNLOCK_FOREGROUND_RECHECK_MILLIS
                     )
                 }
@@ -892,9 +894,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
                     handleWindowStateChanged(event, packageName)
                 }
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-                AccessibilityEvent.TYPE_VIEW_FOCUSED -> Unit // queued above; tree work is off-main
+                // Toque, rolagem, texto ou conteúdo mudando num app bloqueado que está na
+                // frente sem liberação: a entrada passou sem evento de janela. Bloqueia.
+                // Só eventos que dizem de qual app vêm: o pacote deduzido (foreground
+                // guardado) pode ser antigo e culparia o app errado.
+                else -> guardMissedBlockedEntry(event, directPackage)
             }
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Erro no evento de acessibilidade", error)
@@ -1036,33 +1040,18 @@ class BlockingAccessibilityService : AccessibilityService() {
         enforceCurrentForegroundFromSnapshot()
     }
 
-    private fun enforceForegroundAfterUnlock() {
-        // Uma cortina na tela é um bloqueio já em andamento (da primeira conferência ou
-        // do evento de janela do app): não abre outro ciclo.
+    /**
+     * Confere a janela ativa e bloqueia se ela é de um app bloqueado sem liberação.
+     * Usado onde nem sempre chega um evento de janela do app: ao desbloquear o celular
+     * e logo depois que a tela de bloqueio/senha assume (um app com tela de abertura
+     * pode subir a segunda tela por cima dela).
+     */
+    private fun enforceActiveWindowNotBlocked() {
+        // Uma cortina na tela é um bloqueio já em andamento: não abre outro ciclo.
         if (!isBlockingSessionActive || instantBlockCurtainVisible) return
-        val root = rootInActiveWindow ?: return
-        val current = try {
-            root.packageName?.toString().orEmpty()
-        } finally {
-            recycleSafely(root)
-        }
-        if (current.isBlank() ||
-            current == packageName ||
-            current == defaultLauncherPackage ||
-            current in focusModeAllowedAppsSet
-        ) return
-        // windowStateChanged = true: é uma entrada, nunca o eco de uma saída.
-        if (ImmediateInterceptionPolicy.isBlockedTargetWindow(
-                current,
-                blockedAppsSet,
-                windowStateChanged = true
-            )
-        ) {
-            foregroundPackageName = current
-            // O evento de janela do app que chegar logo depois reaproveita esta cortina.
-            lastImmediateBlockedPackage = current
-            lastImmediateBlockElapsed = SystemClock.elapsedRealtime()
-            blockApp(current)
+        val current = activeWindowPackage().orEmpty()
+        if (blockAppInFront(current)) {
+            FocusGuardLogger.log("A11y", "App bloqueado $current na frente: bloqueado de novo")
         }
     }
 
@@ -1532,8 +1521,88 @@ class BlockingAccessibilityService : AccessibilityService() {
                 blockedAppsSet,
                 windowStateChanged =
                     event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            ) -> blockApp(packageName, event.eventTime)
+            ) -> {
+                // TYPE_WINDOWS_CHANGED também chega quando a janela do app SAI da frente.
+                // Bloquear nesse aviso abria a senha por cima de onde a pessoa foi (tela
+                // inicial, outro app). Só bloqueia com o app de fato na janela ativa.
+                if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
+                    activeWindowPackage() != packageName
+                ) return
+                blockApp(packageName, event.eventTime)
+            }
         }
+    }
+
+    private fun activeWindowPackage(): String? {
+        val root = rootInActiveWindow ?: return null
+        return try {
+            root.packageName?.toString()
+        } finally {
+            recycleSafely(root)
+        }
+    }
+
+    /**
+     * Rede de segurança da entrada. O bloqueio nasce do evento de janela do app; se
+     * ele não chegou (ou a tela de bloqueio ficou por baixo do app), o app ficava
+     * usável até a próxima troca de janela, e a senha só aparecia ao sair. Aqui,
+     * qualquer evento de um app bloqueado, sem liberação, cuja janela é a ativa,
+     * bloqueia na hora. Só olha a lista de janelas para apps bloqueados e no máximo
+     * uma vez a cada [MISSED_ENTRY_CHECK_INTERVAL_MILLIS].
+     */
+    private fun guardMissedBlockedEntry(event: AccessibilityEvent, eventPackage: String) {
+        if (eventPackage.isBlank() || eventPackage !in blockedAppsSet) return
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (!shouldCheckMissedEntry(
+                granted = PasswordTargetAccessGrant.isPackageGranted(eventPackage),
+                blockInProgress = instantBlockCurtainVisible || awaitingSafeSurfaceGeneration > 0L,
+                recentlyBlockedSamePackage = eventPackage == lastImmediateBlockedPackage &&
+                    nowElapsed - lastImmediateBlockElapsed < IMMEDIATE_APP_BLOCK_DEBOUNCE_MILLIS,
+                elapsedSinceLastCheck = nowElapsed - lastMissedEntryCheckElapsed
+            )
+        ) return
+        lastMissedEntryCheckElapsed = nowElapsed
+        val window = runCatching { windows }.getOrNull()
+            ?.firstOrNull { it.id == event.windowId }
+            ?: return
+        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION ||
+            !(window.isActive || window.isFocused)
+        ) return
+        if (blockAppInFront(eventPackage, event.eventTime)) {
+            FocusGuardLogger.log(
+                "A11y",
+                "Entrada em $eventPackage sem evento de janela: bloqueada pelo uso"
+            )
+        }
+    }
+
+    /**
+     * Bloqueia [current], o app na janela ativa, se ele está bloqueado e sem liberação.
+     * É sempre uma entrada (nunca o eco de uma saída), por isso windowStateChanged.
+     */
+    private fun blockAppInFront(
+        current: String,
+        eventUptimeMillis: Long = SystemClock.uptimeMillis()
+    ): Boolean {
+        if (current.isBlank() ||
+            current == packageName ||
+            current == defaultLauncherPackage ||
+            current in interceptionPackages ||
+            current in focusModeAllowedAppsSet ||
+            (focusModeFallbackActive && current in focusModeBlockedAppsSet)
+        ) return false
+        if (!ImmediateInterceptionPolicy.isBlockedTargetWindow(
+                current,
+                blockedAppsSet,
+                windowStateChanged = true
+            )
+        ) return false
+        foregroundPackageName = current
+        // O evento de janela do app que chegar logo depois reaproveita esta cortina.
+        lastImmediateBlockedPackage = current
+        lastImmediateBlockElapsed = SystemClock.elapsedRealtime()
+        blockApp(current, eventUptimeMillis)
+        return true
     }
 
     /**
@@ -2989,6 +3058,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                 pendingSettingsProtectionUntilElapsed = 0L
                 ProtectedSettingsResetWindow.close(generation)
                 dismissInstantBlockCurtain(generation)
+                // A tela de bloqueio/senha assumiu. Confere de novo um instante depois:
+                // se o app bloqueado subiu por cima dela, bloqueia outra vez.
+                mainHandler.removeCallbacks(activeWindowCheck)
+                mainHandler.postDelayed(activeWindowCheck, POST_BLOCK_ACTIVE_WINDOW_CHECK_MILLIS)
             }
         }
     }
@@ -3198,6 +3271,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val BLOCK_SURFACE_RELAUNCH_INTERVAL_MILLIS = 150L
         private const val WEBSITE_VISIT_WINDOW_RECHECK_MILLIS = 50L
         private const val UNLOCK_FOREGROUND_RECHECK_MILLIS = 400L
+        private const val MISSED_ENTRY_CHECK_INTERVAL_MILLIS = 300L
+        private const val POST_BLOCK_ACTIVE_WINDOW_CHECK_MILLIS = 700L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
@@ -3301,6 +3376,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_CLICKED or
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
+
+        /**
+         * Se um evento de um app bloqueado deve conferir a janela ativa (rede de segurança
+         * da entrada): sem liberação, sem bloqueio em andamento, sem um bloqueio do mesmo
+         * app há instantes e respeitando o intervalo entre conferências.
+         */
+        internal fun shouldCheckMissedEntry(
+            granted: Boolean,
+            blockInProgress: Boolean,
+            recentlyBlockedSamePackage: Boolean,
+            elapsedSinceLastCheck: Long
+        ): Boolean = !granted &&
+            !blockInProgress &&
+            !recentlyBlockedSamePackage &&
+            elapsedSinceLastCheck >= MISSED_ENTRY_CHECK_INTERVAL_MILLIS
 
         internal fun shouldCoalesceImmediateBlock(
             samePackage: Boolean,
