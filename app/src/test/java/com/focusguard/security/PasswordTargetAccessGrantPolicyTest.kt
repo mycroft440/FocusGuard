@@ -156,17 +156,92 @@ class PasswordTargetAccessGrantPolicyTest {
         ).isFalse()
     }
 
+    @Test
+    fun `password accepted with the app out of front is undone`() {
+        // A tela inicial voltou depois da senha e o app nunca chegou à frente.
+        val observation = observation(
+            latestForegroundPackage = "com.example.launcher",
+            latestNonTargetForegroundAt = 50L,
+            latestOtherAppForegroundAt = 50L
+        )
+
+        assertThat(
+            PasswordTargetAccessGrant.isPendingGrantAbandoned(
+                targetSeenForeground = false,
+                observation = observation
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `pending grant waits while only FocusGuard or nothing came to front`() {
+        // A tela de senha voltando depois da digital é o próprio FocusGuard.
+        val observation = observation(
+            latestForegroundPackage = "com.focusguard",
+            latestNonTargetForegroundAt = 50L
+        )
+
+        assertThat(
+            PasswordTargetAccessGrant.isPendingGrantAbandoned(
+                targetSeenForeground = false,
+                observation = observation
+            )
+        ).isFalse()
+        assertThat(
+            PasswordTargetAccessGrant.isPendingGrantAbandoned(
+                targetSeenForeground = false,
+                observation = observation(latestForegroundPackage = null)
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `pending grant keeps the app that came to front after another`() {
+        val observation = observation(
+            latestForegroundPackage = target,
+            latestTargetForegroundAt = 200L,
+            latestNonTargetForegroundAt = 50L,
+            latestOtherAppForegroundAt = 50L
+        )
+
+        assertThat(
+            PasswordTargetAccessGrant.isPendingGrantAbandoned(
+                targetSeenForeground = false,
+                observation = observation
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `a started visit is never treated as abandoned`() {
+        val observation = observation(
+            latestForegroundPackage = "com.example.launcher",
+            latestTargetForegroundAt = 100L,
+            latestNonTargetForegroundAt = 200L,
+            latestOtherAppForegroundAt = 200L
+        )
+
+        assertThat(
+            PasswordTargetAccessGrant.isPendingGrantAbandoned(
+                targetSeenForeground = true,
+                observation = observation
+            )
+        ).isFalse()
+    }
+
     private fun observation(
         latestForegroundPackage: String?,
         latestTargetForegroundAt: Long = Long.MIN_VALUE,
         latestNonTargetForegroundAt: Long = Long.MIN_VALUE,
         latestTargetPackageBackgroundAt: Long = Long.MIN_VALUE,
-        latestTargetStoppedAt: Long = Long.MIN_VALUE
+        latestTargetStoppedAt: Long = Long.MIN_VALUE,
+        latestOtherAppForegroundAt: Long = Long.MIN_VALUE
     ) = PasswordTargetAccessGrant.AppVisitObservation(
         latestForegroundPackage = latestForegroundPackage,
         latestTargetForegroundAt = latestTargetForegroundAt,
         latestNonTargetForegroundAt = latestNonTargetForegroundAt,
         latestTargetPackageBackgroundAt = latestTargetPackageBackgroundAt,
-        latestTargetStoppedAt = latestTargetStoppedAt
+        latestTargetStoppedAt = latestTargetStoppedAt,
+        latestOtherAppForegroundAt = latestOtherAppForegroundAt
     )
 }

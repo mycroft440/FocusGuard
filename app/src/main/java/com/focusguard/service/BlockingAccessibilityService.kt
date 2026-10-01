@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -307,6 +308,11 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastBlockSurfaceRelaunchElapsed = 0L
     private var lastMissedEntryCheckElapsed = 0L
     private val activeWindowCheck = Runnable { guardReceiver(::enforceActiveWindowNotBlocked) }
+    private var backgroundWindowRecheckPending = false
+    private val backgroundWindowRecheck = Runnable {
+        backgroundWindowRecheckPending = false
+        guardReceiver(::enforceActiveWindowNotBlocked)
+    }
     private var trailingBlockSurfaceRelaunchPending = false
 
     private val packageReceiver = object : BroadcastReceiver() {
@@ -1465,7 +1471,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         val nowElapsed = SystemClock.elapsedRealtime()
-        foregroundPackageName = directPackage
         // Uma rajada de eventos do mesmo app vira um só bloqueio, mas só enquanto a
         // cortina ainda cobre a tela esperando a tela de bloqueio/senha. Sem cortina,
         // o evento é uma volta ao app (troca rápida pelos recentes) e precisa bloquear
@@ -1477,6 +1482,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration
             )
         ) {
+            foregroundPackageName = directPackage
             // Mesma cortina, mas a tela de bloqueio é pedida de novo: um app com tela de
             // abertura (Splash → Main) pode ter subido a segunda tela por cima da nossa,
             // e sem isso a checagem de janelas mandava a pessoa para a tela inicial.
@@ -1484,6 +1490,21 @@ class BlockingAccessibilityService : AccessibilityService() {
             relaunchAwaitedBlockSurface(directPackage, event.eventTime)
             return true
         }
+        // O Android entrega esse aviso de qualquer janela, mesmo fora da tela. Depois da
+        // saída, o app ainda manda avisos (terminou de carregar, fechou um painel); antes,
+        // eles abriam a senha por cima da tela inicial ou de outro app segundos depois, e
+        // a senha digitada ali liberava o app sem ele estar aberto. Aviso de uma janela
+        // fora da tela é descartado (nem vira o app da frente); a janela ativa é conferida
+        // de novo num instante, para uma entrada real nunca passar.
+        if (!BlockedWindowEventPolicy.isEntry(
+                eventWindowInFront = isEventWindowInFront(event),
+                appInFront = { isAppInFrontByUsage(directPackage) }
+            )
+        ) {
+            scheduleBackgroundWindowRecheck()
+            return true
+        }
+        foregroundPackageName = directPackage
         lastImmediateBlockedPackage = directPackage
         lastImmediateBlockElapsed = nowElapsed
         blockApp(directPackage, event.eventTime)
@@ -1540,6 +1561,49 @@ class BlockingAccessibilityService : AccessibilityService() {
         } finally {
             recycleSafely(root)
         }
+    }
+
+    /**
+     * Se a janela do evento está na frente: na tela e ativa (ou em picture-in-picture).
+     * false: fora da tela, ou ainda na tela mas atrás de outra (o app saindo da frente).
+     * null: a lista de janelas não pôde ser lida (ou veio vazia, o que não acontece com a
+     * tela ligada).
+     */
+    private fun isEventWindowInFront(event: AccessibilityEvent): Boolean? {
+        val onScreen = runCatching { windows }.getOrNull()
+        if (onScreen.isNullOrEmpty()) return null
+        val window = onScreen.firstOrNull { it.id == event.windowId } ?: return false
+        return window.isActive || window.isFocused || window.isInPictureInPictureMode
+    }
+
+    /**
+     * Se o UsageEvents mostra [packageName] na frente agora. Sem como ler, conta como na
+     * frente: na dúvida, bloqueia como antes.
+     */
+    private fun isAppInFrontByUsage(packageName: String): Boolean {
+        val manager = usageStatsManager ?: return true
+        return try {
+            val end = System.currentTimeMillis()
+            val events = manager.queryEvents(end - USAGE_IN_FRONT_LOOKBACK_MILLIS, end)
+                ?: return true
+            val tracker = BlockedWindowEventPolicy.ForegroundTracker(packageName)
+            val event = UsageEvents.Event()
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                tracker.onEvent(event.packageName, event.className, event.eventType)
+            }
+            tracker.targetInFront
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError("A11y", "Falha ao ler o app da frente pelo uso", error)
+            true
+        }
+    }
+
+    /** Uma conferência da janela ativa por vez, mesmo com uma rajada de avisos. */
+    private fun scheduleBackgroundWindowRecheck() {
+        if (backgroundWindowRecheckPending) return
+        backgroundWindowRecheckPending = true
+        mainHandler.postDelayed(backgroundWindowRecheck, BACKGROUND_WINDOW_RECHECK_MILLIS)
     }
 
     /**
@@ -3233,6 +3297,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         stopWebsiteTracking()
         siteBlockEngine.onDestroy()
         mainHandler.removeCallbacks(protectionCurtainDismiss)
+        mainHandler.removeCallbacks(backgroundWindowRecheck)
         protectionActionUntilElapsed = 0L
         protectedPowerMenuController?.destroy()
         releaseInstantBlockCurtain()
@@ -3273,6 +3338,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val UNLOCK_FOREGROUND_RECHECK_MILLIS = 400L
         private const val MISSED_ENTRY_CHECK_INTERVAL_MILLIS = 300L
         private const val POST_BLOCK_ACTIVE_WINDOW_CHECK_MILLIS = 700L
+        private const val BACKGROUND_WINDOW_RECHECK_MILLIS = 150L
+        private const val USAGE_IN_FRONT_LOOKBACK_MILLIS = 10_000L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
