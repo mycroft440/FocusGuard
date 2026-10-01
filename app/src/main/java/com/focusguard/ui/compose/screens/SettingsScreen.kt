@@ -89,6 +89,12 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.launch
 
+/**
+ * Modo dev desativado: a entrada some das Configurações. As ações dele (tirar todos os
+ * bloqueios, revogar permissões) não pedem a senha mestre. true traz a entrada de volta.
+ */
+private const val DEVELOPER_MODE_ENABLED = false
+
 @Composable
 fun SettingsScreen(
     profile: UserProfile,
@@ -254,12 +260,14 @@ fun SettingsScreen(
                 iconTint = Color(0xFFF5C451),
                 onClick = { showPremium = true }
             )
-            SettingsItem(
-                Icons.Default.Build,
-                stringResource(R.string.settings_dev_mode_title),
-                stringResource(R.string.settings_dev_mode_subtitle),
-                onClick = { showDeveloperMode = true }
-            )
+            if (DEVELOPER_MODE_ENABLED) {
+                SettingsItem(
+                    Icons.Default.Build,
+                    stringResource(R.string.settings_dev_mode_title),
+                    stringResource(R.string.settings_dev_mode_subtitle),
+                    onClick = { showDeveloperMode = true }
+                )
+            }
 
             Spacer(Modifier.height(32.dp))
             Text(
@@ -309,7 +317,7 @@ fun SettingsScreen(
         )
     }
 
-    if (showDeveloperMode) {
+    if (DEVELOPER_MODE_ENABLED && showDeveloperMode) {
         DeveloperModeHostDialog(
             onDismiss = { showDeveloperMode = false }
         )
