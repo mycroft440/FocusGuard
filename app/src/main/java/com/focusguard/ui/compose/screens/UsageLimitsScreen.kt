@@ -202,7 +202,8 @@ fun UsageLimitsScreen(
                         websiteLimitsState.hasLoaded = false
                         websiteLimitsState.isLoading.value = true
                     },
-                    state = appLimitsState
+                    state = appLimitsState,
+                    usageRefreshKey = permissionResumeKey
                 )
                 1 -> WebsiteLimitsTab(
                     permissionsMissing = false,
@@ -211,7 +212,8 @@ fun UsageLimitsScreen(
                     onConfigureMasterPassword = openMasterPassword,
                     onPermissionsRequired = onPermissionsRequired,
                     keywordMode = false,
-                    state = websiteLimitsState
+                    state = websiteLimitsState,
+                    usageRefreshKey = permissionResumeKey
                 )
                 else -> WebsiteLimitsTab(
                     permissionsMissing = false,
@@ -220,7 +222,8 @@ fun UsageLimitsScreen(
                     onConfigureMasterPassword = openMasterPassword,
                     onPermissionsRequired = onPermissionsRequired,
                     keywordMode = true,
-                    state = keywordLimitsState
+                    state = keywordLimitsState,
+                    usageRefreshKey = permissionResumeKey
                 )
             }
         }
@@ -326,7 +329,9 @@ fun AppLimitsTab(
     onConfigureMasterPassword: () -> Unit,
     onPermissionsRequired: () -> Unit,
     onWebsiteLimitCreated: () -> Unit,
-    state: AppLimitsTabState
+    state: AppLimitsTabState,
+    /** Muda a cada volta à tela: o uso de hoje é relido sem recarregar a lista. */
+    usageRefreshKey: Int = 0
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -381,6 +386,20 @@ fun AppLimitsTab(
         }
     }
 
+    LaunchedEffect(usageRefreshKey) {
+        if (usageRefreshKey == 0 || !state.hasLoaded) return@LaunchedEffect
+        val packages = apps.map { it.packageName }
+        val refreshed = withContext(Dispatchers.IO) {
+            loadUsageToday(
+                context = context,
+                packages = packages,
+                limits = db.appUsageLimitDao().getAllStatic(),
+                nowMillis = System.currentTimeMillis()
+            )
+        }
+        apps = apps.map { app -> app.copy(usageMs = refreshed[app.packageName] ?: 0L) }
+    }
+
     LaunchedEffect(state) {
         if (state.hasLoaded) return@LaunchedEffect
         withContext(Dispatchers.IO) {
@@ -389,27 +408,13 @@ fun AppLimitsTab(
             val resolveInfos = pm.queryIntentActivities(intent, 0)
             val limitDao = db.appUsageLimitDao()
             val existingLimits = limitDao.getAllStatic().associateBy { it.packageName }
-            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
             val now = System.currentTimeMillis()
-            val cal = java.util.Calendar.getInstance().apply {
-                timeInMillis = now
-                set(java.util.Calendar.HOUR_OF_DAY, 0)
-                set(java.util.Calendar.MINUTE, 0)
-                set(java.util.Calendar.SECOND, 0)
-                set(java.util.Calendar.MILLISECOND, 0)
-            }
-            val stats = usageStatsManager.queryAndAggregateUsageStats(
-                cal.timeInMillis,
-                now
+            val usageToday = loadUsageToday(
+                context = context,
+                packages = resolveInfos.map { it.activityInfo.packageName },
+                limits = existingLimits.values,
+                nowMillis = now
             )
-            // Limites ativos mostram o mesmo número que decide o bloqueio: só
-            // primeiro plano, e sem o tempo em que outra camada segurava o app.
-            val limitedUsageMillis = runCatching {
-                BlockingSessionManager.getInstance(context).appLimitUsageMillis(
-                    limits = existingLimits.values.filter { it.isEnabled },
-                    nowMillis = now
-                )
-            }.getOrDefault(emptyMap())
             val discoveredSocialPackages = PredefinedApps.PREVENTIVE_APPS
                 .asSequence()
                 .filter { it.category.equals("Redes Sociais", ignoreCase = true) }
@@ -425,12 +430,7 @@ fun AppLimitsTab(
                     discoveredSocialPackages += packageName
                 }
                 val limit = existingLimits[packageName]
-                val totalDayUsageMillis =
-                    stats[packageName]?.totalTimeInForeground ?: 0L
-                val displayedUsageMillis = limit
-                    ?.takeIf { it.isEnabled }
-                    ?.let { limitedUsageMillis[it.packageName] }
-                    ?: totalDayUsageMillis
+                val displayedUsageMillis = usageToday[packageName] ?: 0L
                 UsageLimitAppUi(
                     packageName = packageName,
                     appName = info.loadLabel(pm).toString(),
@@ -742,6 +742,53 @@ private data class AppLimitSections(
     val other: List<UsageLimitAppUi>
 )
 
+/**
+ * Uso de hoje mostrado na lista. Com limite ativo é o mesmo número que decide o
+ * bloqueio (só desde a criação do limite e sem o tempo em que outra camada segurava
+ * o app); sem limite, todo o primeiro plano desde a meia-noite. Os dois vêm do
+ * mesmo coletor de eventos: o agregado do Android começa o dia antes da meia-noite.
+ */
+private suspend fun loadUsageToday(
+    context: Context,
+    packages: Collection<String>,
+    limits: Collection<com.focusguard.database.AppUsageLimit>,
+    nowMillis: Long
+): Map<String, Long> {
+    val manager = context.getSystemService(Context.USAGE_STATS_SERVICE)
+        as? android.app.usage.UsageStatsManager ?: return emptyMap()
+    val interactive = (context.getSystemService(Context.POWER_SERVICE)
+        as? android.os.PowerManager)?.isInteractive == true
+    val totals = runCatching {
+        com.focusguard.utils.AppUsageLimitMeter.foregroundTodayByPackage(
+            usageStatsManager = manager,
+            packages = packages,
+            nowMillis = nowMillis,
+            isDeviceInteractive = interactive
+        )
+    }.getOrNull().orEmpty()
+    val limited = runCatching {
+        BlockingSessionManager.getInstance(context).appLimitUsageMillis(
+            limits = limits.filter { it.isEnabled },
+            nowMillis = nowMillis
+        )
+    }.getOrDefault(emptyMap())
+    return totals + limited
+}
+
+private suspend fun loadWebsiteUsageToday(
+    db: com.focusguard.database.AppDatabase,
+    rules: Collection<String>
+): Map<String, Long> {
+    val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        .format(java.util.Date())
+    return com.focusguard.utils.WebsiteUsageLimitPolicy.aggregateUsageByRule(
+        usageByIdentifier = db.dailyUsageStatDao()
+            .getStatsForDateStatic(today)
+            .map { it.identifier to it.timeSpentMs },
+        configuredRules = rules
+    )
+}
+
 private fun buildAppLimitSections(
     apps: List<UsageLimitAppUi>,
     socialPackages: Set<String>
@@ -781,7 +828,9 @@ fun WebsiteLimitsTab(
     onConfigureMasterPassword: () -> Unit,
     onPermissionsRequired: () -> Unit,
     keywordMode: Boolean = false,
-    state: WebsiteLimitsTabState
+    state: WebsiteLimitsTabState,
+    /** Muda a cada volta à tela: o uso de hoje é relido sem recarregar a lista. */
+    usageRefreshKey: Int = 0
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -878,20 +927,18 @@ fun WebsiteLimitsTab(
         }
     }
 
+    LaunchedEffect(usageRefreshKey) {
+        if (usageRefreshKey == 0 || !state.hasLoaded) return@LaunchedEffect
+        val rules = sites.map { it.domain }
+        val refreshed = withContext(Dispatchers.IO) { loadWebsiteUsageToday(db, rules) }
+        sites = sites.map { site -> site.copy(usageMs = refreshed[site.domain] ?: 0L) }
+    }
+
     LaunchedEffect(state) {
         if (state.hasLoaded) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            val today = java.text.SimpleDateFormat(
-                "yyyy-MM-dd",
-                java.util.Locale.US
-            ).format(java.util.Date())
             val allLimits = db.websiteUsageLimitDao().getAllStatic()
-            val usageStats = com.focusguard.utils.WebsiteUsageLimitPolicy.aggregateUsageByRule(
-                usageByIdentifier = db.dailyUsageStatDao()
-                    .getStatsForDateStatic(today)
-                    .map { it.identifier to it.timeSpentMs },
-                configuredRules = allLimits.map { it.domain }
-            )
+            val usageStats = loadWebsiteUsageToday(db, allLimits.map { it.domain })
             val loaded = allLimits
                 .filter {
                     WebsiteBlocker.isKeywordRule(WebsiteBlocker.normalizeRule(it.domain)) == keywordMode

@@ -55,6 +55,42 @@ object AppUsageLimitMeter {
         }
     }
 
+    /**
+     * Primeiro plano de hoje (meia-noite até agora) de cada pacote, sem os descontos
+     * de um limite. É o "uso de hoje" mostrado para apps sem limite, medido pelo mesmo
+     * coletor dos limites para os dois números nunca discordarem.
+     */
+    fun foregroundTodayByPackage(
+        usageStatsManager: UsageStatsManager,
+        packages: Collection<String>,
+        nowMillis: Long,
+        isDeviceInteractive: Boolean,
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Map<String, Long>? {
+        if (packages.isEmpty()) return emptyMap()
+        val dayStart = startOfDay(nowMillis, timeZone)
+        val foreground = AppForegroundIntervalReader.intervals(
+            usageStatsManager = usageStatsManager,
+            packages = packages.toSet(),
+            dayStartMillis = dayStart,
+            nowMillis = nowMillis,
+            isDeviceInteractive = isDeviceInteractive
+        ) ?: return null
+        return foreground.mapValues { (_, intervals) ->
+            millisWithin(intervals, dayStart, nowMillis)
+        }
+    }
+
+    /** Soma dos trechos (LongRange de `until`) dentro de [fromMillis, untilMillis). */
+    internal fun millisWithin(
+        intervals: List<LongRange>,
+        fromMillis: Long,
+        untilMillis: Long
+    ): Long = intervals.sumOf { interval ->
+        (minOf(interval.last + 1, untilMillis) - maxOf(interval.first, fromMillis))
+            .coerceAtLeast(0L)
+    }
+
     /** Parte pura do cálculo, exposta para testes determinísticos. */
     internal fun countedMillis(
         limit: AppUsageLimit,
@@ -101,12 +137,6 @@ object AppUsageLimitMeter {
  * até agora é projetada numa cópia descartável.
  */
 internal object AppForegroundIntervalReader {
-    private const val EVENT_ACTIVITY_RESUMED = 1
-    private const val EVENT_ACTIVITY_PAUSED = 2
-    private const val EVENT_SCREEN_NON_INTERACTIVE = 16
-    private const val EVENT_ACTIVITY_STOPPED = 23
-    private const val EVENT_DEVICE_SHUTDOWN = 26
-
     /** Um app aberto antes da meia-noite precisa do RESUMED do dia anterior. */
     private const val LOOKBACK_MILLIS = 24L * 60L * 60L * 1_000L
     private const val SETTLE_MILLIS = 5_000L
@@ -167,21 +197,12 @@ internal object AppForegroundIntervalReader {
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            when (event.eventType) {
-                EVENT_ACTIVITY_RESUMED -> collector.onActivityResumed(
-                    event.packageName,
-                    event.className,
-                    event.timeStamp
-                )
-                EVENT_ACTIVITY_PAUSED,
-                EVENT_ACTIVITY_STOPPED -> collector.onActivityLeft(
-                    event.packageName,
-                    event.className,
-                    event.timeStamp
-                )
-                EVENT_SCREEN_NON_INTERACTIVE,
-                EVENT_DEVICE_SHUTDOWN -> collector.onDeviceInactive(event.timeStamp)
-            }
+            collector.onUsageEvent(
+                eventType = event.eventType,
+                packageName = event.packageName,
+                activityClassName = event.className,
+                atMillis = event.timeStamp
+            )
         }
     }
 }

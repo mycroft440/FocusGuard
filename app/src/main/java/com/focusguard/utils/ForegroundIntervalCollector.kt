@@ -30,6 +30,31 @@ internal class ForegroundIntervalCollector private constructor(
         closed = hashMapOf()
     )
 
+    /**
+     * Entrada única para um evento do UsageEvents: todo leitor do primeiro plano
+     * (limites, painel, tela de impacto) trata os mesmos tipos do mesmo jeito.
+     */
+    fun onUsageEvent(
+        eventType: Int,
+        packageName: String?,
+        activityClassName: String?,
+        atMillis: Long
+    ) {
+        when (eventType) {
+            EVENT_ACTIVITY_RESUMED -> onActivityResumed(packageName, activityClassName, atMillis)
+            EVENT_ACTIVITY_PAUSED,
+            EVENT_ACTIVITY_STOPPED -> onActivityLeft(packageName, activityClassName, atMillis)
+            EVENT_SCREEN_NON_INTERACTIVE,
+            EVENT_DEVICE_SHUTDOWN -> onDeviceInactive(atMillis)
+        }
+    }
+
+    /** Todo pacote que já teve um trecho, fechado ou ainda aberto. */
+    fun packagesSeen(): Set<String> = buildSet {
+        addAll(closed.keys)
+        currentPackage?.let(::add)
+    }
+
     fun onActivityResumed(packageName: String?, activityClassName: String?, atMillis: Long) {
         val resumed = packageName?.takeIf(String::isNotBlank) ?: return
         touch(atMillis)
@@ -93,6 +118,16 @@ internal class ForegroundIntervalCollector private constructor(
 
     private fun touch(atMillis: Long) {
         if (atMillis > lastEventMillis) lastEventMillis = atMillis
+    }
+
+    private companion object {
+        // Valores de android.app.usage.UsageEvents.Event, repetidos para o coletor
+        // rodar nos testes fora do Android.
+        const val EVENT_ACTIVITY_RESUMED = 1
+        const val EVENT_ACTIVITY_PAUSED = 2
+        const val EVENT_SCREEN_NON_INTERACTIVE = 16
+        const val EVENT_ACTIVITY_STOPPED = 23
+        const val EVENT_DEVICE_SHUTDOWN = 26
     }
 
     private fun close(endMillis: Long) {

@@ -7,10 +7,11 @@ import java.time.LocalDate
 /**
  * Regras do registro de tela ativa por dia encerrado.
  *
- * Um dia encerrado é gravado uma única vez, com o valor medido pelos eventos
- * detalhados, e a partir daí é o valor mostrado para sempre: o Android apaga os
- * eventos depois de poucos dias e o histórico agregado dele não respeita a
- * meia-noite, então recalcular depois só poderia piorar e mudar um dia que já passou.
+ * Um dia encerrado é gravado uma única vez (o valor medido pelos eventos, ou a
+ * estimativa estável quando já não há eventos) e a partir daí é o valor mostrado
+ * para sempre: o Android apaga os eventos depois de poucos dias e o histórico
+ * agregado dele não respeita a meia-noite, então recalcular depois só poderia
+ * piorar e mudar um dia que já passou.
  */
 internal object DailyScreenTimeHistory {
     const val RETENTION_DAYS = 60L

@@ -38,7 +38,6 @@ import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Calendar
 
 private data class UsageInsightsData(
     val phoneUsage: PhoneUsageInsights,
@@ -110,38 +109,24 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
             withContext(Dispatchers.IO) {
                 val end = System.currentTimeMillis()
                 val monthPeriod = UsageInsightsPeriodPolicy.currentMonth(end)
-                val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
-                val start7Days = cal.timeInMillis
                 val startToday = monthPeriod.completedDaysEndMillis
-
-                val monthApps = MonthlyMostUsedAppsProvider.load(
-                    context = context.applicationContext,
-                    startTime = monthPeriod.startMillis,
-                    endTime = monthPeriod.endMillis
-                )
-                // Hoje vem dos eventos (meia-noite até agora). O agregado do Android
-                // começa o balde antes da meia-noite e misturava o uso de ontem.
-                val todayApps = if (end > startToday) {
-                    analytics.getMostUsedApps(startToday, end)
-                } else {
-                    emptyList()
-                }
+                // Mês, média, hoje e "nunca usados" saem do mesmo histórico diário
+                // exato (meia-noite a meia-noite), com os dias encerrados gravados.
+                val rankings = analytics.getAppUsageRankings()
 
                 UsageInsightsData(
                     phoneUsage = analytics.getPhoneUsageInsights(),
-                    mostUsedApps = monthApps,
-                    mostUsedAverageApps = if (monthPeriod.completedDays > 0) {
-                        MonthlyMostUsedAppsProvider.completedDaysUsage(
-                            monthToNow = monthApps,
-                            today = todayApps
-                        )
+                    mostUsedApps = rankings.month,
+                    mostUsedAverageApps = if (rankings.monthDaysWithData > 0) {
+                        rankings.monthCompletedDays
                     } else {
                         emptyList()
                     },
-                    mostUsedAverageDays = monthPeriod.completedDays,
-                    mostUsedTodayApps = todayApps,
+                    // Um dia sem histórico não é um dia sem uso: fica fora da média.
+                    mostUsedAverageDays = rankings.monthDaysWithData,
+                    mostUsedTodayApps = rankings.today,
                     mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
-                    neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
+                    neverUsedApps = analytics.getNeverUsedApps(rankings.usedLastSevenDays)
                 )
             }
         }

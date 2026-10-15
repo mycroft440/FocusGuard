@@ -203,7 +203,9 @@ class DailyScreenTimeResolutionTest {
 
         assertThat(resolution.totalsByDate[date("2026-01-06")]).isEqualTo(2.hours)
         assertThat(resolution.totalsByDate[date("2026-01-07")]).isEqualTo(2.hours)
-        assertThat(resolution.newlyMeasuredCompleteDays).isEmpty()
+        // Anteontem já não muda: a estimativa é gravada. Ontem ainda não.
+        assertThat(resolution.newlyMeasuredCompleteDays)
+            .containsExactly(date("2026-01-06"), 2.hours)
     }
 
     @Test
@@ -320,29 +322,6 @@ class DailyScreenTimeHistoryTest {
             .isEqualTo(LocalDate.parse("2026-01-07") to 1234L)
         assertThat(DailyScreenTimeHistory.decode("2026-01-07|-5")).isNull()
         assertThat(DailyScreenTimeHistory.decode("lixo")).isNull()
-    }
-}
-
-class MonthlyCompletedDaysUsageTest {
-
-    @Test
-    fun `today's exact usage is taken out of the month total`() {
-        val result = MonthlyMostUsedAppsProvider.completedDaysUsage(
-            monthToNow = listOf(
-                AppUsageStat("a", 10_000L),
-                AppUsageStat("b", 3_000L),
-                AppUsageStat("c", 500L)
-            ),
-            today = listOf(
-                AppUsageStat("a", 2_000L),
-                AppUsageStat("c", 900L)
-            )
-        )
-
-        assertThat(result).containsExactly(
-            AppUsageStat("a", 8_000L),
-            AppUsageStat("b", 3_000L)
-        ).inOrder()
     }
 }
 

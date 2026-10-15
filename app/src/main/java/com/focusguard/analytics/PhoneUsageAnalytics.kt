@@ -53,9 +53,8 @@ internal data class ScreenInteractiveInterval(
 /**
  * Reconstrói os intervalos detalhados em que a tela esteve interativa.
  *
- * Os eventos detalhados alimentam os padrões por hora e o sono estimado, pois
- * o Android os mantém por poucos dias. O histórico diário vem dos dados
- * agregados de [android.app.usage.UsageStatsManager.queryEventStats].
+ * Eles dão o total exato de cada dia, os padrões por hora e o sono estimado. O
+ * Android os mantém por poucos dias; por isso os dias encerrados ficam gravados.
  */
 internal class ScreenInteractiveSessionAccumulator {
     private val completedIntervals = mutableListOf<ScreenInteractiveInterval>()
@@ -194,7 +193,7 @@ internal fun estimateScreenTimeFromClosedBuckets(
 internal data class DailyScreenTimeResolution(
     /** Dias sem nenhuma fonte de dados ficam fora do mapa. */
     val totalsByDate: Map<LocalDate, Long>,
-    /** Dias encerrados medidos agora pelos eventos e ainda não gravados. */
+    /** Dias encerrados que passam a ser definitivos agora e ainda não estão gravados. */
     val newlyMeasuredCompleteDays: Map<LocalDate, Long>
 )
 
@@ -206,7 +205,8 @@ internal data class DailyScreenTimeResolution(
  * 2. Dia coberto pelos eventos detalhados: soma exata dos intervalos de tela entre a
  *    meia-noite e a meia-noite seguinte (hoje, até agora, com a sessão em andamento).
  *    Um dia encerrado medido assim é devolvido para ser gravado.
- * 3. Sem eventos: estimativa estável pelos baldes fechados do histórico agregado.
+ * 3. Sem eventos: estimativa estável pelos baldes fechados do histórico agregado,
+ *    gravada a partir de anteontem.
  */
 internal fun resolveDailyScreenTimes(
     dates: List<LocalDate>,
@@ -255,7 +255,12 @@ internal fun resolveDailyScreenTimes(
                 buckets = aggregatedBuckets,
                 rangeStartMs = dayStartMs,
                 rangeEndMs = dayEndMs
-            )
+            )?.also { estimateMs ->
+                // Até anteontem os baldes do dia já fecharam: a estimativa também é
+                // gravada, porque o Android ainda vai apagar esses baldes e o dia
+                // passaria a "sem dados" (ou a outra estimativa) mais tarde.
+                if (date <= today.minusDays(2)) newlyMeasured[date] = estimateMs
+            }
         }
         if (totalMs != null) totals[date] = totalMs
     }

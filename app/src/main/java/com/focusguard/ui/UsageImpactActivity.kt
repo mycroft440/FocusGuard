@@ -54,6 +54,7 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.usage.BlockReleaseTimes
 import com.focusguard.usage.BlockReturnNavigator
+import com.focusguard.usage.UsageImpactMeasurement
 import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.usage.UsageInterventionStore
 import com.focusguard.usage.UsageInterventionType
@@ -473,13 +474,19 @@ private suspend fun loadUsageImpact(
     val window = minOf(elapsed, activation)
         .coerceAtMost(MAX_WINDOW_MILLIS)
         .coerceAtLeast(1L)
-    val beforeStart = activation - window
-    val afterEnd = activation + window
     val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-    val before = manager?.queryAndAggregateUsageStats(beforeStart, activation)
-        ?.get(packageName)?.totalTimeInForeground ?: 0L
-    val after = manager?.queryAndAggregateUsageStats(activation, afterEnd)
-        ?.get(packageName)?.totalTimeInForeground ?: 0L
+    val measured = manager?.let {
+        UsageImpactMeasurement.measure(
+            manager = it,
+            packageName = packageName,
+            activationMs = activation,
+            windowMs = window,
+            nowMs = now,
+            isDeviceInteractive =
+                (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
+                    ?.isInteractive == true
+        )
+    }
     val label = runCatching {
         val info = context.packageManager.getApplicationInfo(packageName, 0)
         context.packageManager.getApplicationLabel(info).toString()
@@ -512,9 +519,9 @@ private suspend fun loadUsageImpact(
 
     UsageImpactSnapshot(
         appName = label,
-        beforeMillis = before,
-        afterMillis = after,
-        windowMillis = window,
+        beforeMillis = measured?.beforeMillis ?: 0L,
+        afterMillis = measured?.afterMillis ?: 0L,
+        windowMillis = measured?.windowMillis ?: window,
         interventionType = type,
         dailyLimitMinutes = intervention?.dailyLimitMinutes
             ?: limit?.dailyLimitMinutes?.takeIf { it > 0 },
