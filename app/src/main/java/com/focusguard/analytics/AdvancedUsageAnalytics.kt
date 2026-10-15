@@ -9,7 +9,6 @@ import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
 
@@ -76,9 +75,10 @@ class AdvancedUsageAnalytics(private val context: Context) {
         }
         val manager = usageStatsManager ?: return@withContext emptyInsights()
 
-        // O gráfico usa o histórico agregado do Android, que não sofre com a
-        // retenção curta de queryEvents. Os eventos detalhados abaixo servem
-        // para distribuir o uso por hora e gerar os resumos noturnos locais.
+        // Os eventos detalhados dão o total exato de cada dia (meia-noite a
+        // meia-noite), a distribuição por hora e os resumos noturnos. Cada dia
+        // encerrado medido por eles fica gravado e não muda mais; o histórico
+        // agregado só estima os dias anteriores ao registro.
         val historyStartDate = today.minusDays(historyDays - 1L)
         val periodStartDate = today.minusDays(periodAverageDays.toLong())
         val earliestRequiredDate = minOf(historyStartDate, periodStartDate)
@@ -129,7 +129,6 @@ class AdvancedUsageAnalytics(private val context: Context) {
             }
         }
 
-        val activeIntervalStartTimeMs = accumulator.activeIntervalStartTimeMs
         val detailedIntervals = accumulator.finish(
             if (eventLoopCompleted) now else lastEventTimestamp
         )
@@ -162,30 +161,49 @@ class AdvancedUsageAnalytics(private val context: Context) {
         val historyDates = (0 until historyDays).map { dayOffset ->
             historyStartDate.plusDays(dayOffset.toLong())
         }
-        val aggregatedDailyTotals = queryAggregatedDailyScreenTime(
-            manager = manager,
+        val dailyHistoryStore = runCatching { DailyScreenTimeHistoryStore(context) }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "AdvancedUsageAnalytics",
+                    "Falha ao abrir o registro de uso diário",
+                    error
+                )
+            }
+            .getOrNull()
+        val storedCompleteDays = dailyHistoryStore
+            ?.let { store -> runCatching { store.load() }.getOrNull() }
+            .orEmpty()
+        val resolution = resolveDailyScreenTimes(
             dates = historyDates,
+            today = today,
             nowMs = now,
-            zoneId = zoneId
-        )
-        val dailyTotals = historyDates.associateWith { date ->
-            val dayStartMs = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-            val dayEndMs = date.plusDays(1)
-                .atStartOfDay(zoneId)
-                .toInstant()
-                .toEpochMilli()
-                .coerceAtMost(now)
-            val aggregatedTotalMs = aggregatedDailyTotals[date]
-
-            resolveDailyScreenTime(
-                aggregatedTotalMs = aggregatedTotalMs,
-                detailedIntervals = detailedIntervals,
-                rangeStartMs = dayStartMs,
-                rangeEndMs = dayEndMs,
-                activeIntervalStartTimeMs = activeIntervalStartTimeMs,
-                includeActiveTail = date == today
+            zoneId = zoneId,
+            storedCompleteDays = storedCompleteDays,
+            completeDatesCoveredByEvents = completePeriodDates,
+            detailedEventsAvailable = eventLoopCompleted,
+            detailedIntervals = detailedIntervals,
+            aggregatedBuckets = queryAggregatedScreenBuckets(
+                manager = manager,
+                startMs = historyStartDate.atStartOfDay(zoneId).toInstant().toEpochMilli(),
+                endMs = now
             )
+        )
+        if (dailyHistoryStore != null && resolution.newlyMeasuredCompleteDays.isNotEmpty()) {
+            runCatching {
+                dailyHistoryStore.mergeAndLoad(
+                    stored = storedCompleteDays,
+                    newlyMeasured = resolution.newlyMeasuredCompleteDays,
+                    today = today
+                )
+            }.onFailure { error ->
+                FocusGuardLogger.logError(
+                    "AdvancedUsageAnalytics",
+                    "Falha ao gravar o uso dos dias encerrados",
+                    error
+                )
+            }
         }
+        val dailyTotals = resolution.totalsByDate
 
         PhoneUsageInsightsCalculator.calculate(
             dailyScreenTimeByDate = dailyTotals,
@@ -199,48 +217,39 @@ class AdvancedUsageAnalytics(private val context: Context) {
         )
     }
 
-    private fun queryAggregatedDailyScreenTime(
+    /**
+     * Baldes do histórico agregado de tela ativa, usados só para dias sem eventos
+     * detalhados nem valor gravado. Cada balde vem com o próprio início e fim, para
+     * nunca ser somado inteiro num dia que ele só cruza.
+     */
+    private fun queryAggregatedScreenBuckets(
         manager: UsageStatsManager,
-        dates: List<LocalDate>,
-        nowMs: Long,
-        zoneId: ZoneId
-    ): Map<LocalDate, Long> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return emptyMap()
-
-        return buildMap {
-            dates.forEach { date ->
-                val startMs = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val endMs = date.plusDays(1)
-                    .atStartOfDay(zoneId)
-                    .toInstant()
-                    .toEpochMilli()
-                    .coerceAtMost(nowMs)
-                if (endMs <= startMs) {
-                    put(date, 0L)
-                    return@forEach
-                }
-
-                try {
-                    val totalTimeMs = manager.queryEventStats(
-                        UsageStatsManager.INTERVAL_DAILY,
-                        startMs,
-                        endMs
-                    ).orEmpty()
-                        .asSequence()
-                        .filter { it.eventType == UsageEvents.Event.SCREEN_INTERACTIVE }
-                        .sumOf { it.totalTime }
-                        .coerceIn(0L, endMs - startMs)
-                    put(date, totalTimeMs)
-                } catch (error: Throwable) {
-                    // A ausência desta chave ativa o fallback por eventos
-                    // detalhados somente para o dia afetado.
-                    FocusGuardLogger.logError(
-                        "AdvancedUsageAnalytics",
-                        "Falha em queryEventStats (screenInteractive)",
-                        error
+        startMs: Long,
+        endMs: Long
+    ): List<AggregatedScreenBucket> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || endMs <= startMs) {
+            return emptyList()
+        }
+        return try {
+            manager.queryEventStats(UsageStatsManager.INTERVAL_DAILY, startMs, endMs)
+                .orEmpty()
+                .asSequence()
+                .filter { it.eventType == UsageEvents.Event.SCREEN_INTERACTIVE }
+                .map { stats ->
+                    AggregatedScreenBucket(
+                        beginTimeMs = stats.firstTimeStamp,
+                        endTimeMs = stats.lastTimeStamp,
+                        interactiveTimeMs = stats.totalTime
                     )
                 }
-            }
+                .toList()
+        } catch (error: Throwable) {
+            FocusGuardLogger.logError(
+                "AdvancedUsageAnalytics",
+                "Falha em queryEventStats (screenInteractive)",
+                error
+            )
+            emptyList()
         }
     }
 

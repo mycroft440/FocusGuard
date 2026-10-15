@@ -114,28 +114,32 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 val start7Days = cal.timeInMillis
                 val startToday = monthPeriod.completedDaysEndMillis
 
+                val monthApps = MonthlyMostUsedAppsProvider.load(
+                    context = context.applicationContext,
+                    startTime = monthPeriod.startMillis,
+                    endTime = monthPeriod.endMillis
+                )
+                // Hoje vem dos eventos (meia-noite até agora). O agregado do Android
+                // começa o balde antes da meia-noite e misturava o uso de ontem.
+                val todayApps = if (end > startToday) {
+                    analytics.getMostUsedApps(startToday, end)
+                } else {
+                    emptyList()
+                }
+
                 UsageInsightsData(
                     phoneUsage = analytics.getPhoneUsageInsights(),
-                    mostUsedApps = MonthlyMostUsedAppsProvider.load(
-                        context = context.applicationContext,
-                        startTime = monthPeriod.startMillis,
-                        endTime = monthPeriod.endMillis
-                    ),
+                    mostUsedApps = monthApps,
                     mostUsedAverageApps = if (monthPeriod.completedDays > 0) {
-                        MonthlyMostUsedAppsProvider.load(
-                            context = context.applicationContext,
-                            startTime = monthPeriod.startMillis,
-                            endTime = monthPeriod.completedDaysEndMillis
+                        MonthlyMostUsedAppsProvider.completedDaysUsage(
+                            monthToNow = monthApps,
+                            today = todayApps
                         )
                     } else {
                         emptyList()
                     },
                     mostUsedAverageDays = monthPeriod.completedDays,
-                    mostUsedTodayApps = MonthlyMostUsedAppsProvider.load(
-                        context = context.applicationContext,
-                        startTime = startToday,
-                        endTime = end
-                    ),
+                    mostUsedTodayApps = todayApps,
                     mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
                     neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
                 )
@@ -718,7 +722,7 @@ private fun DailyUsageBarChart(dailyUsage: List<DailyPhoneUsage>) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = formatChartTime(usage.totalTimeMs),
+                    text = if (usage.hasData) formatChartTime(usage.totalTimeMs) else "—",
                     color = accent,
                     fontSize = 9.sp,
                     lineHeight = 10.sp,

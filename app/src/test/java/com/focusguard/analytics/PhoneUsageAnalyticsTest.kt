@@ -101,40 +101,249 @@ class DetailedEventCoverageTest {
 }
 
 class DailyScreenTimeResolutionTest {
+    private val zoneId = ZoneId.of("UTC")
 
     @Test
-    fun `current active tail is added to completed aggregated time`() {
-        val result = resolveDailyScreenTime(
-            aggregatedTotalMs = 1.hours,
-            detailedIntervals = emptyList(),
-            rangeStartMs = 0L,
-            rangeEndMs = 4.hours,
-            activeIntervalStartTimeMs = 3.hours,
-            includeActiveTail = true
+    fun `usage crossing midnight is split between the two days`() {
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            covered = listOf(date("2026-01-07")),
+            intervals = listOf(interval("2026-01-07T23:00", "2026-01-08T01:00"))
         )
 
-        assertThat(result).isEqualTo(2.hours)
+        assertThat(resolution.totalsByDate[date("2026-01-07")]).isEqualTo(1.hours)
+        assertThat(resolution.totalsByDate[date("2026-01-08")]).isEqualTo(1.hours)
     }
 
     @Test
-    fun `missing aggregate falls back to detailed screen intervals`() {
-        val result = resolveDailyScreenTime(
-            aggregatedTotalMs = null,
-            detailedIntervals = listOf(
-                ScreenInteractiveInterval(1.hours, 2.hours),
-                ScreenInteractiveInterval(3.hours, 5.hours)
+    fun `a past day does not change as today is used`() {
+        val morning = resolve(
+            now = "2026-01-08T09:00",
+            covered = listOf(date("2026-01-07")),
+            intervals = listOf(
+                interval("2026-01-07T10:00", "2026-01-07T13:00"),
+                interval("2026-01-08T08:00", "2026-01-08T09:00")
+            )
+        )
+        val evening = resolve(
+            now = "2026-01-08T22:00",
+            covered = listOf(date("2026-01-07")),
+            intervals = listOf(
+                interval("2026-01-07T10:00", "2026-01-07T13:00"),
+                interval("2026-01-08T08:00", "2026-01-08T21:00")
+            )
+        )
+
+        assertThat(morning.totalsByDate[date("2026-01-07")]).isEqualTo(3.hours)
+        assertThat(evening.totalsByDate[date("2026-01-07")]).isEqualTo(3.hours)
+        assertThat(evening.totalsByDate[date("2026-01-08")]).isEqualTo(13.hours)
+    }
+
+    @Test
+    fun `measured complete days are returned to be recorded, today never`() {
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            covered = listOf(date("2026-01-07")),
+            intervals = listOf(
+                interval("2026-01-07T10:00", "2026-01-07T12:00"),
+                interval("2026-01-08T10:00", "2026-01-08T11:00")
+            )
+        )
+
+        assertThat(resolution.newlyMeasuredCompleteDays)
+            .containsExactly(date("2026-01-07"), 2.hours)
+    }
+
+    @Test
+    fun `a recorded day wins over a new measurement`() {
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            stored = mapOf(date("2026-01-07") to 5.hours),
+            covered = listOf(date("2026-01-07")),
+            intervals = listOf(interval("2026-01-07T10:00", "2026-01-07T12:00"))
+        )
+
+        assertThat(resolution.totalsByDate[date("2026-01-07")]).isEqualTo(5.hours)
+        assertThat(resolution.newlyMeasuredCompleteDays).isEmpty()
+    }
+
+    @Test
+    fun `today keeps counting the screen session still open`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+        accumulator.onScreenInteractive(timestamp("2026-01-08T11:00"))
+        val resolution = resolve(
+            now = "2026-01-08T12:30",
+            intervals = accumulator.finish(timestamp("2026-01-08T12:30"))
+        )
+
+        assertThat(resolution.totalsByDate[date("2026-01-08")]).isEqualTo(90.minutes)
+    }
+
+    @Test
+    fun `day without events uses only closed aggregated buckets`() {
+        val buckets = listOf(
+            // Fechado: 12 h dentro do dia 6, 12 h dentro do dia 7.
+            AggregatedScreenBucket(
+                beginTimeMs = timestamp("2026-01-06T12:00"),
+                endTimeMs = timestamp("2026-01-07T12:00"),
+                interactiveTimeMs = 4.hours
             ),
-            rangeStartMs = 0L,
-            rangeEndMs = 4.hours,
-            activeIntervalStartTimeMs = null,
-            includeActiveTail = false
+            // Aberto (o mais recente): ainda crescendo, nunca entra.
+            AggregatedScreenBucket(
+                beginTimeMs = timestamp("2026-01-07T12:00"),
+                endTimeMs = timestamp("2026-01-08T11:00"),
+                interactiveTimeMs = 9.hours
+            )
+        )
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            buckets = buckets,
+            eventsAvailable = false
         )
 
-        assertThat(result).isEqualTo(2.hours)
+        assertThat(resolution.totalsByDate[date("2026-01-06")]).isEqualTo(2.hours)
+        assertThat(resolution.totalsByDate[date("2026-01-07")]).isEqualTo(2.hours)
+        assertThat(resolution.newlyMeasuredCompleteDays).isEmpty()
     }
+
+    @Test
+    fun `estimate of a past day ignores growth of the open bucket`() {
+        val closed = AggregatedScreenBucket(
+            beginTimeMs = timestamp("2026-01-05T12:00"),
+            endTimeMs = timestamp("2026-01-06T12:00"),
+            interactiveTimeMs = 6.hours
+        )
+        fun openBucket(totalMs: Long) = AggregatedScreenBucket(
+            beginTimeMs = timestamp("2026-01-06T12:00"),
+            endTimeMs = timestamp("2026-01-07T09:00"),
+            interactiveTimeMs = totalMs
+        )
+
+        val before = estimateScreenTimeFromClosedBuckets(
+            buckets = listOf(closed, openBucket(1.hours)),
+            rangeStartMs = timestamp("2026-01-06T00:00"),
+            rangeEndMs = timestamp("2026-01-07T00:00")
+        )
+        val after = estimateScreenTimeFromClosedBuckets(
+            buckets = listOf(closed, openBucket(8.hours)),
+            rangeStartMs = timestamp("2026-01-06T00:00"),
+            rangeEndMs = timestamp("2026-01-07T00:00")
+        )
+
+        assertThat(before).isEqualTo(3.hours)
+        assertThat(after).isEqualTo(before)
+    }
+
+    @Test
+    fun `day without any source stays out of the totals`() {
+        val resolution = resolve(now = "2026-01-08T12:00", eventsAvailable = false)
+
+        assertThat(resolution.totalsByDate).isEmpty()
+    }
+
+    private fun resolve(
+        now: String,
+        stored: Map<LocalDate, Long> = emptyMap(),
+        covered: List<LocalDate> = emptyList(),
+        intervals: List<ScreenInteractiveInterval> = emptyList(),
+        buckets: List<AggregatedScreenBucket> = emptyList(),
+        eventsAvailable: Boolean = true
+    ): DailyScreenTimeResolution {
+        val nowMs = timestamp(now)
+        val today = LocalDateTime.parse(now).toLocalDate()
+        return resolveDailyScreenTimes(
+            dates = (2 downTo 0).map { today.minusDays(it.toLong()) },
+            today = today,
+            nowMs = nowMs,
+            zoneId = zoneId,
+            storedCompleteDays = stored,
+            completeDatesCoveredByEvents = covered,
+            detailedEventsAvailable = eventsAvailable,
+            detailedIntervals = intervals,
+            aggregatedBuckets = buckets
+        )
+    }
+
+    private fun interval(start: String, end: String) = ScreenInteractiveInterval(
+        startTimeMs = timestamp(start),
+        endTimeMs = timestamp(end)
+    )
+
+    private fun date(value: String): LocalDate = LocalDate.parse(value)
+
+    private fun timestamp(value: String): Long =
+        LocalDateTime.parse(value).atZone(zoneId).toInstant().toEpochMilli()
+
+    private val Int.minutes: Long
+        get() = this * 60_000L
 
     private val Int.hours: Long
         get() = this * 60L * 60_000L
+}
+
+class DailyScreenTimeHistoryTest {
+    private val today = LocalDate.parse("2026-01-08")
+
+    @Test
+    fun `recorded days are never overwritten`() {
+        val merged = DailyScreenTimeHistory.merge(
+            stored = mapOf(LocalDate.parse("2026-01-07") to 100L),
+            newlyMeasured = mapOf(
+                LocalDate.parse("2026-01-07") to 999L,
+                LocalDate.parse("2026-01-06") to 50L
+            ),
+            today = today
+        )
+
+        assertThat(merged).containsExactly(
+            LocalDate.parse("2026-01-06"), 50L,
+            LocalDate.parse("2026-01-07"), 100L
+        )
+    }
+
+    @Test
+    fun `today and days past retention are not kept`() {
+        val merged = DailyScreenTimeHistory.merge(
+            stored = mapOf(today.minusDays(DailyScreenTimeHistory.RETENTION_DAYS + 1) to 10L),
+            newlyMeasured = mapOf(today to 20L),
+            today = today
+        )
+
+        assertThat(merged).isEmpty()
+    }
+
+    @Test
+    fun `encoded values round trip and invalid ones are dropped`() {
+        val encoded = DailyScreenTimeHistory.encode(LocalDate.parse("2026-01-07"), 1234L)
+
+        assertThat(DailyScreenTimeHistory.decode(encoded))
+            .isEqualTo(LocalDate.parse("2026-01-07") to 1234L)
+        assertThat(DailyScreenTimeHistory.decode("2026-01-07|-5")).isNull()
+        assertThat(DailyScreenTimeHistory.decode("lixo")).isNull()
+    }
+}
+
+class MonthlyCompletedDaysUsageTest {
+
+    @Test
+    fun `today's exact usage is taken out of the month total`() {
+        val result = MonthlyMostUsedAppsProvider.completedDaysUsage(
+            monthToNow = listOf(
+                AppUsageStat("a", 10_000L),
+                AppUsageStat("b", 3_000L),
+                AppUsageStat("c", 500L)
+            ),
+            today = listOf(
+                AppUsageStat("a", 2_000L),
+                AppUsageStat("c", 900L)
+            )
+        )
+
+        assertThat(result).containsExactly(
+            AppUsageStat("a", 8_000L),
+            AppUsageStat("b", 3_000L)
+        ).inOrder()
+    }
 }
 
 class PhoneUsageInsightsCalculatorTest {

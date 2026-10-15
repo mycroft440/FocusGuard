@@ -52,4 +52,30 @@ object MonthlyMostUsedAppsProvider {
             emptyList()
         }
     }
+
+    /**
+     * Uso dos dias encerrados do mês: o total do mês até agora menos o uso exato de hoje.
+     *
+     * Consultar o agregado só até a meia-noite de hoje não bastava: o balde aberto do
+     * Android começa antes da meia-noite e já carrega o uso de hoje, então a "média dos
+     * dias encerrados" subia ao longo do dia. O balde aberto cresce exatamente com o uso
+     * de hoje, e por isso descontá-lo deixa só os dias que já passaram.
+     */
+    fun completedDaysUsage(
+        monthToNow: List<AppUsageStat>,
+        today: List<AppUsageStat>
+    ): List<AppUsageStat> {
+        val todayByPackage = today.associate { it.packageName to it.timeSpentMs }
+        return monthToNow.asSequence()
+            .map { usage ->
+                usage.copy(
+                    timeSpentMs = (
+                        usage.timeSpentMs - (todayByPackage[usage.packageName] ?: 0L)
+                    ).coerceAtLeast(0L)
+                )
+            }
+            .filter { it.timeSpentMs > 0L }
+            .sortedByDescending(AppUsageStat::timeSpentMs)
+            .toList()
+    }
 }

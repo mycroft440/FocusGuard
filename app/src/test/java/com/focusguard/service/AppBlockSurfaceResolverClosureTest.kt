@@ -92,4 +92,16 @@ class AppBlockSurfaceResolverClosureTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `attempt without a live owner never grants a password visit`() {
+        val resolution = AppBlockSurfaceResolver.Resolution(
+            surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
+            closeTargetAfterInterception = false,
+            hasLiveOwner = false
+        )
+
+        assertThat(resolution.hasLiveOwner).isFalse()
+        assertThat(resolution.allowsPasswordVisit).isFalse()
+    }
 }

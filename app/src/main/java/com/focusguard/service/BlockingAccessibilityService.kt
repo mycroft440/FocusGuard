@@ -378,6 +378,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         }
 
+    private val unownedBlockListener = UnownedBlockRelease.Listener { blockedPackage, generation ->
+        mainHandler.post { guardReceiver { releaseUnownedBlock(blockedPackage, generation) } }
+    }
+
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) = guardReceiver {
             when (intent?.action) {
@@ -400,7 +404,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                             beginCurtainEvacuationBeforeHide()
                     }
                 }
-                Intent.ACTION_SCREEN_ON -> protectedPowerMenuController?.onScreenOn()
+                Intent.ACTION_SCREEN_ON -> {
+                    protectedPowerMenuController?.onScreenOn()
+                    // Com a tela apagada nada atualiza a lista rápida: um período que
+                    // acabou ou um limite que zerou à meia-noite ainda estaria nela na
+                    // primeira entrada. Refaz já, antes de a pessoa desbloquear.
+                    lastLoadTime = 0L
+                    refreshData()
+                }
                 // Desbloqueado: o app que volta à frente é uma entrada. Nem sempre chega um
                 // evento de janela dele (o Android só troca o foco), então a tela da frente
                 // é conferida agora e logo depois, quando a tela de bloqueio já saiu.
@@ -434,6 +445,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         registerLauncherReceiver()
         registerRefreshReceiver()
         CurtainDestinationReadyCoordinator.register(curtainDestinationReadyListener)
+        UnownedBlockRelease.register(unownedBlockListener)
         registerScreenStateReceiver()
         createNotificationChannel()
         startAsForeground()
@@ -898,7 +910,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             when (event.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
                 AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
-                    handleWindowStateChanged(event, packageName)
+                    handleWindowStateChanged(
+                        event = event,
+                        packageName = packageName,
+                        packageInferred = inspectionPackage.isBlank()
+                    )
                 }
                 // Toque, rolagem, texto ou conteúdo mudando num app bloqueado que está na
                 // frente sem liberação: a entrada passou sem evento de janela. Bloqueia.
@@ -1044,6 +1060,27 @@ class BlockingAccessibilityService : AccessibilityService() {
         syncWarmOverlays()
         lastLoadTime = System.currentTimeMillis()
         enforceCurrentForegroundFromSnapshot()
+    }
+
+    /**
+     * O roteador conferiu no banco e nenhuma proteção segura [blockedPackage] agora: a
+     * lista rápida estava velha. Tira o app dela (o próximo evento dele já passa),
+     * solta a cortina desta tentativa e refaz o estado com a reconciliação completa,
+     * que também acerta a lista gravada para a próxima vez que o serviço subir.
+     */
+    private fun releaseUnownedBlock(blockedPackage: String, generation: Long) {
+        blockedAppsSet = blockedAppsSet - blockedPackage
+        passwordOnlyAppsSet = passwordOnlyAppsSet - blockedPackage
+        if (lastImmediateBlockedPackage == blockedPackage) {
+            lastImmediateBlockedPackage = null
+            lastImmediateBlockElapsed = 0L
+        }
+        mainHandler.removeCallbacks(activeWindowCheck)
+        if (generation > 0L) dismissInstantBlockCurtain(generation)
+        FocusGuardLogger.log("A11y", "$blockedPackage sem bloqueio ativo: tentativa liberada")
+        lastLoadTime = 0L
+        refreshData()
+        scope.launch { sessionManager.checkAndEnforce() }
     }
 
     /**
@@ -1513,7 +1550,12 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleWindowStateChanged(
         event: AccessibilityEvent,
-        packageName: String = event.packageName?.toString().orEmpty()
+        packageName: String = event.packageName?.toString().orEmpty(),
+        /**
+         * O evento não disse de qual app era e o pacote veio do último app guardado
+         * na frente, que pode ser antigo: bloquear por ele culparia o app errado.
+         */
+        packageInferred: Boolean = false
     ) {
         if (packageName.isBlank()) return
         val className = event.className?.toString().orEmpty()
@@ -1546,7 +1588,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 // TYPE_WINDOWS_CHANGED também chega quando a janela do app SAI da frente.
                 // Bloquear nesse aviso abria a senha por cima de onde a pessoa foi (tela
                 // inicial, outro app). Só bloqueia com o app de fato na janela ativa.
-                if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
+                // O mesmo vale para um pacote deduzido: só bloqueia com ele na frente.
+                if ((event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
+                        packageInferred) &&
                     activeWindowPackage() != packageName
                 ) return
                 blockApp(packageName, event.eventTime)
@@ -3305,6 +3349,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         runCatching { unregisterReceiver(launcherReceiver) }
         runCatching { unregisterReceiver(refreshReceiver) }
         CurtainDestinationReadyCoordinator.unregister(curtainDestinationReadyListener)
+        UnownedBlockRelease.unregister(unownedBlockListener)
         runCatching { unregisterReceiver(screenStateReceiver) }
         scope.cancel()
         super.onDestroy()

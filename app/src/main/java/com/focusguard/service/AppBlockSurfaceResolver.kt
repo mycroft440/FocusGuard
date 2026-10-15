@@ -27,7 +27,14 @@ internal class AppBlockSurfaceResolver(
          * a later visit. A plain PASSWORD session is the opposite because its
          * one-visit grant intentionally returns to the same target task.
          */
-        val closeTargetAfterInterception: Boolean
+        val closeTargetAfterInterception: Boolean,
+        /**
+         * False quando nenhuma proteção segura o app agora: o conjunto rápido do
+         * serviço estava velho (um período que acabou, um limite que zerou à
+         * meia-noite, um bloqueio removido). Nesse caso não existe bloqueio a mostrar
+         * e a tentativa precisa ser liberada, nunca virar uma tela de bloqueio.
+         */
+        val hasLiveOwner: Boolean = true
     ) {
         /** True only while PASSWORD is still the dominant owner of this attempt. */
         val allowsPasswordVisit: Boolean
@@ -74,6 +81,25 @@ internal class AppBlockSurfaceResolver(
                 UsageImpactRouter.shouldShowForBlockedApp(appContext, packageName)
             }
 
+        val focusModeBlocksTarget = FocusModeStore.readSession(appContext)
+            ?.takeIf { it.isActive() }
+            ?.blockedPackages
+            ?.contains(packageName) == true
+
+        // Só procura uma sessão quando nada acima respondeu: é a mesma regra da
+        // reconciliação e cobre tipos de sessão que não abrem a tela de impacto.
+        val hasLiveOwner = credentialOrigin != null ||
+            timedOrUsageInterventionBlocksTarget ||
+            focusModeBlocksTarget ||
+            sessionManager.hasEnforcingSessionForApp(packageName)
+        if (!hasLiveOwner) {
+            return Resolution(
+                surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
+                closeTargetAfterInterception = false,
+                hasLiveOwner = false
+            )
+        }
+
         if (credentialOrigin != BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION) {
             return Resolution(
                 surface = AppBlockSurfacePolicy.decide(
@@ -92,11 +118,6 @@ internal class AppBlockSurfaceResolver(
                 )
             )
         }
-
-        val focusModeBlocksTarget = FocusModeStore.readSession(appContext)
-            ?.takeIf { it.isActive() }
-            ?.blockedPackages
-            ?.contains(packageName) == true
 
         // TIME no longer consults BlockOverview here. The overview is an inventory
         // of configured rules and can legitimately contain a recurring TIME rule

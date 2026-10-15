@@ -12,6 +12,12 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- Tela inicial: o Voltar das telas de bloqueio reconhece quando a tentativa
+             partiu dela. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
@@ -143,10 +149,16 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.FocusGuard" />
 
+        <!--
+            The block screens (router, notice, password and impact) live in their
+            own task. Opening HardBlock from the launcher or Recents always shows the
+            main app, never a block screen left behind by an earlier attempt.
+        -->
         <activity
             android:name=".ui.UsageImpactActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:taskAffinity="com.focusguard.blocksurface"
             android:theme="@style/Theme.FocusGuard" />
 
         <!--
@@ -160,6 +172,7 @@
             android:launchMode="singleTop"
             android:noHistory="true"
             android:resizeableActivity="false"
+            android:taskAffinity="com.focusguard.blocksurface"
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
@@ -178,6 +191,7 @@
             android:launchMode="singleTop"
             android:noHistory="true"
             android:resizeableActivity="false"
+            android:taskAffinity="com.focusguard.blocksurface"
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
@@ -186,6 +200,7 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:resizeableActivity="false"
+            android:taskAffinity="com.focusguard.blocksurface"
             android:theme="@style/Theme.FocusGuard"
             android:windowSoftInputMode="adjustResize" />
 

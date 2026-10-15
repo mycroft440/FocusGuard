@@ -4,6 +4,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.PowerManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import com.focusguard.database.AppDatabase
 import com.focusguard.utils.UsageLimitPauseStateStore
 import com.focusguard.ui.compose.components.FocusGuardBannerAd
@@ -51,6 +53,7 @@ import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.usage.BlockReleaseTimes
+import com.focusguard.usage.BlockReturnNavigator
 import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.usage.UsageInterventionStore
 import com.focusguard.usage.UsageInterventionType
@@ -60,6 +63,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -69,63 +73,91 @@ import kotlinx.coroutines.withContext
  */
 class UsageImpactActivity : AppCompatActivity() {
     private var targetPackage by mutableStateOf("")
+    private var attemptAtMillis = 0L
+    private var returning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        targetPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
-        if (targetPackage.isBlank()) {
+        if (!readTarget(intent)) {
             finish()
             return
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = goHome()
+            override fun handleOnBackPressed() = goBack()
         })
 
         setContent {
             FocusGuardTheme {
                 UsageImpactScreen(
                     packageName = targetPackage,
-                    onClose = ::goHome
+                    onClose = ::goBack
                 )
             }
         }
     }
 
     /**
-     * Sair desta tela nunca pode devolver o usuário ao app bloqueado, que fica
-     * logo abaixo na pilha: isso reabriria o bloqueio e esta mesma tela. Voltar
-     * sempre leva à tela inicial do aparelho.
+     * Voltar leva à tela de antes da tentativa (tela inicial, outro app ou o próprio
+     * HardBlock), nunca ao app bloqueado logo abaixo, que reabriria o bloqueio.
      */
-    private fun goHome() {
-        runCatching {
-            startActivity(
-                Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                }
+    private fun goBack() {
+        if (returning) return
+        returning = true
+        val blockedPackage = targetPackage
+        val attemptAt = attemptAtMillis
+        lifecycleScope.launch {
+            val destination = BlockReturnNavigator.resolve(
+                context = this@UsageImpactActivity,
+                blockedPackage = blockedPackage,
+                attemptAtMs = attemptAt
             )
+            BlockReturnNavigator.navigate(this@UsageImpactActivity, blockedPackage, destination)
+            finish()
         }
-        finish()
+    }
+
+    /**
+     * Sair sem o Voltar (Início, Recentes) fecha esta tela: ela só existe para a
+     * tentativa que a abriu e nunca deve reaparecer ao abrir o HardBlock. Com a tela
+     * apagada ela fica, para a pessoa reencontrá-la ao desbloquear o celular.
+     */
+    override fun onStop() {
+        super.onStop()
+        val screenOn = (getSystemService(Context.POWER_SERVICE) as? PowerManager)
+            ?.isInteractive != false
+        if (!isChangingConfigurations && !isFinishing && screenOn) finish()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val nextPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
-        if (nextPackage.isBlank()) {
-            finish()
-            return
-        }
+        if (!readTarget(intent)) finish()
+    }
+
+    private fun readTarget(source: Intent): Boolean {
+        val nextPackage = source.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
+        if (nextPackage.isBlank()) return false
         targetPackage = nextPackage
+        attemptAtMillis = source.getLongExtra(EXTRA_ATTEMPT_AT_MILLIS, 0L)
+            .takeIf { it > 0L }
+            ?: System.currentTimeMillis()
+        returning = false
+        return true
     }
 
     companion object {
         private const val EXTRA_PACKAGE_NAME = "usage_impact_package"
+        private const val EXTRA_ATTEMPT_AT_MILLIS = "usage_impact_attempt_at"
 
-        fun createIntent(context: Context, packageName: String): Intent =
+        fun createIntent(
+            context: Context,
+            packageName: String,
+            attemptAtMillis: Long = System.currentTimeMillis()
+        ): Intent =
             Intent(context, UsageImpactActivity::class.java).apply {
                 putExtra(EXTRA_PACKAGE_NAME, packageName)
+                putExtra(EXTRA_ATTEMPT_AT_MILLIS, attemptAtMillis)
                 addFlags(
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or

@@ -1230,6 +1230,24 @@ class BlockingSessionManager @Inject constructor(
      * uses this to decide whether to offer the fingerprint at all, so failing
      * closed is the safe direction: null hides the affordance.
      */
+    /**
+     * Se alguma sessão ativa, dentro do horário dela, segura [packageName] agora.
+     * Usa a mesma regra da reconciliação (todo tipo que participa do bloqueio,
+     * inclusive PASSWORD e tipos antigos), e não só os bloqueios por tempo.
+     */
+    suspend fun hasEnforcingSessionForApp(packageName: String): Boolean =
+        withContext(Dispatchers.IO) {
+            database.sessionAppCrossRefDao()
+                .getSessionIdsForApp(packageName)
+                .distinct()
+                .any { sessionId ->
+                    val session = database.blockSessionDao().getActiveSessionById(sessionId)
+                    session != null &&
+                        participatesInBlocking(session) &&
+                        isCurrentlyInBlockingWindow(session)
+                }
+        }
+
     suspend fun credentialUnlockOrigin(
         blockedPackage: String?,
         blockedDomain: String?

@@ -11,6 +11,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppBlockSurfacePolicy
 import com.focusguard.service.AppBlockSurfaceResolver
 import com.focusguard.service.BlockingAccessibilityService
+import com.focusguard.service.UnownedBlockRelease
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -37,7 +38,9 @@ internal fun websiteSurfaceFor(
  * exactly one owner Activity:
  *
  *  - [PasswordUnlockActivity] for a plain PASSWORD-session app or website target;
- *  - [GenericBlockNoticeActivity] for app targets and target-unknown fail-closed states.
+ *  - [GenericBlockNoticeActivity] for app targets and target-unknown fail-closed states;
+ *  - none when no protection owns the app right now (the service's fast set was
+ *    stale): the attempt is released and the app stays where it was.
  *
  * TIME commitments and active usage limits have a second invariant: on a Device
  * Owner installation their target package is reconciled into Android's suspended
@@ -123,7 +126,8 @@ class BlockNoticeActivity : AppCompatActivity() {
                     )
                     WebsiteRouteResolution(
                         surface = appResolution.surface,
-                        closeTargetAfterInterception = appResolution.closeTargetAfterInterception
+                        closeTargetAfterInterception = appResolution.closeTargetAfterInterception,
+                        hasLiveOwner = appResolution.hasLiveOwner
                     )
                 }
             } catch (cancelled: CancellationException) {
@@ -137,6 +141,16 @@ class BlockNoticeActivity : AppCompatActivity() {
                 )
                 if (attemptId == routeAttemptId && !isFinishing && !isDestroyed) {
                     goHome()
+                }
+                clearRouteState(attemptId)
+                return@launch
+            }
+
+            if (!resolution.hasLiveOwner && blockedPackage != null) {
+                // A lista rápida do serviço estava velha: nada segura o app agora.
+                // Mostrar um bloqueio aqui era bloquear um app que não está bloqueado.
+                if (attemptId == routeAttemptId && !isFinishing && !isDestroyed) {
+                    releaseUnownedAttempt(blockedPackage, latestRouteIntent ?: sourceIntent)
                 }
                 clearRouteState(attemptId)
                 return@launch
@@ -228,6 +242,23 @@ class BlockNoticeActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Devolve a pessoa ao app que ela abriu: o serviço solta a cortina e tira o app da
+     * lista, e esta tarefa de bloqueio vai para trás, deixando o app na frente como
+     * estava.
+     */
+    private fun releaseUnownedAttempt(packageName: String, sourceIntent: Intent) {
+        UnownedBlockRelease.notifyUnowned(
+            packageName = packageName,
+            curtainGeneration = sourceIntent.getLongExtra(
+                BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
+                0L
+            )
+        )
+        runCatching { moveTaskToBack(true) }
+        finish()
+    }
+
     private fun goHome() {
         runCatching {
             startActivity(
@@ -242,7 +273,8 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     private data class WebsiteRouteResolution(
         val surface: AppBlockSurfacePolicy.Surface,
-        val closeTargetAfterInterception: Boolean = false
+        val closeTargetAfterInterception: Boolean = false,
+        val hasLiveOwner: Boolean = true
     )
 
     companion object {

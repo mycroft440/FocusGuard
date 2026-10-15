@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.usage.BlockReturnNavigator
 import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.Job
@@ -68,17 +70,24 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
     private var blockAttemptId = 0L
     private var pendingUsageImpactAttemptId = 0L
     private var pendingUsageImpactPackage: String? = null
+    private var pendingUsageImpactAttemptAtMillis = 0L
     private var usageImpactJob: Job? = null
 
+    private var currentBlockedPackage: String? = null
+    private var currentAttemptAtMillis = 0L
+    private var returning = false
+
     private data class NoticePayload(
-        val blockedPackage: String?
+        val blockedPackage: String?,
+        /** Hora (relógio de parede) do evento que disparou o bloqueio. */
+        val attemptAtMillis: Long
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                goHome()
+                goBack()
             }
         })
         showBlockNotice(intent)
@@ -125,8 +134,19 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         val payload = NoticePayload(
             blockedPackage = sourceIntent.getStringExtra(
                 BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
-            )?.takeIf(String::isNotBlank)
+            )?.takeIf(String::isNotBlank),
+            attemptAtMillis = attemptWallClockMillis(
+                eventUptimeMillis = sourceIntent.getLongExtra(
+                    BlockingAccessibilityService.EXTRA_BLOCK_EVENT_UPTIME_MILLIS,
+                    0L
+                ),
+                nowUptimeMillis = SystemClock.uptimeMillis(),
+                nowWallClockMillis = System.currentTimeMillis()
+            )
         )
+        currentBlockedPackage = payload.blockedPackage
+        currentAttemptAtMillis = payload.attemptAtMillis
+        returning = false
 
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
@@ -138,7 +158,8 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         setContent {
             FocusGuardTheme {
                 GenericBlockNoticeContent(
-                    blockedPackage = payload.blockedPackage
+                    blockedPackage = payload.blockedPackage,
+                    onBack = ::goBack
                 )
             }
         }
@@ -196,6 +217,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 
             pendingUsageImpactAttemptId = attemptId
             pendingUsageImpactPackage = packageName
+            pendingUsageImpactAttemptAtMillis = payload.attemptAtMillis
             routeToUsageImpactIfReady()
         }
     }
@@ -215,7 +237,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         pendingUsageImpactPackage = null
         pendingUsageImpactAttemptId = 0L
         usageImpactJob = null
-        goToUsageImpact(packageName)
+        goToUsageImpact(packageName, pendingUsageImpactAttemptAtMillis)
     }
 
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
@@ -240,24 +262,56 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         return true
     }
 
-    private fun goToUsageImpact(packageName: String) {
-        startActivity(UsageImpactActivity.createIntent(this, packageName))
+    private fun goToUsageImpact(packageName: String, attemptAtMillis: Long) {
+        startActivity(UsageImpactActivity.createIntent(this, packageName, attemptAtMillis))
         finish()
     }
 
-    private fun goHome() {
-        startActivity(
-            Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    /** Volta à tela de antes da tentativa; sem app conhecido, à tela inicial. */
+    private fun goBack() {
+        if (returning) return
+        returning = true
+        usageImpactJob?.cancel()
+        pendingUsageImpactPackage = null
+        val blockedPackage = currentBlockedPackage
+        if (blockedPackage == null) {
+            runCatching { startActivity(BlockReturnNavigator.homeIntent()) }
+            finish()
+            return
+        }
+        val attemptAt = currentAttemptAtMillis
+        lifecycleScope.launch {
+            val destination = BlockReturnNavigator.resolve(
+                context = this@GenericBlockNoticeActivity,
+                blockedPackage = blockedPackage,
+                attemptAtMs = attemptAt
+            )
+            BlockReturnNavigator.navigate(
+                this@GenericBlockNoticeActivity,
+                blockedPackage,
+                destination
+            )
+            finish()
+        }
+    }
+
+    internal companion object {
+        /** O evento traz o tempo de uptime; o histórico de uso usa o relógio de parede. */
+        fun attemptWallClockMillis(
+            eventUptimeMillis: Long,
+            nowUptimeMillis: Long,
+            nowWallClockMillis: Long
+        ): Long {
+            if (eventUptimeMillis <= 0L || eventUptimeMillis > nowUptimeMillis) {
+                return nowWallClockMillis
             }
-        )
-        finish()
+            return nowWallClockMillis - (nowUptimeMillis - eventUptimeMillis)
+        }
     }
 }
 
 @Composable
-private fun GenericBlockNoticeContent(blockedPackage: String?) {
+private fun GenericBlockNoticeContent(blockedPackage: String?, onBack: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize().background(DarkBg),
         contentAlignment = Alignment.Center
@@ -310,6 +364,13 @@ private fun GenericBlockNoticeContent(blockedPackage: String?) {
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
             )
+            Spacer(Modifier.height(28.dp))
+            Button(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth().height(46.dp)
+            ) {
+                Text("Voltar", fontSize = 15.sp)
+            }
         }
     }
 }
