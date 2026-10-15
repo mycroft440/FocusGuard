@@ -129,11 +129,10 @@ fun UsageLimitItem(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        stringResource(
-                            R.string.minutes_ratio,
-                            usageMin,
-                            app.currentLimitMinutes ?: 0
-                        ),
+                        // Sem limite não existe "de 0 min": mostra só o uso de hoje.
+                        app.currentLimitMinutes?.let { limitMinutes ->
+                            stringResource(R.string.minutes_ratio, usageMin, limitMinutes)
+                        } ?: stringResource(R.string.minutes_label, usageMin),
                         color = if (effectiveActive) {
                             MaterialTheme.colorScheme.onSurface
                         } else {

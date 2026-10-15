@@ -74,8 +74,10 @@ fun WebsiteLimitItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(ruleLabel, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 val usageMin = site.usageMs / 60000L
+                // "Configured daily time:" não tem lugar para o número: o uso de hoje
+                // nunca aparecia. Mostra o uso contra o limite, como nos apps.
                 Text(
-                    stringResource(R.string.limits_daily_time_label, usageMin),
+                    stringResource(R.string.minutes_ratio, usageMin, site.dailyLimitMinutes),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )

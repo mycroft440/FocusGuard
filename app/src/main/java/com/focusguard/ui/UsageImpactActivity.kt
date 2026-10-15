@@ -523,9 +523,15 @@ private suspend fun loadUsageImpact(
         afterMillis = measured?.afterMillis ?: 0L,
         windowMillis = measured?.windowMillis ?: window,
         interventionType = type,
-        dailyLimitMinutes = intervention?.dailyLimitMinutes
-            ?: limit?.dailyLimitMinutes?.takeIf { it > 0 },
-        endsAt = intervention?.endsAt ?: limit?.lockUntilTimestamp,
+        // Os dados da intervenção valem por inteiro: um bloqueio por tempo sem data
+        // final não pode herdar o prazo (ou o limite em minutos) de um limite diário
+        // configurado para o mesmo app.
+        dailyLimitMinutes = if (intervention != null) {
+            intervention.dailyLimitMinutes
+        } else {
+            limit?.dailyLimitMinutes?.takeIf { it > 0 }
+        },
+        endsAt = if (intervention != null) intervention.endsAt else limit?.lockUntilTimestamp,
         blockedUntil = blockedUntil,
         allowedWindow = timedSession?.let(BlockReleaseTimes::allowedWindow),
         scheduledPeriod = timedSession?.isFixed24h == false
