@@ -72,6 +72,14 @@ internal fun limitPasswordOutcome(
     BlockingSessionManager.LimitUnlockResult.FAILED -> LimitPasswordOutcome.FAILED
 }
 
+/**
+ * Só UNLOCKED prova que a senha foi conferida e aceita. NOT_FOUND volta antes da
+ * conferência (nenhum limite com senha segura o app), então não zera a contagem de
+ * tentativas erradas.
+ */
+internal fun limitPasswordVerified(result: BlockingSessionManager.LimitUnlockResult): Boolean =
+    result == BlockingSessionManager.LimitUnlockResult.UNLOCKED
+
 /** Todas as tentativas da senha mestra nos limites somam: é a mesma senha. */
 internal const val LIMIT_PASSWORD_THROTTLE_KEY = "master:daily-limit"
 
@@ -122,7 +130,9 @@ internal fun LimitPasswordUnlockPanel(
     fun handleResult(result: BlockingSessionManager.LimitUnlockResult, typed: Boolean) {
         when (limitPasswordOutcome(result)) {
             LimitPasswordOutcome.OPEN_APP -> {
-                if (typed) TargetCredentialThrottle.recordSuccess(LIMIT_PASSWORD_THROTTLE_KEY)
+                if (typed && limitPasswordVerified(result)) {
+                    TargetCredentialThrottle.recordSuccess(LIMIT_PASSWORD_THROTTLE_KEY)
+                }
                 onUnlocked()
             }
             LimitPasswordOutcome.WRONG_PASSWORD -> {
