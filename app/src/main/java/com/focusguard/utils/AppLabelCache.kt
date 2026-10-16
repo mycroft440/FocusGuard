@@ -32,6 +32,10 @@ object AppLabelCache {
         return load(context, target)
     }
 
+    /** Só o nome já guardado, sem ir ao PackageManager (seguro na thread principal). */
+    fun peek(packageName: String?): String? =
+        packageName?.takeIf(String::isNotBlank)?.let(labels::get)
+
     fun prewarm(context: Context, packageNames: Collection<String>) {
         packageNames.forEach { packageName ->
             if (packageName.isNotBlank() &&

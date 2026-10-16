@@ -128,7 +128,8 @@ class BlockNoticeActivity : AppCompatActivity() {
                         surface = appResolution.surface,
                         closeTargetAfterInterception = appResolution.closeTargetAfterInterception,
                         hasLiveOwner = appResolution.hasLiveOwner,
-                        showsUsageImpact = appResolution.showsUsageImpact
+                        showsUsageImpact = appResolution.showsUsageImpact,
+                        offersLimitPasswordUnlock = appResolution.offersLimitPasswordUnlock
                     )
                 }
             } catch (cancelled: CancellationException) {
@@ -168,7 +169,8 @@ class BlockNoticeActivity : AppCompatActivity() {
                 sourceIntent = destinationIntent,
                 surface = resolution.surface,
                 attemptId = attemptId,
-                showsUsageImpact = resolution.showsUsageImpact
+                showsUsageImpact = resolution.showsUsageImpact,
+                offersLimitPasswordUnlock = resolution.offersLimitPasswordUnlock
             )
             clearRouteState(attemptId)
         }
@@ -224,7 +226,8 @@ class BlockNoticeActivity : AppCompatActivity() {
         sourceIntent: Intent,
         surface: AppBlockSurfacePolicy.Surface,
         attemptId: Long,
-        showsUsageImpact: Boolean? = null
+        showsUsageImpact: Boolean? = null,
+        offersLimitPasswordUnlock: Boolean = false
     ) {
         if (
             attemptId != routeAttemptId ||
@@ -234,7 +237,13 @@ class BlockNoticeActivity : AppCompatActivity() {
 
         val launched = runCatching {
             startActivity(
-                createDestinationIntent(this, sourceIntent, surface, showsUsageImpact)
+                createDestinationIntent(
+                    context = this,
+                    sourceIntent = sourceIntent,
+                    surface = surface,
+                    showsUsageImpact = showsUsageImpact,
+                    offersLimitPasswordUnlock = offersLimitPasswordUnlock
+                )
             )
         }.onFailure { error ->
             FocusGuardLogger.logError(
@@ -284,7 +293,8 @@ class BlockNoticeActivity : AppCompatActivity() {
         val surface: AppBlockSurfacePolicy.Surface,
         val closeTargetAfterInterception: Boolean = false,
         val hasLiveOwner: Boolean = true,
-        val showsUsageImpact: Boolean? = null
+        val showsUsageImpact: Boolean? = null,
+        val offersLimitPasswordUnlock: Boolean = false
     )
 
     companion object {
@@ -313,7 +323,9 @@ class BlockNoticeActivity : AppCompatActivity() {
             sourceIntent: Intent,
             surface: AppBlockSurfacePolicy.Surface,
             /** Decisão do Impacto já tomada nesta resolução; null se não foi consultada. */
-            showsUsageImpact: Boolean? = null
+            showsUsageImpact: Boolean? = null,
+            /** O limite com senha é o dono: a tela genérica oferece a senha mestra. */
+            offersLimitPasswordUnlock: Boolean = false
         ): Intent {
             val destination = when {
                 surface == AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK ->
@@ -326,9 +338,13 @@ class BlockNoticeActivity : AppCompatActivity() {
                 // Um reenvio pelo serviço não traz a decisão: a de uma resolução
                 // anterior não vale para esta.
                 removeExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT)
+                removeExtra(GenericBlockNoticeActivity.EXTRA_LIMIT_PASSWORD_UNLOCK)
                 if (destination == GenericBlockNoticeActivity::class.java) {
                     showsUsageImpact?.let {
                         putExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT, it)
+                    }
+                    if (offersLimitPasswordUnlock) {
+                        putExtra(GenericBlockNoticeActivity.EXTRA_LIMIT_PASSWORD_UNLOCK, true)
                     }
                 }
                 addFlags(

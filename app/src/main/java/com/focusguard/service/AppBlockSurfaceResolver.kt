@@ -37,10 +37,16 @@ internal class AppBlockSurfaceResolver(
         val hasLiveOwner: Boolean = true,
         /**
          * Se a tentativa abre a tela de Impacto (bloqueio por tempo ou limite sem
-         * senha), já consultado aqui; null quando esta resolução não consultou. A tela
+         * senha), já consultado aqui; null quando não há dono a consultar. A tela
          * genérica usa a resposta em vez de refazer a mesma consulta.
          */
-        val showsUsageImpact: Boolean? = null
+        val showsUsageImpact: Boolean? = null,
+        /**
+         * O dono é um limite diário esgotado configurado para liberar com a senha
+         * mestra, sem bloqueio por tempo nem Modo Foco por cima: a tela de bloqueio
+         * oferece a senha, que libera o app até a meia-noite.
+         */
+        val offersLimitPasswordUnlock: Boolean = false
     ) {
         /** True only while PASSWORD is still the dominant owner of this attempt. */
         val allowsPasswordVisit: Boolean
@@ -77,12 +83,12 @@ internal class AppBlockSurfaceResolver(
         // its current schedule window is active, and it only reports a daily limit
         // after the allowance is exhausted while its selected post-limit behavior
         // is actually blocking now. A configured-but-inactive rule must never win.
-        val usageImpactConsulted = credentialOrigin !=
-            BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK
-        val timedOrUsageInterventionBlocksTarget = usageImpactConsulted &&
+        // Consultada também com um limite com senha esgotado: um bloqueio por tempo
+        // no mesmo app fica acima do limite, e a tentativa é desse bloqueio (antes a
+        // consulta era pulada e o app caía na tela genérica, sem o Impacto). Para o
+        // limite com senha em si a resposta é sempre não.
+        val timedOrUsageInterventionBlocksTarget =
             UsageImpactRouter.shouldShowForBlockedApp(appContext, packageName)
-        val showsUsageImpact = timedOrUsageInterventionBlocksTarget
-            .takeIf { usageImpactConsulted }
 
         val focusModeBlocksTarget = FocusModeStore.readSession(appContext)
             ?.takeIf { it.isActive() }
@@ -119,7 +125,13 @@ internal class AppBlockSurfaceResolver(
                         timedOrUsageInterventionBlocksTarget,
                     dopamineFastBlocksTarget = false
                 ),
-                showsUsageImpact = showsUsageImpact
+                showsUsageImpact = timedOrUsageInterventionBlocksTarget,
+                offersLimitPasswordUnlock = offersLimitPasswordUnlock(
+                    credentialOrigin = credentialOrigin,
+                    timedOrUsageInterventionBlocksTarget =
+                        timedOrUsageInterventionBlocksTarget,
+                    focusModeBlocksTarget = focusModeBlocksTarget
+                )
             )
         }
 
@@ -143,11 +155,25 @@ internal class AppBlockSurfaceResolver(
                 timedOrUsageInterventionBlocksTarget = activeTimedOrUsageBlock,
                 dopamineFastBlocksTarget = false
             ),
-            showsUsageImpact = showsUsageImpact
+            showsUsageImpact = activeTimedOrUsageBlock
         )
     }
 
     companion object {
+        /**
+         * A senha mestra só é oferecida quando o limite com senha é o dono mais forte:
+         * com um bloqueio por tempo ou o Modo Foco por cima, a senha liberaria o limite
+         * e o app continuaria fechado.
+         */
+        internal fun offersLimitPasswordUnlock(
+            credentialOrigin: BiometricAppUnlockPolicy.BlockOrigin?,
+            timedOrUsageInterventionBlocksTarget: Boolean,
+            focusModeBlocksTarget: Boolean
+        ): Boolean = credentialOrigin ==
+            BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK &&
+            !timedOrUsageInterventionBlocksTarget &&
+            !focusModeBlocksTarget
+
         internal fun shouldCloseTargetAfterInterception(
             credentialOrigin: BiometricAppUnlockPolicy.BlockOrigin?,
             timedOrUsageInterventionBlocksTarget: Boolean,

@@ -192,7 +192,8 @@
             android:noHistory="true"
             android:resizeableActivity="false"
             android:taskAffinity="com.focusguard.blocksurface"
-            android:theme="@style/Theme.FocusGuard" />
+            android:theme="@style/Theme.FocusGuard"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.PasswordUnlockActivity"
