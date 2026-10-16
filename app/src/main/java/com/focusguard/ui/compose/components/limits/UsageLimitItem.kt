@@ -141,7 +141,17 @@ fun UsageLimitItem(
                         fontSize = 12.sp
                     )
                     Spacer(Modifier.weight(1f))
-                    if (progress >= 0.9f && effectiveActive) {
+                    val limitReached = app.currentLimitMinutes
+                        ?.let { it > 0 && usageMin >= it } == true
+                    if (limitReached && effectiveActive) {
+                        // Com o limite esgotado, "Limite próximo!" contradiz o número.
+                        Text(
+                            stringResource(R.string.limits_usage_reached),
+                            color = DangerRed,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (progress >= 0.9f && effectiveActive) {
                         Text(
                             stringResource(R.string.limits_usage_alert),
                             color = DangerRed,
