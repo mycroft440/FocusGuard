@@ -34,7 +34,13 @@ internal class AppBlockSurfaceResolver(
          * meia-noite, um bloqueio removido). Nesse caso não existe bloqueio a mostrar
          * e a tentativa precisa ser liberada, nunca virar uma tela de bloqueio.
          */
-        val hasLiveOwner: Boolean = true
+        val hasLiveOwner: Boolean = true,
+        /**
+         * Se a tentativa abre a tela de Impacto (bloqueio por tempo ou limite sem
+         * senha), já consultado aqui; null quando esta resolução não consultou. A tela
+         * genérica usa a resposta em vez de refazer a mesma consulta.
+         */
+        val showsUsageImpact: Boolean? = null
     ) {
         /** True only while PASSWORD is still the dominant owner of this attempt. */
         val allowsPasswordVisit: Boolean
@@ -71,15 +77,12 @@ internal class AppBlockSurfaceResolver(
         // its current schedule window is active, and it only reports a daily limit
         // after the allowance is exhausted while its selected post-limit behavior
         // is actually blocking now. A configured-but-inactive rule must never win.
-        val timedOrUsageInterventionBlocksTarget =
-            if (
-                credentialOrigin ==
-                BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK
-            ) {
-                false
-            } else {
-                UsageImpactRouter.shouldShowForBlockedApp(appContext, packageName)
-            }
+        val usageImpactConsulted = credentialOrigin !=
+            BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK
+        val timedOrUsageInterventionBlocksTarget = usageImpactConsulted &&
+            UsageImpactRouter.shouldShowForBlockedApp(appContext, packageName)
+        val showsUsageImpact = timedOrUsageInterventionBlocksTarget
+            .takeIf { usageImpactConsulted }
 
         val focusModeBlocksTarget = FocusModeStore.readSession(appContext)
             ?.takeIf { it.isActive() }
@@ -115,7 +118,8 @@ internal class AppBlockSurfaceResolver(
                     timedOrUsageInterventionBlocksTarget =
                         timedOrUsageInterventionBlocksTarget,
                     dopamineFastBlocksTarget = false
-                )
+                ),
+                showsUsageImpact = showsUsageImpact
             )
         }
 
@@ -138,7 +142,8 @@ internal class AppBlockSurfaceResolver(
                 credentialOrigin = credentialOrigin,
                 timedOrUsageInterventionBlocksTarget = activeTimedOrUsageBlock,
                 dopamineFastBlocksTarget = false
-            )
+            ),
+            showsUsageImpact = showsUsageImpact
         )
     }
 

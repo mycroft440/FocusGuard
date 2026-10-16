@@ -127,7 +127,8 @@ class BlockNoticeActivity : AppCompatActivity() {
                     WebsiteRouteResolution(
                         surface = appResolution.surface,
                         closeTargetAfterInterception = appResolution.closeTargetAfterInterception,
-                        hasLiveOwner = appResolution.hasLiveOwner
+                        hasLiveOwner = appResolution.hasLiveOwner,
+                        showsUsageImpact = appResolution.showsUsageImpact
                     )
                 }
             } catch (cancelled: CancellationException) {
@@ -163,7 +164,12 @@ class BlockNoticeActivity : AppCompatActivity() {
             val destinationIntent = latestRouteIntent
                 ?.takeIf { attemptId == routeAttemptId && activeRouteKey == incomingKey }
                 ?: sourceIntent
-            launchDestination(destinationIntent, resolution.surface, attemptId)
+            launchDestination(
+                sourceIntent = destinationIntent,
+                surface = resolution.surface,
+                attemptId = attemptId,
+                showsUsageImpact = resolution.showsUsageImpact
+            )
             clearRouteState(attemptId)
         }
     }
@@ -217,7 +223,8 @@ class BlockNoticeActivity : AppCompatActivity() {
     private fun launchDestination(
         sourceIntent: Intent,
         surface: AppBlockSurfacePolicy.Surface,
-        attemptId: Long
+        attemptId: Long,
+        showsUsageImpact: Boolean? = null
     ) {
         if (
             attemptId != routeAttemptId ||
@@ -226,7 +233,9 @@ class BlockNoticeActivity : AppCompatActivity() {
         ) return
 
         val launched = runCatching {
-            startActivity(createDestinationIntent(this, sourceIntent, surface))
+            startActivity(
+                createDestinationIntent(this, sourceIntent, surface, showsUsageImpact)
+            )
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "BlockRouter",
@@ -274,7 +283,8 @@ class BlockNoticeActivity : AppCompatActivity() {
     private data class WebsiteRouteResolution(
         val surface: AppBlockSurfacePolicy.Surface,
         val closeTargetAfterInterception: Boolean = false,
-        val hasLiveOwner: Boolean = true
+        val hasLiveOwner: Boolean = true,
+        val showsUsageImpact: Boolean? = null
     )
 
     companion object {
@@ -301,7 +311,9 @@ class BlockNoticeActivity : AppCompatActivity() {
         internal fun createDestinationIntent(
             context: Context,
             sourceIntent: Intent,
-            surface: AppBlockSurfacePolicy.Surface
+            surface: AppBlockSurfacePolicy.Surface,
+            /** Decisão do Impacto já tomada nesta resolução; null se não foi consultada. */
+            showsUsageImpact: Boolean? = null
         ): Intent {
             val destination = when {
                 surface == AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK ->
@@ -311,6 +323,14 @@ class BlockNoticeActivity : AppCompatActivity() {
             }
             return Intent(context, destination).apply {
                 sourceIntent.extras?.let { putExtras(it) }
+                // Um reenvio pelo serviço não traz a decisão: a de uma resolução
+                // anterior não vale para esta.
+                removeExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT)
+                if (destination == GenericBlockNoticeActivity::class.java) {
+                    showsUsageImpact?.let {
+                        putExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT, it)
+                    }
+                }
                 addFlags(
                     Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP or

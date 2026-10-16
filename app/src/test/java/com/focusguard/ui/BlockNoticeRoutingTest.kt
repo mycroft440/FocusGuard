@@ -144,4 +144,53 @@ class BlockNoticeRoutingTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `the impact decision already taken by the router reaches the generic notice`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val source = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.blocked")
+            putExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 9L)
+        }
+
+        val routed = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
+            showsUsageImpact = true
+        )
+
+        assertThat(routed.getBooleanExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT, false))
+            .isTrue()
+        assertThat(routed.getLongExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 0L))
+            .isEqualTo(9L)
+    }
+
+    @Test
+    fun `an impact decision from an earlier resolution is never carried over`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val source = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.blocked")
+            putExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT, true)
+        }
+
+        val notConsulted = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
+            showsUsageImpact = null
+        )
+        val password = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK,
+            showsUsageImpact = true
+        )
+
+        // Sem decisão desta resolução, a tela genérica consulta por conta própria.
+        assertThat(notConsulted.hasExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT))
+            .isFalse()
+        assertThat(password.hasExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT))
+            .isFalse()
+    }
 }

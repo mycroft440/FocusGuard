@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.app.usage.UsageEvents
+import android.view.accessibility.AccessibilityEvent
 import com.focusguard.security.PasswordTargetAccessGrant
 
 /**
@@ -22,6 +23,23 @@ internal object BlockedWindowEventPolicy {
      */
     fun isEntry(eventWindowInFront: Boolean?, appInFront: () -> Boolean): Boolean =
         eventWindowInFront != false || appInFront()
+
+    /**
+     * Se um TYPE_WINDOWS_CHANGED pode ter posto uma janela na frente: uma janela nova
+     * na tela, ou a janela ativa/com foco que mudou. Mudanças só de tamanho, título ou
+     * camada não são entrada e não valem uma consulta ao app. [windowChanges] é null
+     * antes do Android 9 (o aviso não diz o que mudou) e então sempre conta; zero
+     * também conta, porque alguns fabricantes mandam o aviso sem as mudanças.
+     */
+    fun mayBringWindowToFront(windowChanges: Int?): Boolean =
+        windowChanges == null ||
+            windowChanges == 0 ||
+            windowChanges and WINDOW_TO_FRONT_CHANGES != 0
+
+    private const val WINDOW_TO_FRONT_CHANGES =
+        AccessibilityEvent.WINDOWS_CHANGE_ADDED or
+            AccessibilityEvent.WINDOWS_CHANGE_ACTIVE or
+            AccessibilityEvent.WINDOWS_CHANGE_FOCUSED
 
     /**
      * Lê os eventos de uso em ordem e diz se [target] terminou na frente: uma Activity
