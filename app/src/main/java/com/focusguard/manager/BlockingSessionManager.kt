@@ -41,7 +41,6 @@ import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageLimitBehaviorPolicy
-import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.UsageLimitPauseStateStore
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -972,6 +971,9 @@ class BlockingSessionManager @Inject constructor(
                 check(AuthManager.disableAdultFilterForDevelopmentExit(context)) {
                     "Não foi possível persistir a desativação do filtro adulto"
                 }
+                // Sem limites, nada de pausa ou bloqueio do dia de um limite que
+                // poderia ser criado de novo hoje com o mesmo prazo.
+                UsageLimitPauseStateStore.clearAllDailyStates()
                 PasswordTargetAccessGrant.updateStrongerAppPackages(emptyList())
                 PasswordTargetAccessGrant.updateStrongerWebsiteRules(emptyList())
                 PomodoroForegroundService.stop(context)
@@ -1667,6 +1669,13 @@ class BlockingSessionManager @Inject constructor(
                             shiftedLimitModes += limit.lockMode
                         }
                     }
+                    database.websiteUsageLimitDao().getAllStatic().forEach { limit ->
+                        ClockJumpPolicy.shiftWebsiteLimit(limit, jump, anchorWallClock)?.let {
+                            // insertRaw: o insert comum manteria a ativação antiga.
+                            database.websiteUsageLimitDao().insertRaw(it)
+                            shiftedLimitModes += limit.lockMode
+                        }
+                    }
                 }
                 // Só depois de o banco aceitar: a pausa acompanha o fim da regra gravado.
                 shiftedLimitModes.forEach { lockMode ->
@@ -1730,13 +1739,13 @@ class BlockingSessionManager @Inject constructor(
         if (limits.isEmpty()) return emptyList()
         val usedMillisByPackage = measureAppLimitUsage(limits, waitingSessions, now)
         return limits.filter { limit ->
-            UsageLimitForegroundPolicy.usedMinutes(usedMillisByPackage[limit.packageName] ?: 0L) >=
-                limit.dailyLimitMinutes &&
-                limit.preventOpeningAfterLimit &&
-                WebsiteUsageLimitPolicy.isBlockingModeActive(
-                    limit.lockMode,
-                    limit.lockUntilTimestamp,
-                    now
+            limit.preventOpeningAfterLimit &&
+                WebsiteUsageLimitPolicy.shouldBlock(
+                    usedMillis = usedMillisByPackage[limit.packageName] ?: 0L,
+                    dailyLimitMinutes = limit.dailyLimitMinutes,
+                    lockMode = limit.lockMode,
+                    lockUntilTimestamp = limit.lockUntilTimestamp,
+                    nowMillis = now
                 )
         }.map { it.packageName }
     }

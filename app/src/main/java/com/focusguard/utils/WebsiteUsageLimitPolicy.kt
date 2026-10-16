@@ -79,6 +79,11 @@ object WebsiteUsageLimitPolicy {
             .takeIf(String::isNotEmpty)
     }
 
+    /**
+     * A regra única de quando um limite diário (de app ou de site) fecha o alvo:
+     * esgotado com o modo bloqueando agora, ou já esgotado antes com a pausa ou o
+     * bloqueio até a meia-noite ainda correndo, mesmo que a conta tenha zerado.
+     */
     fun shouldBlock(
         usedMillis: Long,
         dailyLimitMinutes: Int,
@@ -87,7 +92,13 @@ object WebsiteUsageLimitPolicy {
         nowMillis: Long
     ): Boolean {
         val thresholdMillis = dailyLimitMinutes.coerceAtLeast(0) * 60_000L
-        if (usedMillis.coerceAtLeast(0L) < thresholdMillis) return false
+        if (usedMillis.coerceAtLeast(0L) < thresholdMillis) {
+            return UsageLimitPauseStateStore.heldUntil(
+                lockMode = lockMode,
+                ruleEndMillis = lockUntilTimestamp,
+                nowMillis = nowMillis
+            ) != null
+        }
 
         return isBlockingModeActive(lockMode, lockUntilTimestamp, nowMillis)
     }
@@ -138,7 +149,7 @@ object WebsiteUsageLimitPolicy {
                     nowMillis
                 )
                 if (active) {
-                    UsageLimitPauseStateStore.notifyDailyBlockOnce(
+                    UsageLimitPauseStateStore.recordDailyBlock(
                         lockMode = lockMode,
                         ruleEndMillis = lockUntilTimestamp,
                         nowMillis = nowMillis

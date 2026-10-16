@@ -509,7 +509,7 @@ private suspend fun loadUsageImpact(
         limit != null -> BlockReleaseTimes.usageLimitBlockedUntil(
             limit = limit,
             nowMillis = now,
-            pauseBlockedUntil = UsageLimitPauseStateStore.pauseBlockedUntil(
+            heldUntil = UsageLimitPauseStateStore.heldUntil(
                 lockMode = limit.lockMode,
                 ruleEndMillis = limit.lockUntilTimestamp,
                 nowMillis = now

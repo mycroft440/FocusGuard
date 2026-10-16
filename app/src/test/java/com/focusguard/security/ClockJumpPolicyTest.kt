@@ -2,6 +2,7 @@ package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
+import com.focusguard.database.WebsiteUsageLimit
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -187,6 +188,46 @@ class ClockJumpPolicyTest {
         assertThat(ClockJumpPolicy.shiftLimit(limit, 3 * day, anchorWallClock)).isNull()
         assertThat(ClockJumpPolicy.shiftSession(existing, 3 * day, anchorWallClock)?.endTime)
             .isEqualTo(14 * day)
+    }
+
+    @Test
+    fun `a second jump back still moves a block created before the first`() {
+        val session = BlockSession(
+            startTime = 10 * day,
+            endTime = 20 * day,
+            sessionType = "TIME",
+            createdAt = 10 * day,
+            cancelableUntil = 12 * day
+        )
+
+        // Um dia depois de criar, o relógio volta três dias: a âncora seguinte já está
+        // na hora nova, antes da criação gravada.
+        val once = ClockJumpPolicy.shiftSession(session, -3 * day, anchorWallClockMillis = 11 * day)
+        val twice = ClockJumpPolicy.shiftSession(once!!, -3 * day, anchorWallClockMillis = 8 * day)
+
+        assertThat(twice?.cancelableUntil).isEqualTo(6 * day)
+        assertThat(twice?.endTime).isEqualTo(14 * day)
+    }
+
+    @Test
+    fun `a website limit keeps its rule end and edit lock in real time`() {
+        val limit = WebsiteUsageLimit(
+            domain = "feed.example",
+            dailyLimitMinutes = 30,
+            lockMode = "PAUSE_30:feed.example",
+            lockUntilTimestamp = 20 * day,
+            lockAfter = 12 * day,
+            createdAt = 10 * day
+        )
+
+        val shifted = ClockJumpPolicy.shiftWebsiteLimit(limit, -2 * day)
+
+        assertThat(shifted?.lockUntilTimestamp).isEqualTo(18 * day)
+        assertThat(shifted?.lockAfter).isEqualTo(10 * day)
+        assertThat(shifted?.createdAt).isEqualTo(8 * day)
+        assertThat(
+            ClockJumpPolicy.shiftWebsiteLimit(limit.copy(createdAt = 13 * day), day, 12 * day)
+        ).isNull()
     }
 
     @Test

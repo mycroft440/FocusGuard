@@ -7,6 +7,7 @@ import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import java.util.Calendar
 import java.util.Locale
@@ -23,6 +24,9 @@ object UsageLimitBehaviorPolicy {
     const val PAUSE_30_PREFIX = "PAUSE_30:"
     const val BLOCK_UNTIL_TOMORROW_PREFIX = "BLOCK_UNTIL_TOMORROW:"
     const val PAUSE_DURATION_MILLIS = 30L * 60L * 1_000L
+
+    /** Um dia não tem mais que isso: acima, o "limite" nunca seria alcançado. */
+    const val MAX_DAILY_LIMIT_MINUTES = 24 * 60
 
     enum class RuleDurationUnit {
         DAYS,
@@ -47,6 +51,9 @@ object UsageLimitBehaviorPolicy {
 
     fun identifierFrom(lockMode: String): String =
         lockMode.substringAfter(':', missingDelimiterValue = "").trim()
+
+    fun isValidDailyLimitMinutes(minutes: Int): Boolean =
+        minutes in 1..MAX_DAILY_LIMIT_MINUTES
 
     fun isRuleActive(ruleEndMillis: Long?, nowMillis: Long): Boolean =
         ruleEndMillis?.let { it > nowMillis } == true
@@ -174,6 +181,65 @@ object UsageLimitBehaviorPolicy {
             blockedUntilMillis = shift(state.blockedUntilMillis)
         )
 
+    /**
+     * O "bloquear até amanhã" gravado quando a regra se esgota: até a meia-noite
+     * seguinte o alvo fica fechado mesmo que a conta do dia zere antes disso.
+     */
+    internal data class DailyBlockState(
+        val ruleEndMillis: Long,
+        val dayKey: Long,
+        /** Null nos registros de versões antigas, que só guardavam o aviso do dia. */
+        val blockedUntilMillis: Long?
+    )
+
+    /**
+     * O registro a gravar quando a regra está esgotada agora, ou null quando o de
+     * hoje já existe. Um bloqueio ainda maior da mesma regra (relógio mudado à mão)
+     * nunca é encurtado.
+     */
+    internal fun dailyBlockToRecord(
+        previous: DailyBlockState?,
+        ruleEndMillis: Long,
+        nowMillis: Long,
+        dayKey: Long = localDayKey(nowMillis)
+    ): DailyBlockState? {
+        val sameRule = previous?.ruleEndMillis == ruleEndMillis
+        if (sameRule && previous?.dayKey == dayKey && previous.blockedUntilMillis != null) {
+            return null
+        }
+        val untilMidnight = BlockingScheduleCalculator.nextLocalMidnight(nowMillis)
+        val keptUntil = previous?.blockedUntilMillis?.takeIf { sameRule }
+        return DailyBlockState(
+            ruleEndMillis = ruleEndMillis,
+            dayKey = dayKey,
+            blockedUntilMillis = maxOf(untilMidnight, keptUntil ?: Long.MIN_VALUE)
+        )
+    }
+
+    /**
+     * Até quando uma regra que já se esgotou continua segurando o alvo, sem depender
+     * do uso medido agora: a pausa de 30 minutos em curso ou o bloqueio até a
+     * meia-noite. Sem isso, tudo que zera a conta (adiantar o relógio para logo
+     * depois da meia-noite, revogar o Acesso de uso) liberava o alvo na hora.
+     */
+    internal fun heldUntil(
+        pause: PauseState?,
+        dailyBlock: DailyBlockState?,
+        lockMode: String,
+        ruleEndMillis: Long?,
+        nowMillis: Long
+    ): Long? {
+        val ruleEnd = ruleEndMillis?.takeIf { it > nowMillis } ?: return null
+        val until = when {
+            isPauseMode(lockMode) ->
+                pause?.takeIf { it.ruleEndMillis == ruleEnd }?.blockedUntilMillis
+            isBlockUntilTomorrowMode(lockMode) ->
+                dailyBlock?.takeIf { it.ruleEndMillis == ruleEnd }?.blockedUntilMillis
+            else -> null
+        } ?: return null
+        return until.takeIf { it > nowMillis }?.let { minOf(it, ruleEnd) }
+    }
+
     internal fun pauseEndDeadline(
         evaluation: PauseEvaluation,
         nowMillis: Long
@@ -182,7 +248,10 @@ object UsageLimitBehaviorPolicy {
         ?.takeIf { evaluation.shouldBlock && it > nowMillis }
 }
 
-/** Persistent per-app state for the once-per-day 30-minute pause and user notices. */
+/**
+ * Persistent per-target state of exhausted daily rules: the once-per-day 30-minute
+ * pause and the block until midnight (which also drives the once-per-day notice).
+ */
 object UsageLimitPauseStateStore {
     private const val PREFS_NAME = "usage_limit_pause_state"
     private const val KEY_RULE_END = "rule_end_"
@@ -190,11 +259,12 @@ object UsageLimitPauseStateStore {
     private const val KEY_BLOCKED_UNTIL = "blocked_until_"
     private const val KEY_DAILY_NOTICE_RULE_END = "daily_notice_rule_end_"
     private const val KEY_DAILY_NOTICE_DAY = "daily_notice_day_"
+    private const val KEY_DAILY_BLOCK_UNTIL = "daily_block_until_"
 
     private val stateLock = Any()
     @Volatile private var storageContext: Context? = null
     private val memoryPauseStates = mutableMapOf<String, UsageLimitBehaviorPolicy.PauseState>()
-    private val memoryDailyNotices = mutableMapOf<String, Pair<Long, Long>>()
+    private val memoryDailyBlocks = mutableMapOf<String, UsageLimitBehaviorPolicy.DailyBlockState>()
 
     fun initialize(context: Context) {
         // Keep the supplied context rather than replacing it with applicationContext: during
@@ -242,16 +312,24 @@ object UsageLimitPauseStateStore {
         return evaluation.shouldBlock
     }
 
-    /** Fim da pausa de 30 minutos em curso de uma regra, sem alterar o estado. */
-    fun pauseBlockedUntil(lockMode: String, ruleEndMillis: Long?, nowMillis: Long): Long? {
-        if (!UsageLimitBehaviorPolicy.isPauseMode(lockMode)) return null
+    /**
+     * Até quando a regra, já esgotada, segura o alvo independentemente do uso medido
+     * agora (ver [UsageLimitBehaviorPolicy.heldUntil]), sem alterar o estado.
+     */
+    fun heldUntil(lockMode: String, ruleEndMillis: Long?, nowMillis: Long): Long? {
+        if (!UsageLimitBehaviorPolicy.isDailyBehaviorMode(lockMode)) return null
         val end = ruleEndMillis ?: return null
-        val identifier = UsageLimitBehaviorPolicy.identifierFrom(lockMode)
-            .ifBlank { "rule_$end" }
-        val state = synchronized(stateLock) { readPauseState(safeKey(identifier)) }
-            ?: return null
-        return state.blockedUntilMillis.takeIf {
-            state.ruleEndMillis == end && it > nowMillis
+        val storageKey = safeKey(
+            UsageLimitBehaviorPolicy.identifierFrom(lockMode).ifBlank { "rule_$end" }
+        )
+        return synchronized(stateLock) {
+            UsageLimitBehaviorPolicy.heldUntil(
+                pause = readPauseState(storageKey),
+                dailyBlock = readDailyBlock(storageKey),
+                lockMode = lockMode,
+                ruleEndMillis = end,
+                nowMillis = nowMillis
+            )
         }
     }
 
@@ -308,9 +386,9 @@ object UsageLimitPauseStateStore {
     }
 
     /**
-     * Leva a pausa em curso (e o aviso do dia) de uma regra junto com o fim dela
+     * Leva a pausa em curso e o bloqueio do dia de uma regra junto com o fim dela
      * quando o relógio é mudado à mão. Sem isso, adiantar o relógio encerrava a
-     * pausa de 30 minutos na hora, e o app ficava livre pelo resto do dia.
+     * pausa de 30 minutos (ou o bloqueio até a meia-noite) na hora.
      */
     fun shiftForClockJump(lockMode: String, shift: (Long) -> Long) {
         if (!UsageLimitBehaviorPolicy.isDailyBehaviorMode(lockMode)) return
@@ -321,13 +399,44 @@ object UsageLimitPauseStateStore {
             readPauseState(storageKey)?.let { state ->
                 writePauseState(storageKey, UsageLimitBehaviorPolicy.shiftedPause(state, shift))
             }
-            readDailyNotice(storageKey)?.let { (ruleEnd, dayKey) ->
-                writeDailyNotice(storageKey, shift(ruleEnd), dayKey)
+            readDailyBlock(storageKey)?.let { state ->
+                writeDailyBlock(
+                    storageKey,
+                    state.copy(
+                        ruleEndMillis = shift(state.ruleEndMillis),
+                        blockedUntilMillis = state.blockedUntilMillis?.let(shift)
+                    )
+                )
             }
         }
     }
 
-    fun notifyDailyBlockOnce(
+    /**
+     * Esquece a pausa e o bloqueio do dia de um alvo. Para quando o limite dele é
+     * salvo ou removido: um limite com mais minutos, ou criado de novo no mesmo dia,
+     * não pode herdar o "esgotado" do anterior.
+     */
+    fun clearDailyStateFor(identifier: String) {
+        val storageKey = safeKey(identifier.trim().takeIf(String::isNotEmpty) ?: return)
+        synchronized(stateLock) {
+            clearPauseState(storageKey)
+            clearDailyBlock(storageKey)
+        }
+    }
+
+    /** O mesmo que [clearDailyStateFor] para todos os alvos (todos os limites removidos). */
+    fun clearAllDailyStates() = synchronized(stateLock) {
+        memoryPauseStates.clear()
+        memoryDailyBlocks.clear()
+        val context = storageContext ?: return@synchronized
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    /**
+     * Grava o bloqueio até a meia-noite da regra esgotada agora e avisa uma vez por
+     * dia. Chamado a cada vez que a regra é vista esgotada.
+     */
+    fun recordDailyBlock(
         lockMode: String,
         ruleEndMillis: Long?,
         nowMillis: Long
@@ -340,13 +449,14 @@ object UsageLimitPauseStateStore {
         val dayKey = UsageLimitBehaviorPolicy.localDayKey(nowMillis)
 
         val shouldNotify = synchronized(stateLock) {
-            val previous = readDailyNotice(storageKey)
-            if (previous?.first == end && previous.second == dayKey) {
-                false
-            } else {
-                writeDailyNotice(storageKey, end, dayKey)
-                true
-            }
+            val previous = readDailyBlock(storageKey)
+            UsageLimitBehaviorPolicy.dailyBlockToRecord(
+                previous = previous,
+                ruleEndMillis = end,
+                nowMillis = nowMillis,
+                dayKey = dayKey
+            )?.let { writeDailyBlock(storageKey, it) }
+            previous?.ruleEndMillis != end || previous.dayKey != dayKey
         }
         if (shouldNotify) notifyUser(R.string.limits_daily_lock_notice)
     }
@@ -391,23 +501,42 @@ object UsageLimitPauseStateStore {
         return hadMemoryState || hadPersistedState
     }
 
-    private fun readDailyNotice(key: String): Pair<Long, Long>? {
-        val context = storageContext ?: return memoryDailyNotices[key]
+    private fun readDailyBlock(key: String): UsageLimitBehaviorPolicy.DailyBlockState? {
+        val context = storageContext ?: return memoryDailyBlocks[key]
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val end = prefs.getLong(KEY_DAILY_NOTICE_RULE_END + key, Long.MIN_VALUE)
         val day = prefs.getLong(KEY_DAILY_NOTICE_DAY + key, Long.MIN_VALUE)
-        return if (end == Long.MIN_VALUE || day == Long.MIN_VALUE) null else end to day
+        if (end == Long.MIN_VALUE || day == Long.MIN_VALUE) return null
+        val until = prefs.getLong(KEY_DAILY_BLOCK_UNTIL + key, Long.MIN_VALUE)
+            .takeIf { it != Long.MIN_VALUE }
+        return UsageLimitBehaviorPolicy.DailyBlockState(end, day, until)
     }
 
-    private fun writeDailyNotice(key: String, ruleEnd: Long, dayKey: Long) {
+    private fun writeDailyBlock(key: String, state: UsageLimitBehaviorPolicy.DailyBlockState) {
         val context = storageContext
         if (context == null) {
-            memoryDailyNotices[key] = ruleEnd to dayKey
+            memoryDailyBlocks[key] = state
             return
         }
+        val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putLong(KEY_DAILY_NOTICE_RULE_END + key, state.ruleEndMillis)
+            .putLong(KEY_DAILY_NOTICE_DAY + key, state.dayKey)
+        val until = state.blockedUntilMillis
+        if (until == null) {
+            editor.remove(KEY_DAILY_BLOCK_UNTIL + key)
+        } else {
+            editor.putLong(KEY_DAILY_BLOCK_UNTIL + key, until)
+        }
+        editor.apply()
+    }
+
+    private fun clearDailyBlock(key: String) {
+        memoryDailyBlocks.remove(key)
+        val context = storageContext ?: return
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putLong(KEY_DAILY_NOTICE_RULE_END + key, ruleEnd)
-            .putLong(KEY_DAILY_NOTICE_DAY + key, dayKey)
+            .remove(KEY_DAILY_NOTICE_RULE_END + key)
+            .remove(KEY_DAILY_NOTICE_DAY + key)
+            .remove(KEY_DAILY_BLOCK_UNTIL + key)
             .apply()
     }
 

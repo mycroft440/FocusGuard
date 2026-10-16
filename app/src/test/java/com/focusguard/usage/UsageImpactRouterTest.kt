@@ -3,6 +3,7 @@ package com.focusguard.usage
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
 import com.focusguard.utils.UsageLimitBehaviorPolicy
+import com.focusguard.utils.UsageLimitPauseStateStore
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -108,6 +109,50 @@ class UsageImpactRouterTest {
                 limit = configured,
                 usedMillis = 0L,
                 nowMillis = now + 24L * 60L * 60L * 1_000L
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `an exhausted day stays blocked when the count goes back to zero`() {
+        // Adiantar o relógio para logo depois da meia-noite (ou revogar o Acesso de
+        // uso) zera a conta do dia, mas não libera o app esgotado.
+        val packageName = "com.example.tomorrow.held"
+        val configured = limit(packageName)
+
+        assertThat(
+            UsageImpactRouter.shouldRouteConfiguredAppLimit(configured, 30L * 60_000L, now)
+        ).isTrue()
+        assertThat(
+            UsageImpactRouter.shouldRouteConfiguredAppLimit(configured, 0L, now + 60_000L)
+        ).isTrue()
+
+        // Salvar o limite de novo (por exemplo, com mais minutos) esquece o dia esgotado.
+        UsageLimitPauseStateStore.clearDailyStateFor(packageName)
+        assertThat(
+            UsageImpactRouter.shouldRouteConfiguredAppLimit(configured, 0L, now + 60_000L)
+        ).isFalse()
+    }
+
+    @Test
+    fun `a running pause holds even when the count goes back to zero`() {
+        val packageName = "com.example.pause.held"
+        val configured = limit(
+            packageName = packageName,
+            lockMode = UsageLimitBehaviorPolicy.pauseModeFor(packageName)
+        )
+
+        assertThat(
+            UsageImpactRouter.shouldRouteConfiguredAppLimit(configured, 30L * 60_000L, now)
+        ).isTrue()
+        assertThat(
+            UsageImpactRouter.shouldRouteConfiguredAppLimit(configured, 0L, now + 60_000L)
+        ).isTrue()
+        assertThat(
+            UsageImpactRouter.shouldRouteConfiguredAppLimit(
+                configured,
+                0L,
+                now + UsageLimitBehaviorPolicy.PAUSE_DURATION_MILLIS
             )
         ).isFalse()
     }

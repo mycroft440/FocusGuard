@@ -110,6 +110,14 @@ class BlockReleaseTimesTest {
     }
 
     @Test
+    fun `block until tomorrow follows the recorded end after a clock change`() {
+        // Esgotado ontem e relógio adiantado à mão: segura até a meia-noite real.
+        val limit = limit(UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor("app"), at(20, 23))
+        assertThat(BlockReleaseTimes.usageLimitBlockedUntil(limit, at(7, 0, 5), at(7, 9), utc))
+            .isEqualTo(at(7, 9))
+    }
+
+    @Test
     fun `thirty minute pause releases when the pause ends`() {
         val limit = limit(UsageLimitBehaviorPolicy.pauseModeFor("app"), at(20, 23))
         assertThat(
