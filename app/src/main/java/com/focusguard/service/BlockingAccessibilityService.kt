@@ -555,7 +555,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         prepareInstantBlockCurtain()
         defaultLauncherPackage = calculateDefaultLauncher()
         refreshLauncherIndex(force = true)
-        foregroundPackageName = rootInActiveWindow?.packageName?.toString()
+        foregroundPackageName = activeWindowPackage()
         refreshData()
         startAppLimitMonitoringPulse()
         scope.launch {
@@ -579,6 +579,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         // aqui, fora da thread principal, tira esse custo do caminho do bloqueio.
         scope.launch { SecurePrefsManager.prewarm(applicationContext) }
         syncWarmOverlays()
+        // O serviço pode (re)conectar com um app bloqueado já na frente: o Android
+        // recriou o processo, ou a acessibilidade foi religada. Antes, o app ficava
+        // usável até mandar algum evento. A frente é conferida assim que a cortina
+        // está pronta, com a lista gravada da última reconciliação.
+        mainHandler.post { guardReceiver(::enforceActiveWindowNotBlocked) }
     }
 
     /** Teclado do serviço (Android 13+), usado pela troca de site do bloqueio de sites. */
