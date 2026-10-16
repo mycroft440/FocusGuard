@@ -1307,8 +1307,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val activeAppLimits = database.appUsageLimitDao()
                             .getAllActiveLimitsStatic()
                         val limitApps = calculateExceededAppLimits(activeAppLimits)
-                        // Já em IO: deixa o nome dos apps com senha pronto para a tela.
-                        AppLabelCache.prewarm(applicationContext, passwordSessionApps)
+                        // Já em IO: deixa o nome dos apps bloqueados (senha, tempo,
+                        // limite) pronto para as telas de bloqueio, que não vão ao
+                        // PackageManager antes do primeiro quadro.
+                        AppLabelCache.prewarm(
+                            applicationContext,
+                            sessionApps + activeAppLimits.map { it.packageName }
+                        )
                         val passwordOnlyApps = passwordSessionApps -
                             strongerSessionApps -
                             limitApps -

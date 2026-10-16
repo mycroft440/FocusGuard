@@ -193,4 +193,40 @@ class BlockNoticeRoutingTest {
         assertThat(password.hasExtra(GenericBlockNoticeActivity.EXTRA_SHOW_USAGE_IMPACT))
             .isFalse()
     }
+
+    @Test
+    fun `the master password offer reaches only the generic notice of this resolution`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val source = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.limited")
+            putExtra(GenericBlockNoticeActivity.EXTRA_LIMIT_PASSWORD_UNLOCK, true)
+        }
+
+        val offered = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
+            offersLimitPasswordUnlock = true
+        )
+        val notOffered = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK
+        )
+        val password = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK,
+            offersLimitPasswordUnlock = true
+        )
+
+        assertThat(
+            offered.getBooleanExtra(GenericBlockNoticeActivity.EXTRA_LIMIT_PASSWORD_UNLOCK, false)
+        ).isTrue()
+        // Um pedido antigo nunca traz a oferta para uma resolução que não a fez.
+        assertThat(notOffered.hasExtra(GenericBlockNoticeActivity.EXTRA_LIMIT_PASSWORD_UNLOCK))
+            .isFalse()
+        assertThat(password.hasExtra(GenericBlockNoticeActivity.EXTRA_LIMIT_PASSWORD_UNLOCK))
+            .isFalse()
+    }
 }

@@ -104,4 +104,45 @@ class AppBlockSurfaceResolverClosureTest {
         assertThat(resolution.hasLiveOwner).isFalse()
         assertThat(resolution.allowsPasswordVisit).isFalse()
     }
+
+    @Test
+    fun `an exhausted password limit offers the master password`() {
+        assertThat(offers(BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK))
+            .isTrue()
+    }
+
+    @Test
+    fun `a time block or focus mode over the password limit keeps the app closed`() {
+        // A senha liberaria só o limite; o bloqueio por tempo (ou o Modo Foco) por cima
+        // continuaria segurando o app.
+        assertThat(
+            offers(
+                BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK,
+                timedOrUsage = true
+            )
+        ).isFalse()
+        assertThat(
+            offers(
+                BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK,
+                focusMode = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `other owners never offer the master password on the block screen`() {
+        assertThat(offers(BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION)).isFalse()
+        assertThat(offers(null)).isFalse()
+        assertThat(offers(null, timedOrUsage = true)).isFalse()
+    }
+
+    private fun offers(
+        origin: BiometricAppUnlockPolicy.BlockOrigin?,
+        timedOrUsage: Boolean = false,
+        focusMode: Boolean = false
+    ) = AppBlockSurfaceResolver.offersLimitPasswordUnlock(
+        credentialOrigin = origin,
+        timedOrUsageInterventionBlocksTarget = timedOrUsage,
+        focusModeBlocksTarget = focusMode
+    )
 }
