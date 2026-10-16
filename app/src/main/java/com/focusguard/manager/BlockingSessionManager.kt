@@ -1642,6 +1642,15 @@ class BlockingSessionManager @Inject constructor(
     }
 
     /**
+     * Aplica já a compensação de um relógio mudado à mão, sem esperar a próxima
+     * reconciliação. Para quem vai decidir pela trava de um limite gravado: a mudança
+     * só chega ao banco quando a compensação roda.
+     */
+    suspend fun syncManualClockCompensation() = withContext(Dispatchers.IO) {
+        enforcementMutex.withLock { compensateManualClockJump() }
+    }
+
+    /**
      * Desloca os prazos dos bloqueios por tempo e dos limites pelo salto manual do
      * relógio desde a última reconciliação, e grava a nova âncora. Uma
      * falha aqui não pode impedir a reconciliação: o bloqueio segue como antes.

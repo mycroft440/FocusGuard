@@ -352,6 +352,32 @@ fun AppLimitsTab(
     var showCredentialMissingAlert by remember { mutableStateOf(false) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
+    fun limitGate(limit: AppUsageLimit?): MasterCredentialPolicy.MutationGate =
+        if (limit == null) {
+            MasterCredentialPolicy.MutationGate.ALLOWED
+        } else {
+            limitMutationGate(
+                authManager = authManager,
+                hasMasterCredential = credentialManager.hasCredential(),
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                lockAfter = limit.lockAfter
+            )
+        }
+
+    fun showRefusal(gate: MasterCredentialPolicy.MutationGate) {
+        when (gate) {
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
+                showTimeLockedAlert = true
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
+                showSafetyModeAlert = true
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
+                showCredentialMissingAlert = true
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED,
+            MasterCredentialPolicy.MutationGate.ALLOWED -> Unit
+        }
+    }
+
     fun requestLimitEdit(app: UsageLimitAppUi) {
         // A search-result tap leaves the search field focused in the Activity.
         // End that input session before a modal takes over the window, so the
@@ -360,45 +386,51 @@ fun AppLimitsTab(
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
 
-        when (
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = app.lockMode,
-                lockUntilTimestamp = app.lockUntilTimestamp,
-                safetyModeEnabled = authManager.isSafetyModeEnabled(),
-                hasMasterCredential = credentialManager.hasCredential(),
-                masterCredentialVerified = false,
-                lockAfter = app.lockAfter
-            )
-        ) {
-            MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
-                showTimeLockedAlert = true
-            MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
-                showSafetyModeAlert = true
-            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
-                showCredentialMissingAlert = true
-            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
-                selectedApp = app
-                showMasterCredentialConfirm = true
+        scope.launch {
+            // A lista foi lida ao abrir a tela; a trava e o fim da regra valem como
+            // estão gravados agora (o relógio pode ter sido mudado nesse meio-tempo).
+            val stored = blockingSessionManager.currentAppLimit(db, app.packageName)
+            val current = app.withStoredLimit(stored)
+            if (current != app) {
+                apps = apps.map { if (it.packageName == current.packageName) current else it }
             }
-            MasterCredentialPolicy.MutationGate.ALLOWED -> {
-                selectedApp = app
-                showDialog = true
+            when (val gate = limitGate(stored)) {
+                MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
+                    selectedApp = current
+                    showMasterCredentialConfirm = true
+                }
+                MasterCredentialPolicy.MutationGate.ALLOWED -> {
+                    selectedApp = current
+                    showDialog = true
+                }
+                else -> showRefusal(gate)
             }
         }
     }
 
     LaunchedEffect(usageRefreshKey) {
         if (usageRefreshKey == 0 || !state.hasLoaded) return@LaunchedEffect
-        val packages = apps.map { it.packageName }
-        val refreshed = withContext(Dispatchers.IO) {
-            loadUsageToday(
+        val readFrom = apps.associateBy { it.packageName }
+        val packages = readFrom.keys
+        // Na volta à tela relê também os limites: o relógio mudado nas Configurações
+        // desloca o fim da regra e a trava gravados.
+        val (storedLimits, refreshed) = withContext(Dispatchers.IO) {
+            blockingSessionManager.syncManualClockCompensation()
+            val limits = db.appUsageLimitDao().getAllStatic()
+            limits to loadUsageToday(
                 context = context,
                 packages = packages,
-                limits = db.appUsageLimitDao().getAllStatic(),
+                limits = limits,
                 nowMillis = System.currentTimeMillis()
             )
         }
-        apps = apps.map { app -> app.copy(usageMs = refreshed[app.packageName] ?: 0L) }
+        val limitByPackage = storedLimits.associateBy { it.packageName }
+        apps = apps.map { app ->
+            // Um item salvo enquanto a releitura corria já está mais novo que ela.
+            if (readFrom[app.packageName] != app) return@map app
+            app.withStoredLimit(limitByPackage[app.packageName])
+                .copy(usageMs = refreshed[app.packageName] ?: 0L)
+        }
     }
 
     LaunchedEffect(state) {
@@ -605,6 +637,18 @@ fun AppLimitsTab(
                             return@launch
                         }
                         val limitDao = db.appUsageLimitDao()
+                        // O editor pode ter ficado aberto até a trava começar (ou até o
+                        // relógio ser mudado): só altera o que ainda pode ser alterado.
+                        val refusal = limitGate(
+                            blockingSessionManager.currentAppLimit(db, appToSave.packageName)
+                        ).takeIf { it.refusesMutation() }
+                        if (refusal != null) {
+                            withContext(Dispatchers.Main) {
+                                showDialog = false
+                                showRefusal(refusal)
+                            }
+                            return@launch
+                        }
                         var companionWebsiteCreated = false
                         val updated = if (minutes != null && minutes > 0) {
                             // AppUsageLimitMeter conta o primeiro plano a partir de
@@ -754,6 +798,67 @@ fun AppLimitsTab(
     )
 }
 
+/**
+ * O limite de app como está gravado agora, depois de aplicar a compensação de um
+ * relógio mudado à mão. A lista da tela foi lida ao abrir: decidir pela trava (ou
+ * pelo fim da regra) dela deixava editar ou remover um limite que já tinha travado.
+ */
+private suspend fun BlockingSessionManager.currentAppLimit(
+    db: com.focusguard.database.AppDatabase,
+    packageName: String
+): AppUsageLimit? = withContext(Dispatchers.IO) {
+    syncManualClockCompensation()
+    db.appUsageLimitDao().getLimitForPackage(packageName)
+}
+
+/** O mesmo que [currentAppLimit] para um limite de site ou palavra. */
+private suspend fun BlockingSessionManager.currentWebsiteLimit(
+    db: com.focusguard.database.AppDatabase,
+    normalizedRule: String
+): WebsiteUsageLimit? = withContext(Dispatchers.IO) {
+    syncManualClockCompensation()
+    db.websiteUsageLimitDao().getAllStatic()
+        .firstOrNull { WebsiteBlocker.normalizeRule(it.domain) == normalizedRule }
+}
+
+private fun UsageLimitAppUi.withStoredLimit(limit: AppUsageLimit?): UsageLimitAppUi = copy(
+    currentLimitMinutes = limit?.dailyLimitMinutes,
+    isEnabled = limit?.isEnabled ?: false,
+    lockMode = limit?.lockMode ?: "NONE",
+    lockPasswordHash = limit?.lockPasswordHash,
+    lockUntilTimestamp = limit?.lockUntilTimestamp,
+    lockAfter = limit?.lockAfter
+)
+
+private fun WebsiteLimitUi.withStoredLimit(limit: WebsiteUsageLimit): WebsiteLimitUi = copy(
+    dailyLimitMinutes = limit.dailyLimitMinutes,
+    isEnabled = limit.isEnabled,
+    lockMode = limit.lockMode,
+    lockPasswordHash = limit.lockPasswordHash,
+    lockUntilTimestamp = limit.lockUntilTimestamp,
+    lockAfter = limit.lockAfter
+)
+
+private fun limitMutationGate(
+    authManager: AuthManager,
+    hasMasterCredential: Boolean,
+    lockMode: String,
+    lockUntilTimestamp: Long?,
+    lockAfter: Long?
+): MasterCredentialPolicy.MutationGate = MasterCredentialPolicy.evaluateLimitMutation(
+    lockMode = lockMode,
+    lockUntilTimestamp = lockUntilTimestamp,
+    safetyModeEnabled = authManager.isSafetyModeEnabled(),
+    hasMasterCredential = hasMasterCredential,
+    masterCredentialVerified = false,
+    lockAfter = lockAfter
+)
+
+/** Recusa salvar ou remover; o pedido antigo de senha mestra já foi confirmado antes. */
+private fun MasterCredentialPolicy.MutationGate.refusesMutation(): Boolean =
+    this != MasterCredentialPolicy.MutationGate.ALLOWED &&
+        this != MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED
+
 private data class AppLimitSections(
     val topUsed: List<UsageLimitAppUi>,
     val social: List<UsageLimitAppUi>,
@@ -873,30 +978,60 @@ fun WebsiteLimitsTab(
     var invalidSiteInput by remember { mutableStateOf(false) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
-    fun requestSiteMutation(site: WebsiteLimitUi, promptRes: Int, action: () -> Unit) {
-        when (
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = site.lockMode,
-                lockUntilTimestamp = site.lockUntilTimestamp,
-                safetyModeEnabled = authManager.isSafetyModeEnabled(),
+    fun siteGate(limit: WebsiteUsageLimit?): MasterCredentialPolicy.MutationGate =
+        if (limit == null) {
+            MasterCredentialPolicy.MutationGate.ALLOWED
+        } else {
+            limitMutationGate(
+                authManager = authManager,
                 hasMasterCredential = credentialManager.hasCredential(),
-                masterCredentialVerified = false,
-                lockAfter = site.lockAfter
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                lockAfter = limit.lockAfter
             )
-        ) {
+        }
+
+    fun showRefusal(gate: MasterCredentialPolicy.MutationGate) {
+        when (gate) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
                 showTimeLockedAlert = true
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
                 showSafetyModeAlert = true
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
                 showCredentialMissingAlert = true
-            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
-                selectedSite = site
-                masterCredentialPromptRes = promptRes
-                pendingAction = action
-                showMasterCredentialConfirm = true
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED,
+            MasterCredentialPolicy.MutationGate.ALLOWED -> Unit
+        }
+    }
+
+    /**
+     * Decide pela trava gravada agora (não pela lista lida ao abrir a tela) e passa
+     * adiante o limite com os dados atuais.
+     */
+    fun requestSiteMutation(
+        site: WebsiteLimitUi,
+        promptRes: Int,
+        action: (WebsiteLimitUi) -> Unit
+    ) {
+        val normalized = WebsiteBlocker.normalizeRule(site.domain)
+        scope.launch {
+            val stored = blockingSessionManager.currentWebsiteLimit(db, normalized)
+            val current = stored?.let { site.withStoredLimit(it) } ?: site
+            if (current != site) {
+                sites = sites.map {
+                    if (WebsiteBlocker.normalizeRule(it.domain) == normalized) current else it
+                }
             }
-            MasterCredentialPolicy.MutationGate.ALLOWED -> action()
+            when (val gate = siteGate(stored)) {
+                MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
+                    selectedSite = current
+                    masterCredentialPromptRes = promptRes
+                    pendingAction = { action(current) }
+                    showMasterCredentialConfirm = true
+                }
+                MasterCredentialPolicy.MutationGate.ALLOWED -> action(current)
+                else -> showRefusal(gate)
+            }
         }
     }
 
@@ -913,8 +1048,8 @@ fun WebsiteLimitsTab(
             requestSiteMutation(
                 configured,
                 R.string.master_credential_required_to_change_limit
-            ) {
-                selectedSite = configured
+            ) { current ->
+                selectedSite = current
                 showEditDialog = true
             }
         }
@@ -926,7 +1061,7 @@ fun WebsiteLimitsTab(
         requestSiteMutation(
             site,
             R.string.master_credential_required_to_remove_limit
-        ) {
+        ) { _ ->
             scope.launch(Dispatchers.IO) {
                 val dao = db.websiteUsageLimitDao()
                 dao.getAllStatic()
@@ -948,9 +1083,21 @@ fun WebsiteLimitsTab(
 
     LaunchedEffect(usageRefreshKey) {
         if (usageRefreshKey == 0 || !state.hasLoaded) return@LaunchedEffect
+        val readFrom = sites.associateBy { WebsiteBlocker.normalizeRule(it.domain) }
         val rules = sites.map { it.domain }
-        val refreshed = withContext(Dispatchers.IO) { loadWebsiteUsageToday(db, rules) }
-        sites = sites.map { site -> site.copy(usageMs = refreshed[site.domain] ?: 0L) }
+        val (storedLimits, refreshed) = withContext(Dispatchers.IO) {
+            blockingSessionManager.syncManualClockCompensation()
+            db.websiteUsageLimitDao().getAllStatic() to loadWebsiteUsageToday(db, rules)
+        }
+        val limitByRule = storedLimits.associateBy { WebsiteBlocker.normalizeRule(it.domain) }
+        sites = sites.map { site ->
+            val rule = WebsiteBlocker.normalizeRule(site.domain)
+            // Um item salvo enquanto a releitura corria já está mais novo que ela.
+            if (readFrom[rule] != site) return@map site
+            val stored = limitByRule[rule]
+            (stored?.let { site.withStoredLimit(it) } ?: site)
+                .copy(usageMs = refreshed[site.domain] ?: 0L)
+        }
     }
 
     LaunchedEffect(state) {
@@ -1178,12 +1325,7 @@ fun WebsiteLimitsTab(
                     WebsiteBlocker.normalizeRule(it.domain) == clean
                 }
                 val targetAlreadyConfigured = existingSite != null
-                val effectiveLockAfter = if (existingSite != null) {
-                    existingSite.lockAfter
-                } else {
-                    lockAfter
-                }
-                val monetizedAction: () -> Unit = {
+                val saveRule: (Long?) -> Unit = { effectiveLockAfter ->
                     scope.launch(Dispatchers.IO) {
                         if (!ProtectionPermissionGate.read(context).isReady) {
                             withContext(Dispatchers.Main) { onPermissionsRequired() }
@@ -1228,12 +1370,12 @@ fun WebsiteLimitsTab(
                     }
                 }
                 val isCreatingLimit = minutes > 0 && !targetAlreadyConfigured
+                val monetizedAction: () -> Unit = { saveRule(lockAfter) }
                 if (existingSite != null) {
                     requestSiteMutation(
                         existingSite,
-                        R.string.master_credential_required_to_change_limit,
-                        monetizedAction
-                    )
+                        R.string.master_credential_required_to_change_limit
+                    ) { current -> saveRule(current.lockAfter) }
                 } else if (
                     isCreatingLimit &&
                     MonetizationPolicy.requiresExtraUsageLimitAd(
@@ -1274,6 +1416,18 @@ fun WebsiteLimitsTab(
                     val dao = db.websiteUsageLimitDao()
                     val normalizedRule = WebsiteBlocker.normalizeRule(siteToEdit.domain)
                     if (normalizedRule.isEmpty()) return@launch
+                    // O editor pode ter ficado aberto até a trava começar (ou até o
+                    // relógio ser mudado): só altera o que ainda pode ser alterado.
+                    val refusal = siteGate(
+                        blockingSessionManager.currentWebsiteLimit(db, normalizedRule)
+                    ).takeIf { it.refusesMutation() }
+                    if (refusal != null) {
+                        withContext(Dispatchers.Main) {
+                            showEditDialog = false
+                            showRefusal(refusal)
+                        }
+                        return@launch
+                    }
                     if (minutes <= 0) {
                         dao.getAllStatic()
                             .firstOrNull {
