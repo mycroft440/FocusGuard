@@ -237,6 +237,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var instantBlockCurtainMode: CurtainMode? = null
     @Volatile private var instantBlockCurtainGeneration = 0L
     private var awaitingSafeSurfaceGeneration = 0L
+    // Geração e app da tela de bloqueio de app pedida (não de site, Modo Foco ou
+    // Configurações), e a geração que já teve a tela pedida de novo na checagem final.
+    private var awaitedAppBlock: Pair<Long, String>? = null
+    private var unsafeWindowRelaunchGeneration = 0L
     private val instantBlockCurtainGenerationCounter = AtomicLong(0L)
     private var failsafeEvacuationGeneration = 0L
     private var pendingReadyWindowValidationGeneration = 0L
@@ -818,6 +822,16 @@ class BlockingAccessibilityService : AccessibilityService() {
             // conteúdo do app não chegue a aparecer.
             if (handleImmediateBlockedAppEvent(event, directPackage)) return
 
+            // A mesma entrada sem evento de janela do app: a volta pelos Recentes, a troca
+            // rápida e o foco na tela dividida chegam só como TYPE_WINDOWS_CHANGED, sem
+            // pacote. Antes, o app só era descoberto depois do motor de sites e de outras
+            // consultas ao próprio app (ocupado retomando a tela), e a cortina atrasava.
+            // O pacote lido aqui é reaproveitado abaixo, sem consultar o app de novo.
+            val windowsChangedPackage = activeAppPackageForWindowsChange(event)
+            if (windowsChangedPackage != null &&
+                blockAppInFront(windowsChangedPackage, event.eventTime)
+            ) return
+
             // Bloqueio de fontes desconhecidas (Segurança extra): fecha as telas que
             // concedem "Instalar apps desconhecidos", sem precisar de Device Owner.
             if (directPackage in settingsPackages &&
@@ -854,7 +868,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             val inspectionPackage = if (windowResolutionEvent &&
                 (directPackage.isBlank() || event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
             ) {
-                resolveEventPackageName(event)
+                windowsChangedPackage ?: resolveEventPackageName(event)
             } else {
                 directPackage
             }
@@ -1099,22 +1113,25 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun enforceCurrentForegroundFromSnapshot() {
+        if (!isBlockingSessionActive) return
+        // Uma tela de bloqueio já está a caminho: a cortina cobre a frente. Toda
+        // reconciliação (o roteador fechando um app de tempo/limite, uma liberação
+        // revogada) manda este aviso; abrir outro ciclo aqui trocava a geração da
+        // cortina, e a tela já pedida tinha de ser confirmada de novo, com outra
+        // consulta ao banco no roteador, antes de a cortina sair.
+        if (instantBlockCurtainVisible && awaitingSafeSurfaceGeneration > 0L) return
         val currentPackage = foregroundPackageName?.takeIf(String::isNotBlank) ?: return
-        if (currentPackage == packageName ||
-            currentPackage == defaultLauncherPackage ||
-            currentPackage in focusModeAllowedAppsSet
-        ) return
-
-        if (currentPackage !in blockedAppsSet ||
-            PasswordTargetAccessGrant.isPackageGranted(currentPackage)
-        ) return
-        val root = rootInActiveWindow ?: return
-        val targetStillForeground = try {
-            root.packageName?.toString() == currentPackage
-        } finally {
-            recycleSafely(root)
+        if (currentPackage !in blockedAppsSet) return
+        // Só com o app de fato na janela ativa; as demais regras (liberação por senha,
+        // Modo Foco, Configurações) são as mesmas de qualquer entrada.
+        if (activeWindowPackage() != currentPackage) return
+        // App segurado pelo Modo Foco sem o bloqueio nativo: volta ao HardBlock, como
+        // numa entrada comum, em vez de virar a tela genérica de bloqueio.
+        if (focusModeFallbackActive && currentPackage in focusModeBlockedAppsSet) {
+            redirectToFocusGuard(currentPackage)
+            return
         }
-        if (targetStillForeground) blockApp(currentPackage)
+        blockAppInFront(currentPackage)
     }
 
     private fun relinquishAccessibilityForDevelopment() {
@@ -1467,6 +1484,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                     withContext(Dispatchers.Main) {
                         if (foregroundPackageName != packageName) return@withContext
                         blockedAppsSet = blockedAppsSet + packageName
+                        // O pulso seguinte ainda vê o app na frente enquanto a tela de
+                        // bloqueio sobe: esse bloqueio já está a caminho.
+                        if (packageName == lastImmediateBlockedPackage &&
+                            instantBlockCurtainVisible &&
+                            awaitingSafeSurfaceGeneration > 0L
+                        ) return@withContext
                         blockApp(packageName)
                     }
                     sessionManager.checkAndEnforce()
@@ -1507,24 +1530,16 @@ class BlockingAccessibilityService : AccessibilityService() {
             return false
         }
 
-        val nowElapsed = SystemClock.elapsedRealtime()
         // Uma rajada de eventos do mesmo app vira um só bloqueio, mas só enquanto a
         // cortina ainda cobre a tela esperando a tela de bloqueio/senha. Sem cortina,
         // o evento é uma volta ao app (troca rápida pelos recentes) e precisa bloquear
         // de novo: antes, voltar em menos de 700 ms mostrava o app sem senha.
-        if (shouldCoalesceImmediateBlock(
-                samePackage = directPackage == lastImmediateBlockedPackage,
-                elapsedSinceLastBlock = nowElapsed - lastImmediateBlockElapsed,
-                curtainVisible = instantBlockCurtainVisible,
-                awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration
-            )
-        ) {
+        // Mesma cortina, mas a tela de bloqueio é pedida de novo: um app com tela de
+        // abertura (Splash → Main) pode ter subido a segunda tela por cima da nossa,
+        // e sem isso a checagem de janelas mandava a pessoa para a tela inicial.
+        // A Activity é singleTop e o aviso repetido da mesma geração é ignorado.
+        if (coalesceWithAwaitedBlock(directPackage, event.eventTime)) {
             foregroundPackageName = directPackage
-            // Mesma cortina, mas a tela de bloqueio é pedida de novo: um app com tela de
-            // abertura (Splash → Main) pode ter subido a segunda tela por cima da nossa,
-            // e sem isso a checagem de janelas mandava a pessoa para a tela inicial.
-            // A Activity é singleTop e o aviso repetido da mesma geração é ignorado.
-            relaunchAwaitedBlockSurface(directPackage, event.eventTime)
             return true
         }
         // O Android entrega esse aviso de qualquer janela, mesmo fora da tela. Depois da
@@ -1542,8 +1557,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             return true
         }
         foregroundPackageName = directPackage
-        lastImmediateBlockedPackage = directPackage
-        lastImmediateBlockElapsed = nowElapsed
         blockApp(directPackage, event.eventTime)
         return true
     }
@@ -1593,6 +1606,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         packageInferred) &&
                     activeWindowPackage() != packageName
                 ) return
+                if (coalesceWithAwaitedBlock(packageName, event.eventTime)) return
                 blockApp(packageName, event.eventTime)
             }
         }
@@ -1602,6 +1616,34 @@ class BlockingAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return null
         return try {
             root.packageName?.toString()
+        } finally {
+            recycleSafely(root)
+        }
+    }
+
+    /**
+     * O app cuja janela um TYPE_WINDOWS_CHANGED pôs na frente; null quando o aviso não
+     * trouxe uma janela de app ativa ou quando não há app bloqueado para conferir. A
+     * lista de janelas vem do sistema; a única consulta ao app é o pacote da janela.
+     */
+    private fun activeAppPackageForWindowsChange(event: AccessibilityEvent): String? {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return null
+        if (!isBlockingSessionActive || blockedAppsSet.isEmpty()) return null
+        val changes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            event.windowChanges
+        } else {
+            null
+        }
+        if (!BlockedWindowEventPolicy.mayBringWindowToFront(changes)) return null
+        val window = runCatching { windows }.getOrNull()
+            ?.firstOrNull { it.id == event.windowId }
+            ?: return null
+        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION ||
+            !(window.isActive || window.isFocused)
+        ) return null
+        val root = runCatching { window.root }.getOrNull() ?: return null
+        return try {
+            root.packageName?.toString()?.takeIf(String::isNotBlank)
         } finally {
             recycleSafely(root)
         }
@@ -1706,10 +1748,28 @@ class BlockingAccessibilityService : AccessibilityService() {
             )
         ) return false
         foregroundPackageName = current
-        // O evento de janela do app que chegar logo depois reaproveita esta cortina.
-        lastImmediateBlockedPackage = current
-        lastImmediateBlockElapsed = SystemClock.elapsedRealtime()
+        // O mesmo app subiu por cima da tela de bloqueio que ainda está a caminho (o
+        // toque no ícone já abriu o bloqueio antes de o app aparecer): a cortina é a
+        // mesma e a tela é pedida de novo. Um segundo ciclo trocaria a geração da
+        // cortina e a tela já pedida teria de ser confirmada outra vez.
+        if (coalesceWithAwaitedBlock(current, eventUptimeMillis)) return true
         blockApp(current, eventUptimeMillis)
+        return true
+    }
+
+    /** Reaproveita o bloqueio em andamento de [blockedPackage]; false se não há um. */
+    private fun coalesceWithAwaitedBlock(
+        blockedPackage: String,
+        eventUptimeMillis: Long
+    ): Boolean {
+        if (!shouldCoalesceImmediateBlock(
+                samePackage = blockedPackage == lastImmediateBlockedPackage,
+                elapsedSinceLastBlock = SystemClock.elapsedRealtime() - lastImmediateBlockElapsed,
+                curtainVisible = instantBlockCurtainVisible,
+                awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration
+            )
+        ) return false
+        relaunchAwaitedBlockSurface(blockedPackage, eventUptimeMillis)
         return true
     }
 
@@ -2826,6 +2886,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         packageName: String,
         eventUptimeMillis: Long = SystemClock.uptimeMillis()
     ) {
+        // Todo bloqueio fica registrado: o evento de janela do app que chegar logo
+        // depois (de qualquer caminho, inclusive o pulso do limite e a reconciliação)
+        // reaproveita esta cortina em vez de abrir um segundo ciclo.
+        lastImmediateBlockedPackage = packageName
+        lastImmediateBlockElapsed = SystemClock.elapsedRealtime()
         launchBlockNotice(
             blockedPackage = packageName,
             blockedDomain = null,
@@ -2909,6 +2974,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // existing fail-safe path when that surface cannot be presented.
         val generation = showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
         awaitingSafeSurfaceGeneration = generation
+        awaitedAppBlock = blockedPackage?.let { generation to it }
         if (shouldEvictBlockedAppBeforeNotice(blockedPackage)) {
             evictBlockedAppFromForeground()
         }
@@ -3063,12 +3129,15 @@ class BlockingAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(readyWindowValidation)
         failsafeEvacuationGeneration = 0L
         pendingReadyWindowValidationGeneration = 0L
+        // A geração vale mesmo se a cortina não puder aparecer: o aviso de pronto da
+        // tela pedida com ela ainda passa pela conferência de janelas e encerra a
+        // espera. Antes, a espera ficava presa e desligava a rede de segurança das
+        // entradas (guardMissedBlockedEntry) até o serviço reiniciar.
+        instantBlockCurtainGeneration = generation
+        instantBlockCurtainMode = mode
         armInstantBlockCurtain()
         val params = instantBlockCurtainLayoutParams ?: return
         if (!instantBlockCurtainAttached) return
-
-        instantBlockCurtainMode = mode
-        instantBlockCurtainGeneration = generation
         instantBlockCurtainMessage?.apply {
             if (messageRes == null) {
                 text = ""
@@ -3155,7 +3224,24 @@ class BlockingAccessibilityService : AccessibilityService() {
                 mainHandler.postDelayed(readyWindowValidation, SAFE_WINDOW_SETTLE_MILLIS)
             }
             CurtainSafeWindowPolicy.Decision.KEEP_AND_EVACUATE -> {
-                evictBlockedAppFromForeground()
+                // O app bloqueado subiu por cima da tela de bloqueio/senha depois de ela
+                // confirmar (um app com tela de abertura abre a segunda tela por conta
+                // própria). Ir para a tela inicial aqui perdia a senha: a pessoa tocava
+                // no app e caía na tela inicial. A tela é pedida de novo uma vez, com a
+                // mesma cortina; só se o app continuar na frente vale a tela inicial.
+                val blockedPackage = awaitedAppBlock
+                    ?.takeIf { (awaitedGeneration, _) ->
+                        awaitedGeneration == generation &&
+                            awaitingSafeSurfaceGeneration == generation &&
+                            unsafeWindowRelaunchGeneration != generation
+                    }
+                    ?.second
+                if (blockedPackage != null) {
+                    unsafeWindowRelaunchGeneration = generation
+                    relaunchAwaitedBlockSurface(blockedPackage, SystemClock.uptimeMillis())
+                } else {
+                    evictBlockedAppFromForeground()
+                }
                 mainHandler.postDelayed(
                     readyWindowValidation,
                     UNSAFE_WINDOW_RECHECK_MILLIS

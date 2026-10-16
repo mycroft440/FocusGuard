@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.OnBackPressedCallback
@@ -60,6 +61,8 @@ import kotlinx.coroutines.launch
 class GenericBlockNoticeActivity : AppCompatActivity() {
 
     private var noticeDrawn = false
+    // Se o desenho que marcou noticeDrawn foi confirmado na tela (frame commit).
+    private var drawnFrameCommitted = false
     private var activityResumed = false
     private var windowFocused = false
     private var pendingCurtainGeneration = 0L
@@ -152,8 +155,17 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         freshFrameGeneration = 0L
 
         val attemptId = ++blockAttemptId
-        scheduleUsageImpactRoute(payload, attemptId)
+        scheduleUsageImpactRoute(
+            payload = payload,
+            attemptId = attemptId,
+            knownDecision = if (sourceIntent.hasExtra(EXTRA_SHOW_USAGE_IMPACT)) {
+                sourceIntent.getBooleanExtra(EXTRA_SHOW_USAGE_IMPACT, false)
+            } else {
+                null
+            }
+        )
         noticeDrawn = false
+        drawnFrameCommitted = false
 
         setContent {
             FocusGuardTheme {
@@ -164,8 +176,9 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
             }
         }
 
-        window.decorView.doOnPreDraw {
+        val onFramePresented: (Boolean) -> Unit = { frameCommitted ->
             noticeDrawn = true
+            drawnFrameCommitted = frameCommitted
             if (
                 pendingCurtainGeneration == curtainGeneration &&
                 activityResumed &&
@@ -186,6 +199,30 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
             acknowledgePendingNoticeIfPresented()
             routeToUsageImpactIfReady()
         }
+        // Como na tela de senha: no Android 10+ o aviso sai quando o quadro foi de fato
+        // para a tela (frame commit), e o serviço solta a cortina com uma espera curta
+        // em vez dos 160 ms de quando só se sabe que o desenho começou.
+        window.decorView.doOnPreDraw {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                var presented = false
+                window.decorView.viewTreeObserver.registerFrameCommitCallback {
+                    if (!presented) {
+                        presented = true
+                        onFramePresented(true)
+                    }
+                }
+                // Reserva: sem quadro confirmado (tela parada), o aviso sai assim mesmo,
+                // sem a marca de commit, e o serviço usa a espera cheia.
+                window.decorView.postDelayed({
+                    if (!presented) {
+                        presented = true
+                        onFramePresented(false)
+                    }
+                }, FRAME_COMMIT_ACK_TIMEOUT_MILLIS)
+            } else {
+                onFramePresented(false)
+            }
+        }
         window.decorView.invalidate()
     }
 
@@ -194,7 +231,16 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
      * usage limit. Navigation waits for the curtain handshake so the impact screen
      * cannot race the instant opaque protection surface.
      */
-    private fun scheduleUsageImpactRoute(payload: NoticePayload, attemptId: Long) {
+    private fun scheduleUsageImpactRoute(
+        payload: NoticePayload,
+        attemptId: Long,
+        /**
+         * A decisão que o roteador já tomou para esta mesma tentativa. Refazer a
+         * consulta (banco e eventos de uso) competia com o primeiro quadro desta tela
+         * e atrasava a troca para o Impacto. Null: aberta sem o roteador; consulta.
+         */
+        knownDecision: Boolean?
+    ) {
         usageImpactJob?.cancel()
         usageImpactJob = null
         pendingUsageImpactAttemptId = 0L
@@ -202,6 +248,15 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 
         val packageName = payload.blockedPackage
         if (packageName.isNullOrBlank()) return
+
+        if (knownDecision != null) {
+            if (!knownDecision) return
+            pendingUsageImpactAttemptId = attemptId
+            pendingUsageImpactPackage = packageName
+            pendingUsageImpactAttemptAtMillis = payload.attemptAtMillis
+            routeToUsageImpactIfReady()
+            return
+        }
 
         usageImpactJob = lifecycleScope.launch {
             val shouldShow = UsageImpactRouter.shouldShowForBlockedApp(
@@ -257,7 +312,10 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 
         pendingCurtainGeneration = 0L
         freshFrameGeneration = 0L
-        CurtainDestinationReadyCoordinator.notifyReady(generation)
+        CurtainDestinationReadyCoordinator.notifyReady(
+            generation,
+            frameCommitted = drawnFrameCommitted
+        )
         routeToUsageImpactIfReady()
         return true
     }
@@ -296,6 +354,13 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
     }
 
     internal companion object {
+        /**
+         * Decisão do roteador sobre abrir o Impacto nesta tentativa (bloqueio por tempo
+         * ou limite sem senha). Ausente quando a tela foi aberta sem o roteador.
+         */
+        const val EXTRA_SHOW_USAGE_IMPACT = "SHOW_USAGE_IMPACT"
+        private const val FRAME_COMMIT_ACK_TIMEOUT_MILLIS = 100L
+
         /** O evento traz o tempo de uptime; o histórico de uso usa o relógio de parede. */
         fun attemptWallClockMillis(
             eventUptimeMillis: Long,

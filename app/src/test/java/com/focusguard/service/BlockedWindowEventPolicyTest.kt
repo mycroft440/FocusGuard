@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.app.usage.UsageEvents
+import android.view.accessibility.AccessibilityEvent
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -104,6 +105,43 @@ class BlockedWindowEventPolicyTest {
     @Test
     fun `no recent usage means the app is not in front`() {
         assertThat(inFront()).isFalse()
+    }
+
+    @Test
+    fun `a window that became active or focused may be an app coming back to front`() {
+        assertThat(
+            BlockedWindowEventPolicy.mayBringWindowToFront(AccessibilityEvent.WINDOWS_CHANGE_ACTIVE)
+        ).isTrue()
+        assertThat(
+            BlockedWindowEventPolicy.mayBringWindowToFront(
+                AccessibilityEvent.WINDOWS_CHANGE_FOCUSED or AccessibilityEvent.WINDOWS_CHANGE_BOUNDS
+            )
+        ).isTrue()
+        assertThat(
+            BlockedWindowEventPolicy.mayBringWindowToFront(AccessibilityEvent.WINDOWS_CHANGE_ADDED)
+        ).isTrue()
+    }
+
+    @Test
+    fun `size title or layer changes alone are not an entry`() {
+        assertThat(
+            BlockedWindowEventPolicy.mayBringWindowToFront(AccessibilityEvent.WINDOWS_CHANGE_BOUNDS)
+        ).isFalse()
+        assertThat(
+            BlockedWindowEventPolicy.mayBringWindowToFront(
+                AccessibilityEvent.WINDOWS_CHANGE_TITLE or AccessibilityEvent.WINDOWS_CHANGE_LAYER
+            )
+        ).isFalse()
+        assertThat(
+            BlockedWindowEventPolicy.mayBringWindowToFront(AccessibilityEvent.WINDOWS_CHANGE_REMOVED)
+        ).isFalse()
+    }
+
+    @Test
+    fun `without the list of changes the event is always checked`() {
+        // Antes do Android 9 o aviso não diz o que mudou; alguns fabricantes mandam zero.
+        assertThat(BlockedWindowEventPolicy.mayBringWindowToFront(null)).isTrue()
+        assertThat(BlockedWindowEventPolicy.mayBringWindowToFront(0)).isTrue()
     }
 
     private data class Event(val packageName: String, val className: String, val type: Int)
