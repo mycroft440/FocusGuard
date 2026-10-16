@@ -32,7 +32,8 @@ internal object BlockSurfaceUsage {
     )
 
     fun isSurface(packageName: String?, className: String?, ownPackage: String?): Boolean =
-        ownPackage != null && packageName == ownPackage && className in surfaceClassNames
+        ownPackage != null && packageName == ownPackage &&
+            className != null && className in surfaceClassNames
 
     fun attributedPackage(packageName: String?, className: String?, ownPackage: String?): String? =
         if (isSurface(packageName, className, ownPackage)) SURFACE_PACKAGE else packageName
