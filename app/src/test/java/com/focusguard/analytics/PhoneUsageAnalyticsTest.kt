@@ -47,6 +47,42 @@ class ScreenInteractiveSessionAccumulatorTest {
     }
 
     @Test
+    fun `screen on behind the lock screen is not usage`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+
+        // Primeiro uso: desbloqueia e usa de 1 s a 4 s.
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onKeyguardHidden(1_000L)
+        accumulator.onKeyguardShown(4_000L)
+        accumulator.onScreenNonInteractive(4_000L)
+        // Notificação acende a tela de 10 s a 17 s, sem desbloquear.
+        accumulator.onScreenInteractive(10_000L)
+        accumulator.onScreenNonInteractive(17_000L)
+        // Pega o celular às 20 s e desbloqueia às 23 s, usa até 30 s.
+        accumulator.onScreenInteractive(20_000L)
+        accumulator.onKeyguardHidden(23_000L)
+        accumulator.onScreenNonInteractive(30_000L)
+
+        assertThat(accumulator.finish(40_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 4_000L),
+            ScreenInteractiveInterval(23_000L, 30_000L)
+        ).inOrder()
+    }
+
+    @Test
+    fun `lock events without any unlock never zero the usage`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+
+        accumulator.onKeyguardShown(500L)
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onScreenNonInteractive(4_000L)
+
+        assertThat(accumulator.finish(5_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 4_000L)
+        )
+    }
+
+    @Test
     fun `non interactive event without a known start invents no usage`() {
         val accumulator = ScreenInteractiveSessionAccumulator()
 
@@ -230,6 +266,29 @@ class DailyScreenTimeResolutionTest {
 
         assertThat(resolution.totalsByDate[date("2026-01-06")]).isEqualTo(3.hours)
         assertThat(resolution.newlyMeasuredCompleteDays).isEmpty()
+    }
+
+    @Test
+    fun `estimate never counts more than the unlocked time of a bucket`() {
+        val estimate = estimateScreenTimeFromClosedBuckets(
+            buckets = listOf(
+                AggregatedScreenBucket(
+                    beginTimeMs = timestamp("2026-01-05T00:00"),
+                    endTimeMs = timestamp("2026-01-06T00:00"),
+                    interactiveTimeMs = 5.hours,
+                    unlockedTimeMs = 4.hours
+                ),
+                AggregatedScreenBucket(
+                    beginTimeMs = timestamp("2026-01-07T00:00"),
+                    endTimeMs = timestamp("2026-01-07T09:00"),
+                    interactiveTimeMs = 1.hours
+                )
+            ),
+            rangeStartMs = timestamp("2026-01-05T00:00"),
+            rangeEndMs = timestamp("2026-01-06T00:00")
+        )
+
+        assertThat(estimate).isEqualTo(4.hours)
     }
 
     @Test

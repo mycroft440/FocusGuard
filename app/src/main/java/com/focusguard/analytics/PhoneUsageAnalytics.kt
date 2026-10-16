@@ -51,50 +51,78 @@ internal data class ScreenInteractiveInterval(
 )
 
 /**
- * Reconstrói os intervalos detalhados em que a tela esteve interativa.
+ * Reconstrói os intervalos em que o celular esteve de fato em uso: tela ligada e
+ * desbloqueada.
  *
- * Eles dão o total exato de cada dia, os padrões por hora e o sono estimado. O
- * Android os mantém por poucos dias; por isso os dias encerrados ficam gravados.
+ * Tela ligada com a tela de bloqueio na frente (olhar a hora, uma notificação que
+ * acende a tela) não é uso do celular e não entra. Eles dão o total exato de cada
+ * dia, os padrões por hora e o sono estimado. O Android guarda esses eventos por
+ * poucos dias; por isso os dias encerrados ficam gravados.
+ *
+ * Sem nenhum evento de bloqueio (aparelho sem tela de bloqueio), a tela ligada
+ * conta inteira, como antes. O bloqueio só passa a valer depois do primeiro
+ * desbloqueio visto: um aparelho que avisasse só "bloqueou" ficaria com uso zero.
  */
 internal class ScreenInteractiveSessionAccumulator {
     private val completedIntervals = mutableListOf<ScreenInteractiveInterval>()
-    private var interactiveSinceMs: Long? = null
+    private var screenInteractive = false
+    private var keyguardShowing = false
+    private var keyguardHiddenObserved = false
+    private var inUseSinceMs: Long? = null
 
     var firstObservedEventTimeMs: Long? = null
         private set
 
     val activeIntervalStartTimeMs: Long?
-        get() = interactiveSinceMs
+        get() = inUseSinceMs
 
     fun onScreenInteractive(timestampMs: Long) {
         observe(timestampMs)
-        if (interactiveSinceMs == null) {
-            interactiveSinceMs = timestampMs
-        }
+        screenInteractive = true
+        openIfInUse(timestampMs)
     }
 
     fun onScreenNonInteractive(timestampMs: Long) {
         observe(timestampMs)
-        val startedAtMs = interactiveSinceMs ?: return
+        screenInteractive = false
+        close(timestampMs)
+    }
+
+    /** A tela de bloqueio apareceu: o que vem até o desbloqueio não é uso. */
+    fun onKeyguardShown(timestampMs: Long) {
+        observe(timestampMs)
+        keyguardShowing = true
+        if (keyguardHiddenObserved) close(timestampMs)
+    }
+
+    fun onKeyguardHidden(timestampMs: Long) {
+        observe(timestampMs)
+        keyguardShowing = false
+        keyguardHiddenObserved = true
+        openIfInUse(timestampMs)
+    }
+
+    fun finish(endTimeMs: Long): List<ScreenInteractiveInterval> {
+        close(endTimeMs)
+        return completedIntervals.toList()
+    }
+
+    private fun openIfInUse(timestampMs: Long) {
+        val locked = keyguardShowing && keyguardHiddenObserved
+        if (screenInteractive && !locked && inUseSinceMs == null) {
+            inUseSinceMs = timestampMs
+        }
+    }
+
+    private fun close(timestampMs: Long) {
+        val startedAtMs = inUseSinceMs ?: return
         if (timestampMs > startedAtMs) {
             completedIntervals += ScreenInteractiveInterval(
                 startTimeMs = startedAtMs,
                 endTimeMs = timestampMs
             )
         }
-        interactiveSinceMs = null
-    }
-
-    fun finish(endTimeMs: Long): List<ScreenInteractiveInterval> {
-        val startedAtMs = interactiveSinceMs
-        if (startedAtMs != null && endTimeMs > startedAtMs) {
-            completedIntervals += ScreenInteractiveInterval(
-                startTimeMs = startedAtMs,
-                endTimeMs = endTimeMs
-            )
-        }
-        interactiveSinceMs = null
-        return completedIntervals.toList()
+        inUseSinceMs = null
     }
 
     private fun observe(timestampMs: Long) {
@@ -147,8 +175,16 @@ internal fun completeDatesCoveredByDetailedEvents(
 internal data class AggregatedScreenBucket(
     val beginTimeMs: Long,
     val endTimeMs: Long,
-    val interactiveTimeMs: Long
-)
+    val interactiveTimeMs: Long,
+    /**
+     * Tempo com a tela de bloqueio fora (KEYGUARD_HIDDEN), quando o Android o registra.
+     * O uso do celular é tela ligada e desbloqueada, então nunca passa de nenhum dos dois.
+     */
+    val unlockedTimeMs: Long? = null
+) {
+    val inUseTimeMs: Long
+        get() = unlockedTimeMs?.let { minOf(it, interactiveTimeMs) } ?: interactiveTimeMs
+}
 
 /**
  * Estimativa de tela ativa em [rangeStartMs, rangeEndMs) para um dia que não tem
@@ -182,7 +218,7 @@ internal fun estimateScreenTimeFromClosedBuckets(
         if (overlapMs <= 0L) return@forEach
 
         overlapsRange = true
-        estimatedMs += bucket.interactiveTimeMs.coerceIn(0L, bucketDurationMs) *
+        estimatedMs += bucket.inUseTimeMs.coerceIn(0L, bucketDurationMs) *
             (overlapMs.toDouble() / bucketDurationMs.toDouble())
     }
     if (!overlapsRange) return null

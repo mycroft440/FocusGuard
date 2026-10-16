@@ -114,6 +114,12 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
                         UsageEvents.Event.SCREEN_NON_INTERACTIVE ->
                             accumulator.onScreenNonInteractive(event.timeStamp)
+
+                        UsageEvents.Event.KEYGUARD_SHOWN ->
+                            accumulator.onKeyguardShown(event.timeStamp)
+
+                        UsageEvents.Event.KEYGUARD_HIDDEN ->
+                            accumulator.onKeyguardHidden(event.timeStamp)
                     }
                 }
             } catch (error: Throwable) {
@@ -233,15 +239,23 @@ class AdvancedUsageAnalytics(private val context: Context) {
             return emptyList()
         }
         return try {
-            manager.queryEventStats(UsageStatsManager.INTERVAL_DAILY, startMs, endMs)
+            val stats = manager.queryEventStats(UsageStatsManager.INTERVAL_DAILY, startMs, endMs)
                 .orEmpty()
-                .asSequence()
+            // Cada balde traz um EventStats por tipo: junta tela ligada e
+            // desbloqueado do mesmo balde.
+            val unlockedByBucket = stats
+                .filter { it.eventType == UsageEvents.Event.KEYGUARD_HIDDEN }
+                .associate { (it.firstTimeStamp to it.lastTimeStamp) to it.totalTime }
+            stats.asSequence()
                 .filter { it.eventType == UsageEvents.Event.SCREEN_INTERACTIVE }
-                .map { stats ->
+                .map { interactive ->
                     AggregatedScreenBucket(
-                        beginTimeMs = stats.firstTimeStamp,
-                        endTimeMs = stats.lastTimeStamp,
-                        interactiveTimeMs = stats.totalTime
+                        beginTimeMs = interactive.firstTimeStamp,
+                        endTimeMs = interactive.lastTimeStamp,
+                        interactiveTimeMs = interactive.totalTime,
+                        unlockedTimeMs = unlockedByBucket[
+                            interactive.firstTimeStamp to interactive.lastTimeStamp
+                        ]
                     )
                 }
                 .toList()
