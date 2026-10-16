@@ -473,7 +473,8 @@ fun AppLimitsTab(
                     lockMode = limit?.lockMode ?: "NONE",
                     lockPasswordHash = limit?.lockPasswordHash,
                     lockUntilTimestamp = limit?.lockUntilTimestamp,
-                    lockAfter = limit?.lockAfter
+                    lockAfter = limit?.lockAfter,
+                    heldUntil = limit?.heldUntilNow()
                 )
             }
             val installedPackages = installedApps.mapTo(mutableSetOf()) { it.packageName }
@@ -491,7 +492,8 @@ fun AppLimitsTab(
                         lockMode = limit?.lockMode ?: "NONE",
                         lockPasswordHash = limit?.lockPasswordHash,
                         lockUntilTimestamp = limit?.lockUntilTimestamp,
-                        lockAfter = limit?.lockAfter
+                        lockAfter = limit?.lockAfter,
+                        heldUntil = limit?.heldUntilNow()
                     )
                 }
                 .toList()
@@ -509,7 +511,8 @@ fun AppLimitsTab(
                         lockMode = limit.lockMode,
                         lockPasswordHash = limit.lockPasswordHash,
                         lockUntilTimestamp = limit.lockUntilTimestamp,
-                        lockAfter = limit.lockAfter
+                        lockAfter = limit.lockAfter,
+                        heldUntil = limit.heldUntilNow()
                     )
                 }
                 .toList()
@@ -738,16 +741,18 @@ fun AppLimitsTab(
                         blockingSessionManager.checkAndEnforce()
                         // O número da lista é o mesmo que decide o bloqueio: editar
                         // não zera o uso já contado, e sem limite volta a ser o dia todo.
+                        val savedLimit = limitDao.getLimitForPackage(updated.packageName)
                         val savedUsageMillis = loadUsageToday(
                             context = context,
                             packages = listOf(updated.packageName),
-                            limits = listOfNotNull(
-                                limitDao.getLimitForPackage(updated.packageName)
-                            ),
+                            limits = listOfNotNull(savedLimit),
                             nowMillis = System.currentTimeMillis()
                         )[updated.packageName] ?: 0L
                         withContext(Dispatchers.Main) {
-                            val shown = updated.copy(usageMs = savedUsageMillis)
+                            val shown = updated.copy(
+                                usageMs = savedUsageMillis,
+                                heldUntil = savedLimit?.heldUntilNow()
+                            )
                             apps = apps.map { if (it.packageName == shown.packageName) shown else it }
                             selectedApp = shown
                             if (companionWebsiteCreated) onWebsiteLimitCreated()
@@ -827,7 +832,23 @@ private fun UsageLimitAppUi.withStoredLimit(limit: AppUsageLimit?): UsageLimitAp
     lockMode = limit?.lockMode ?: "NONE",
     lockPasswordHash = limit?.lockPasswordHash,
     lockUntilTimestamp = limit?.lockUntilTimestamp,
-    lockAfter = limit?.lockAfter
+    lockAfter = limit?.lockAfter,
+    heldUntil = limit?.heldUntilNow()
+)
+
+/** Uma regra encerrada não aparece marcada entre os atalhos. */
+private fun WebsiteLimitUi.isInForceNow(): Boolean = UsageLimitBehaviorPolicy.isInForce(
+    isEnabled = isEnabled,
+    lockMode = lockMode,
+    ruleEndMillis = lockUntilTimestamp,
+    nowMillis = System.currentTimeMillis()
+)
+
+/** Ver [UsageLimitAppUi.heldUntil]. */
+private fun AppUsageLimit.heldUntilNow(): Long? = UsageLimitPauseStateStore.heldUntil(
+    lockMode = lockMode,
+    ruleEndMillis = lockUntilTimestamp,
+    nowMillis = System.currentTimeMillis()
 )
 
 private fun WebsiteLimitUi.withStoredLimit(limit: WebsiteUsageLimit): WebsiteLimitUi = copy(
@@ -1165,7 +1186,7 @@ fun WebsiteLimitsTab(
             ) {
                 item {
                     PornographyPresetRow(
-                        selected = configuredByRule[pornographyRule]?.isEnabled == true,
+                        selected = configuredByRule[pornographyRule]?.isInForceNow() == true,
                         onToggle = { requestRuleEditor(pornographyRule) }
                     )
                 }
@@ -1211,7 +1232,7 @@ fun WebsiteLimitsTab(
                     val normalized = WebsiteBlocker.normalizeRule(website.domain)
                     WebsitePresetRow(
                         website = website,
-                        selected = configuredByRule[normalized]?.isEnabled == true,
+                        selected = configuredByRule[normalized]?.isInForceNow() == true,
                         onToggle = { requestRuleEditor(normalized) }
                     )
                 }

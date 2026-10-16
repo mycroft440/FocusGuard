@@ -307,6 +307,30 @@ class UsageLimitBehaviorPolicyTest {
         assertFalse(UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(24 * 60 + 1))
     }
 
+    @Test
+    fun `rule ends and recorded holds are reconciliation boundaries`() {
+        val now = 11_000_000L
+        val tomorrow = UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor("com.example.feed")
+
+        assertEquals(
+            listOf(now + DAY, now + HOUR),
+            UsageLimitBehaviorPolicy.stateChangeBoundaries(tomorrow, now + DAY, now + HOUR, now)
+        )
+        assertEquals(
+            listOf(now + DAY),
+            UsageLimitBehaviorPolicy.stateChangeBoundaries("TIME", now + DAY, null, now)
+        )
+        // A liberação do modo PASSWORD até a meia-noite já cai na virada do dia.
+        assertEquals(
+            emptyList<Long>(),
+            UsageLimitBehaviorPolicy.stateChangeBoundaries("PASSWORD", now + DAY, null, now)
+        )
+        assertEquals(
+            emptyList<Long>(),
+            UsageLimitBehaviorPolicy.stateChangeBoundaries(tomorrow, now - 1L, now, now)
+        )
+    }
+
     private companion object {
         const val HOUR = 60L * 60L * 1_000L
         const val DAY = 24L * HOUR
