@@ -1642,19 +1642,21 @@ class BlockingSessionManager @Inject constructor(
         try {
             val store = clockJumpAnchorStore
             val current = store.current() ?: return
-            val jump = ClockJumpPolicy.compensatedJumpMillis(store.read(), current)
+            val anchor = store.read()
+            val jump = ClockJumpPolicy.compensatedJumpMillis(anchor, current)
+            val anchorWallClock = anchor?.wallClockMillis ?: Long.MAX_VALUE
             if (jump != 0L) {
                 var sessionsShifted = 0
                 var limitsShifted = 0
                 database.withTransaction {
                     database.blockSessionDao().getAllActiveSessionsStatic().forEach { session ->
-                        ClockJumpPolicy.shiftSession(session, jump)?.let {
+                        ClockJumpPolicy.shiftSession(session, jump, anchorWallClock)?.let {
                             database.blockSessionDao().updateBlockSession(it)
                             sessionsShifted++
                         }
                     }
                     database.appUsageLimitDao().getAllStatic().forEach { limit ->
-                        ClockJumpPolicy.shiftLimit(limit, jump)?.let {
+                        ClockJumpPolicy.shiftLimit(limit, jump, anchorWallClock)?.let {
                             database.appUsageLimitDao().update(it)
                             limitsShifted++
                         }

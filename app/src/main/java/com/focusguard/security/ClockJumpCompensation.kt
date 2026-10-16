@@ -31,7 +31,9 @@ internal object ClockJumpPolicy {
     data class Anchor(
         val bootCount: Int,
         val bootWallClockMillis: Long,
-        val autoTimeEnabled: Boolean
+        val autoTimeEnabled: Boolean,
+        /** A hora de parede em que a âncora foi gravada. */
+        val wallClockMillis: Long = Long.MAX_VALUE
     )
 
     /** O salto a compensar desde [anchor]; 0 quando não há o que compensar. */
@@ -45,10 +47,18 @@ internal object ClockJumpPolicy {
         return jump
     }
 
-    /** O jejum (ou período com prazo) visto com o mesmo tempo real restante. */
-    fun shiftSession(session: BlockSession, jumpMillis: Long): BlockSession? {
+    /**
+     * O jejum (ou período com prazo) visto com o mesmo tempo real restante. Só o que
+     * já existia na última reconciliação ([anchorWallClockMillis]) está no relógio
+     * antigo; um bloqueio criado depois já nasceu com a hora nova.
+     */
+    fun shiftSession(
+        session: BlockSession,
+        jumpMillis: Long,
+        anchorWallClockMillis: Long = Long.MAX_VALUE
+    ): BlockSession? {
         val endTime = session.endTime ?: return null
-        if (!session.isActive) return null
+        if (!session.isActive || session.createdAt > anchorWallClockMillis) return null
         return session.copy(
             startTime = session.startTime.plusClamped(jumpMillis),
             endTime = endTime.plusClamped(jumpMillis),
@@ -61,7 +71,12 @@ internal object ClockJumpPolicy {
      * dias" e o momento a partir do qual ele não pode mais ser editado nem removido
      * (atrasar o relógio à mão o reabria para remoção).
      */
-    fun shiftLimit(limit: AppUsageLimit, jumpMillis: Long): AppUsageLimit? {
+    fun shiftLimit(
+        limit: AppUsageLimit,
+        jumpMillis: Long,
+        anchorWallClockMillis: Long = Long.MAX_VALUE
+    ): AppUsageLimit? {
+        if (limit.createdAt > anchorWallClockMillis) return null
         val hardenedUntil = limit.lockUntilTimestamp?.takeIf {
             limit.lockMode.equals(MasterCredentialPolicy.LOCK_MODE_TIME, ignoreCase = true)
         }
@@ -95,7 +110,8 @@ internal class ClockJumpAnchorStore(context: Context) {
         return ClockJumpPolicy.Anchor(
             bootCount = prefs.getInt(KEY_BOOT_COUNT, -1),
             bootWallClockMillis = prefs.getLong(KEY_BOOT_WALL_CLOCK, 0L),
-            autoTimeEnabled = prefs.getBoolean(KEY_AUTO_TIME, true)
+            autoTimeEnabled = prefs.getBoolean(KEY_AUTO_TIME, true),
+            wallClockMillis = prefs.getLong(KEY_WALL_CLOCK, Long.MAX_VALUE)
         )
     }
 
@@ -104,6 +120,7 @@ internal class ClockJumpAnchorStore(context: Context) {
             .putInt(KEY_BOOT_COUNT, anchor.bootCount)
             .putLong(KEY_BOOT_WALL_CLOCK, anchor.bootWallClockMillis)
             .putBoolean(KEY_AUTO_TIME, anchor.autoTimeEnabled)
+            .putLong(KEY_WALL_CLOCK, anchor.wallClockMillis)
             .apply()
     }
 
@@ -116,10 +133,12 @@ internal class ClockJumpAnchorStore(context: Context) {
         val autoTime = runCatching {
             Settings.Global.getInt(resolver, Settings.Global.AUTO_TIME, 1) != 0
         }.getOrDefault(true)
+        val wallClock = System.currentTimeMillis()
         return ClockJumpPolicy.Anchor(
             bootCount = bootCount,
-            bootWallClockMillis = System.currentTimeMillis() - SystemClock.elapsedRealtime(),
-            autoTimeEnabled = autoTime
+            bootWallClockMillis = wallClock - SystemClock.elapsedRealtime(),
+            autoTimeEnabled = autoTime,
+            wallClockMillis = wallClock
         )
     }
 
@@ -128,5 +147,6 @@ internal class ClockJumpAnchorStore(context: Context) {
         const val KEY_BOOT_COUNT = "boot_count"
         const val KEY_BOOT_WALL_CLOCK = "boot_wall_clock_millis"
         const val KEY_AUTO_TIME = "auto_time_enabled"
+        const val KEY_WALL_CLOCK = "wall_clock_millis"
     }
 }

@@ -127,6 +127,30 @@ class ClockJumpPolicyTest {
     }
 
     @Test
+    fun `blocks and limits created after the last reconciliation already use the new clock`() {
+        val anchorWallClock = 10 * day
+        val created = BlockSession(
+            startTime = 13 * day,
+            endTime = 14 * day,
+            sessionType = "TIME",
+            createdAt = 13 * day
+        )
+        val existing = created.copy(startTime = 9 * day, endTime = 11 * day, createdAt = 9 * day)
+        val limit = AppUsageLimit(
+            packageName = "com.example.feed",
+            appName = "Feed",
+            dailyLimitMinutes = 30,
+            lockAfter = 15 * day,
+            createdAt = 13 * day
+        )
+
+        assertThat(ClockJumpPolicy.shiftSession(created, 3 * day, anchorWallClock)).isNull()
+        assertThat(ClockJumpPolicy.shiftLimit(limit, 3 * day, anchorWallClock)).isNull()
+        assertThat(ClockJumpPolicy.shiftSession(existing, 3 * day, anchorWallClock)?.endTime)
+            .isEqualTo(14 * day)
+    }
+
+    @Test
     fun `huge jumps saturate instead of wrapping around`() {
         val session = BlockSession(endTime = Long.MAX_VALUE - 10L, sessionType = "TIME")
         assertThat(ClockJumpPolicy.shiftSession(session, day)?.endTime)
