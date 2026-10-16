@@ -1372,13 +1372,18 @@ fun WebsiteLimitsTab(
                         UsageLimitPauseStateStore.clearDailyStateFor(clean)
                         blockingSessionManager.checkAndEnforce()
                         withContext(Dispatchers.Main) {
+                            // Substituir um limite que já existia mantém a ativação e o
+                            // uso já contado (o DAO preserva createdAt); só um novo zera.
+                            val previousUsage = sites.firstOrNull {
+                                WebsiteBlocker.normalizeRule(it.domain) == clean
+                            }?.usageMs ?: 0L
                             sites = sites.filterNot {
                                 WebsiteBlocker.normalizeRule(it.domain) == clean
                             } + WebsiteLimitUi(
                                 domain = clean,
                                 dailyLimitMinutes = minutes,
                                 isEnabled = true,
-                                usageMs = 0L,
+                                usageMs = previousUsage,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
                                 lockUntilTimestamp = lockUntil,
