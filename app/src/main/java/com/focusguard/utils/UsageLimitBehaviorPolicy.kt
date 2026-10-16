@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import com.focusguard.R
+import com.focusguard.database.AppUsageLimit
+import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.receiver.BlockingScheduleReceiver
 import java.util.Calendar
 import java.util.Locale
@@ -48,6 +50,26 @@ object UsageLimitBehaviorPolicy {
 
     fun isRuleActive(ruleEndMillis: Long?, nowMillis: Long): Boolean =
         ruleEndMillis?.let { it > nowMillis } == true
+
+    /**
+     * O limite ainda vale: ligado e, nos dois modos diários, antes do fim da regra.
+     * Uma regra encerrada nunca mais bloqueia, então não conta como limite ativo
+     * (por exemplo, para impedir a criação da senha mestra ou aparecer entre os
+     * bloqueios em vigor).
+     */
+    fun isInForce(
+        isEnabled: Boolean,
+        lockMode: String,
+        ruleEndMillis: Long?,
+        nowMillis: Long
+    ): Boolean = isEnabled &&
+        (!isDailyBehaviorMode(lockMode) || isRuleActive(ruleEndMillis, nowMillis))
+
+    fun isInForce(limit: AppUsageLimit, nowMillis: Long): Boolean =
+        isInForce(limit.isEnabled, limit.lockMode, limit.lockUntilTimestamp, nowMillis)
+
+    fun isInForce(limit: WebsiteUsageLimit, nowMillis: Long): Boolean =
+        isInForce(limit.isEnabled, limit.lockMode, limit.lockUntilTimestamp, nowMillis)
 
     /**
      * Keeps the exact persisted deadline when an edit only changes allowance or
@@ -140,6 +162,17 @@ object UsageLimitBehaviorPolicy {
             startedPause = false
         )
     }
+
+    /**
+     * A mesma pausa com o relógio mudado à mão: o fim da regra e o fim da pausa
+     * andam juntos com o limite, então a pausa continua sendo da mesma regra e o
+     * tempo real que falta dela não muda.
+     */
+    internal fun shiftedPause(state: PauseState, shift: (Long) -> Long): PauseState =
+        state.copy(
+            ruleEndMillis = shift(state.ruleEndMillis),
+            blockedUntilMillis = shift(state.blockedUntilMillis)
+        )
 
     internal fun pauseEndDeadline(
         evaluation: PauseEvaluation,
@@ -272,6 +305,26 @@ object UsageLimitPauseStateStore {
             editor.commit()
         }
         (memoryKeys + persistedKeys).size
+    }
+
+    /**
+     * Leva a pausa em curso (e o aviso do dia) de uma regra junto com o fim dela
+     * quando o relógio é mudado à mão. Sem isso, adiantar o relógio encerrava a
+     * pausa de 30 minutos na hora, e o app ficava livre pelo resto do dia.
+     */
+    fun shiftForClockJump(lockMode: String, shift: (Long) -> Long) {
+        if (!UsageLimitBehaviorPolicy.isDailyBehaviorMode(lockMode)) return
+        val identifier = UsageLimitBehaviorPolicy.identifierFrom(lockMode)
+            .takeIf(String::isNotBlank) ?: return
+        val storageKey = safeKey(identifier)
+        synchronized(stateLock) {
+            readPauseState(storageKey)?.let { state ->
+                writePauseState(storageKey, UsageLimitBehaviorPolicy.shiftedPause(state, shift))
+            }
+            readDailyNotice(storageKey)?.let { (ruleEnd, dayKey) ->
+                writeDailyNotice(storageKey, shift(ruleEnd), dayKey)
+            }
+        }
     }
 
     fun notifyDailyBlockOnce(

@@ -73,6 +73,7 @@ import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.SecurePrefsManager
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -1323,8 +1324,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                         appLimitWaitingSessions =
                             sessionManager.limitWaitingSessions(activeSessions)
                         limitWaitingWebsiteRules = strongerSessionSites
+                        // Regras encerradas ficam de fora: nunca mais bloqueiam, e o
+                        // pulso de um segundo não precisa medir o app delas.
+                        val limitsCheckedAt = System.currentTimeMillis()
                         val activeAppLimits = database.appUsageLimitDao()
                             .getAllActiveLimitsStatic()
+                            .filter { UsageLimitBehaviorPolicy.isInForce(it, limitsCheckedAt) }
                         val limitApps = calculateExceededAppLimits(activeAppLimits)
                         // Já em IO: deixa o nome dos apps bloqueados (senha, tempo,
                         // limite) pronto para as telas de bloqueio, que não vão ao

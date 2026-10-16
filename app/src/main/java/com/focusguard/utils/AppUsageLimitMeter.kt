@@ -2,10 +2,12 @@ package com.focusguard.utils
 
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
+import android.os.SystemClock
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.security.ProtectionHierarchy
 import java.util.Calendar
 import java.util.TimeZone
+import kotlin.math.abs
 
 /**
  * Mede quanto do limite diário de cada app já foi gasto.
@@ -137,13 +139,7 @@ object AppUsageLimitMeter {
  * até agora é projetada numa cópia descartável.
  */
 internal object AppForegroundIntervalReader {
-    /** Um app aberto antes da meia-noite precisa do RESUMED do dia anterior. */
-    private const val LOOKBACK_MILLIS = 24L * 60L * 60L * 1_000L
-    private const val SETTLE_MILLIS = 5_000L
-
-    private var originMillis = Long.MIN_VALUE
-    private var committedUntilMillis = Long.MIN_VALUE
-    private var committed = ForegroundIntervalCollector()
+    private val reader = IncrementalForegroundReader()
 
     /** Null quando o Android recusou a leitura (por exemplo, sem Acesso de uso). */
     @Synchronized
@@ -154,33 +150,14 @@ internal object AppForegroundIntervalReader {
         nowMillis: Long,
         isDeviceInteractive: Boolean
     ): Map<String, List<LongRange>>? = try {
-        val origin = (dayStartMillis - LOOKBACK_MILLIS).coerceAtLeast(0L)
-        if (origin != originMillis) {
-            originMillis = origin
-            committedUntilMillis = origin
-            committed = ForegroundIntervalCollector()
-        }
-
-        val view = if (nowMillis < committedUntilMillis) {
-            // Chamador com um "agora" mais antigo que o estado confirmado (ou
-            // relógio que voltou): lê avulso, sem descartar o cache dos demais.
-            ForegroundIntervalCollector().also {
-                feed(it, usageStatsManager, origin, nowMillis)
-            }
-        } else {
-            val commitTarget = nowMillis - SETTLE_MILLIS
-            if (commitTarget > committedUntilMillis) {
-                val next = committed.copy()
-                feed(next, usageStatsManager, committedUntilMillis, commitTarget)
-                committed = next
-                committedUntilMillis = commitTarget
-            }
-            committed.copy().also {
-                feed(it, usageStatsManager, committedUntilMillis, nowMillis)
-            }
-        }
-        packages.associateWith { packageName ->
-            view.intervalsFor(packageName, nowMillis, isDeviceInteractive)
+        reader.intervals(
+            packages = packages,
+            dayStartMillis = dayStartMillis,
+            nowMillis = nowMillis,
+            isDeviceInteractive = isDeviceInteractive,
+            bootWallClockMillis = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+        ) { collector, fromMillis, untilMillis ->
+            feed(collector, usageStatsManager, fromMillis, untilMillis)
         }
     } catch (_: RuntimeException) {
         null
@@ -204,5 +181,74 @@ internal object AppForegroundIntervalReader {
                 atMillis = event.timeStamp
             )
         }
+    }
+}
+
+/**
+ * O estado incremental do [AppForegroundIntervalReader], separado da fonte dos
+ * eventos para poder ser testado fora do Android.
+ *
+ * Mudar a hora do aparelho (à mão ou pela rede) faz o Android mover todo o
+ * histórico de uso pelo mesmo tanto. O que já estava confirmado aqui ficaria na
+ * hora antiga: adiantar o relógio esticava o trecho aberto pelo salto inteiro, e
+ * atrasar deixava sem contar o uso feito até a hora alcançar o ponto confirmado.
+ * Por isso uma mudança na hora de parede do boot descarta o estado e relê o dia.
+ */
+internal class IncrementalForegroundReader {
+    private var originMillis = Long.MIN_VALUE
+    private var committedUntilMillis = Long.MIN_VALUE
+    private var committed = ForegroundIntervalCollector()
+    private var committedBootWallClockMillis: Long? = null
+
+    /**
+     * @param bootWallClockMillis hora de parede menos o tempo desde o boot; só muda
+     *   quando a hora do aparelho é trocada.
+     * @param feed entrega ao coletor os eventos em `[from, until)`.
+     */
+    fun intervals(
+        packages: Set<String>,
+        dayStartMillis: Long,
+        nowMillis: Long,
+        isDeviceInteractive: Boolean,
+        bootWallClockMillis: Long,
+        feed: (ForegroundIntervalCollector, Long, Long) -> Unit
+    ): Map<String, List<LongRange>> {
+        val origin = (dayStartMillis - LOOKBACK_MILLIS).coerceAtLeast(0L)
+        val clockChanged = committedBootWallClockMillis?.let {
+            abs(bootWallClockMillis - it) > CLOCK_CHANGE_TOLERANCE_MILLIS
+        } == true
+        if (origin != originMillis || clockChanged) {
+            originMillis = origin
+            committedUntilMillis = origin
+            committed = ForegroundIntervalCollector()
+        }
+        committedBootWallClockMillis = bootWallClockMillis
+
+        val view = if (nowMillis < committedUntilMillis) {
+            // Chamador com um "agora" mais antigo que o estado confirmado: lê avulso,
+            // sem descartar o cache dos demais.
+            ForegroundIntervalCollector().also { feed(it, origin, nowMillis) }
+        } else {
+            val commitTarget = nowMillis - SETTLE_MILLIS
+            if (commitTarget > committedUntilMillis) {
+                val next = committed.copy()
+                feed(next, committedUntilMillis, commitTarget)
+                committed = next
+                committedUntilMillis = commitTarget
+            }
+            committed.copy().also { feed(it, committedUntilMillis, nowMillis) }
+        }
+        return packages.associateWith { packageName ->
+            view.intervalsFor(packageName, nowMillis, isDeviceInteractive)
+        }
+    }
+
+    private companion object {
+        /** Um app aberto antes da meia-noite precisa do RESUMED do dia anterior. */
+        const val LOOKBACK_MILLIS = 24L * 60L * 60L * 1_000L
+        const val SETTLE_MILLIS = 5_000L
+
+        /** O mesmo limiar a partir do qual o Android move o histórico de uso. */
+        const val CLOCK_CHANGE_TOLERANCE_MILLIS = 2_000L
     }
 }
