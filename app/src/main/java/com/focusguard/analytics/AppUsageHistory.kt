@@ -243,7 +243,9 @@ internal fun resolveDailyAppUsage(
             ?.let(::eligibleOnly)
             ?: return@forEach
         byDate[date] = estimate
-        if (date <= today.minusDays(2)) toRecord[date] = estimate
+        // Gravada só quando a leitura dos eventos terminou: com ela interrompida, o
+        // dia pode ter eventos e ficaria preso a uma estimativa.
+        if (scan?.completed == true && date <= today.minusDays(2)) toRecord[date] = estimate
     }
 
     val todayUsage = if (scan != null && scan.completed) {
@@ -346,6 +348,8 @@ internal class DailyAppUsageHistoryStore(context: Context) {
 
 /** Parte Android: lê o registro, os eventos e o agregado, e grava os dias novos. */
 internal object AppUsageHistoryLoader {
+    private const val MISSING_DAYS_LOOKBACK = 7L
+
     fun load(
         context: Context,
         manager: UsageStatsManager,
@@ -363,12 +367,15 @@ internal object AppUsageHistoryLoader {
         val stored = store?.let { runCatching { it.load() }.getOrNull() }.orEmpty()
         val pastDates = dates.filter { it < today }
         val firstMissing = pastDates.filter { it !in stored }.minOrNull()
-        // Um dia antes do primeiro dia pedido: o app que já estava aberto à
-        // meia-noite precisa do evento de entrada da véspera.
-        val scanStartMs = (firstMissing ?: today).minusDays(1)
-            .atStartOfDay(zoneId)
-            .toInstant()
-            .toEpochMilli()
+        // Antes do primeiro dia pedido: o app aberto à meia-noite precisa do evento
+        // de entrada da véspera, e um dia é coberto só depois do primeiro evento
+        // lido. Com folga de uma semana, um dia inteiro de celular desligado antes
+        // dele não o faz parecer anterior à retenção do Android.
+        val scanStartMs = if (firstMissing == null) {
+            today.minusDays(1)
+        } else {
+            firstMissing.minusDays(MISSING_DAYS_LOOKBACK)
+        }.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val interactive = (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
             ?.isInteractive == true
         val scan = ForegroundEventScanner.scan(

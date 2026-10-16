@@ -74,6 +74,21 @@ class AppUsageHistoryTest {
     }
 
     @Test
+    fun `an interrupted event read never freezes an estimate`() {
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            dates = listOf(date("2026-01-05")),
+            scan = scan(first = "2026-01-07T08:00").copy(completed = false),
+            buckets = listOf(
+                AggregatedAppBucket("a", ts("2026-01-05T00:00"), ts("2026-01-06T00:00"), 1.hours)
+            )
+        )
+
+        assertThat(resolution.usage.byDate[date("2026-01-05")]).containsExactly("a", 1.hours)
+        assertThat(resolution.toRecord).isEmpty()
+    }
+
+    @Test
     fun `open bucket never enters an estimate`() {
         val estimate = estimateAppUsageFromClosedBuckets(
             buckets = listOf(

@@ -195,10 +195,11 @@ class DailyScreenTimeResolutionTest {
                 interactiveTimeMs = 9.hours
             )
         )
+        // Eventos lidos por inteiro, mas sem cobrir os dias 6 e 7 (retenção curta).
         val resolution = resolve(
             now = "2026-01-08T12:00",
             buckets = buckets,
-            eventsAvailable = false
+            eventsAvailable = true
         )
 
         assertThat(resolution.totalsByDate[date("2026-01-06")]).isEqualTo(2.hours)
@@ -206,6 +207,29 @@ class DailyScreenTimeResolutionTest {
         // Anteontem já não muda: a estimativa é gravada. Ontem ainda não.
         assertThat(resolution.newlyMeasuredCompleteDays)
             .containsExactly(date("2026-01-06"), 2.hours)
+    }
+
+    @Test
+    fun `an interrupted event read never freezes a screen time estimate`() {
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            buckets = listOf(
+                AggregatedScreenBucket(
+                    beginTimeMs = timestamp("2026-01-06T00:00"),
+                    endTimeMs = timestamp("2026-01-07T00:00"),
+                    interactiveTimeMs = 3.hours
+                ),
+                AggregatedScreenBucket(
+                    beginTimeMs = timestamp("2026-01-08T00:00"),
+                    endTimeMs = timestamp("2026-01-08T11:00"),
+                    interactiveTimeMs = 1.hours
+                )
+            ),
+            eventsAvailable = false
+        )
+
+        assertThat(resolution.totalsByDate[date("2026-01-06")]).isEqualTo(3.hours)
+        assertThat(resolution.newlyMeasuredCompleteDays).isEmpty()
     }
 
     @Test

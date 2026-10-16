@@ -259,7 +259,11 @@ internal fun resolveDailyScreenTimes(
                 // Até anteontem os baldes do dia já fecharam: a estimativa também é
                 // gravada, porque o Android ainda vai apagar esses baldes e o dia
                 // passaria a "sem dados" (ou a outra estimativa) mais tarde.
-                if (date <= today.minusDays(2)) newlyMeasured[date] = estimateMs
+                // Só com a leitura dos eventos completa: se ela falhou, o dia pode
+                // ter eventos e ficaria preso a uma estimativa.
+                if (detailedEventsAvailable && date <= today.minusDays(2)) {
+                    newlyMeasured[date] = estimateMs
+                }
             }
         }
         if (totalMs != null) totals[date] = totalMs
