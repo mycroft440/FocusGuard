@@ -329,6 +329,17 @@ class UsageLimitBehaviorPolicyTest {
             emptyList<Long>(),
             UsageLimitBehaviorPolicy.stateChangeBoundaries(tomorrow, now - 1L, now, now)
         )
+        // O início da trava também: dali em diante o limite arma a autoproteção.
+        assertEquals(
+            listOf(now + DAY, now + HOUR),
+            UsageLimitBehaviorPolicy.stateChangeBoundaries(
+                tomorrow,
+                now + DAY,
+                null,
+                now,
+                lockAfterMillis = now + HOUR
+            )
+        )
     }
 
     private companion object {

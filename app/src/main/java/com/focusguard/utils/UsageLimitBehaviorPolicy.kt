@@ -245,19 +245,22 @@ object UsageLimitBehaviorPolicy {
      * antigo "TIME", o fim de uma regra diária e o fim gravado da pausa ou do bloqueio
      * do dia. Normalmente caem na meia-noite (ou no alarme da pausa), mas depois de um
      * relógio mudado à mão ficam em qualquer hora; sem agendá-los, só a reconciliação
-     * periódica liberava o app, até 15 minutos depois.
+     * periódica liberava o app, até 15 minutos depois. O início da trava
+     * ([lockAfterMillis]) também conta: dali em diante o limite arma a autoproteção.
      */
     fun stateChangeBoundaries(
         lockMode: String,
         ruleEndMillis: Long?,
         heldUntilMillis: Long?,
-        nowMillis: Long
+        nowMillis: Long,
+        lockAfterMillis: Long? = null
     ): List<Long> {
         val ruleEndIsBoundary = lockMode.equals("TIME", ignoreCase = true) ||
             isDailyBehaviorMode(lockMode)
         return listOfNotNull(
             ruleEndMillis?.takeIf { ruleEndIsBoundary && it > nowMillis },
-            heldUntilMillis?.takeIf { it > nowMillis }
+            heldUntilMillis?.takeIf { it > nowMillis },
+            lockAfterMillis?.takeIf { it > nowMillis && (ruleEndMillis ?: Long.MAX_VALUE) > it }
         )
     }
 
