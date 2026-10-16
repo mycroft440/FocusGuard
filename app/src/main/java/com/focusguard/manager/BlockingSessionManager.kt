@@ -1497,14 +1497,10 @@ class BlockingSessionManager @Inject constructor(
                 val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
                     .filter { it.isEnabled }
                 val policyExpirations = (
-                    activeAppLimits.mapNotNull { limit ->
-                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
-                            limit.lockUntilTimestamp?.takeIf { it > now }
-                        } else null
-                    } + activeWebsiteLimits.mapNotNull { limit ->
-                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
-                            limit.lockUntilTimestamp?.takeIf { it > now }
-                        } else null
+                    activeAppLimits.flatMap { limit ->
+                        limitBoundaries(limit.lockMode, limit.lockUntilTimestamp, now)
+                    } + activeWebsiteLimits.flatMap { limit ->
+                        limitBoundaries(limit.lockMode, limit.lockUntilTimestamp, now)
                     }
                 )
                 val nextDailyReset = if (
@@ -1640,6 +1636,15 @@ class BlockingSessionManager @Inject constructor(
         }
         }
     }
+
+    /** Ver [UsageLimitBehaviorPolicy.stateChangeBoundaries]. */
+    private fun limitBoundaries(lockMode: String, ruleEndMillis: Long?, now: Long): List<Long> =
+        UsageLimitBehaviorPolicy.stateChangeBoundaries(
+            lockMode = lockMode,
+            ruleEndMillis = ruleEndMillis,
+            heldUntilMillis = UsageLimitPauseStateStore.heldUntil(lockMode, ruleEndMillis, now),
+            nowMillis = now
+        )
 
     /**
      * Aplica já a compensação de um relógio mudado à mão, sem esperar a próxima

@@ -25,6 +25,33 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * A linha do modo depois do limite ("Bloquear até amanhã • até 12/11/2026") e se a
+ * regra já acabou, a mesma para apps e sites.
+ */
+@Composable
+internal fun limitBehaviorStatus(lockMode: String, ruleEndMillis: Long?): Pair<String?, Boolean> {
+    val ruleExpired = UsageLimitBehaviorPolicy.isDailyBehaviorMode(lockMode) &&
+        ruleEndMillis?.let { it <= System.currentTimeMillis() } == true
+    val behaviorLabel = when {
+        UsageLimitBehaviorPolicy.isPauseMode(lockMode) ->
+            stringResource(R.string.limits_pause_30_option)
+        UsageLimitBehaviorPolicy.isBlockUntilTomorrowMode(lockMode) ->
+            stringResource(R.string.limits_block_tomorrow_option)
+        else -> null
+    }
+    val status = when {
+        ruleExpired -> stringResource(R.string.limits_rule_expired)
+        behaviorLabel != null && ruleEndMillis != null -> {
+            val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                .format(Date(ruleEndMillis))
+            stringResource(R.string.limits_rule_status_until, behaviorLabel, date)
+        }
+        else -> behaviorLabel
+    }
+    return status to ruleExpired
+}
+
 data class UsageLimitAppUi(
     val packageName: String,
     val appName: String,
@@ -35,7 +62,12 @@ data class UsageLimitAppUi(
     val lockPasswordHash: String?,
     val lockUntilTimestamp: Long?,
     /** A partir de quando o limite fica travado até o fim; null = limite antigo. */
-    val lockAfter: Long? = null
+    val lockAfter: Long? = null,
+    /**
+     * Até quando o limite, já esgotado, segura o app mesmo com a conta abaixo do
+     * limite (pausa em curso ou bloqueio até a meia-noite).
+     */
+    val heldUntil: Long? = null
 )
 
 /**
@@ -52,27 +84,8 @@ fun UsageLimitItem(
     isActive: Boolean,
     onClick: () -> Unit
 ) {
-    val now = System.currentTimeMillis()
-    val dailyBehavior = UsageLimitBehaviorPolicy.isDailyBehaviorMode(app.lockMode)
-    val ruleExpired = dailyBehavior &&
-        app.lockUntilTimestamp?.let { it <= now } == true
+    val (behaviorStatus, ruleExpired) = limitBehaviorStatus(app.lockMode, app.lockUntilTimestamp)
     val effectiveActive = isActive && !ruleExpired
-    val behaviorLabel = when {
-        UsageLimitBehaviorPolicy.isPauseMode(app.lockMode) ->
-            stringResource(R.string.limits_pause_30_option)
-        UsageLimitBehaviorPolicy.isBlockUntilTomorrowMode(app.lockMode) ->
-            stringResource(R.string.limits_block_tomorrow_option)
-        else -> null
-    }
-    val behaviorStatus = when {
-        ruleExpired -> stringResource(R.string.limits_rule_expired)
-        behaviorLabel != null && app.lockUntilTimestamp != null -> {
-            val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                .format(Date(app.lockUntilTimestamp))
-            stringResource(R.string.limits_rule_status_until, behaviorLabel, date)
-        }
-        else -> behaviorLabel
-    }
 
     val usageMin = app.usageMs / 60000L
     val progress = if ((app.currentLimitMinutes ?: 0) > 0) {
@@ -142,7 +155,8 @@ fun UsageLimitItem(
                     )
                     Spacer(Modifier.weight(1f))
                     val limitReached = app.currentLimitMinutes
-                        ?.let { it > 0 && usageMin >= it } == true
+                        ?.let { it > 0 && usageMin >= it } == true ||
+                        app.heldUntil?.let { it > System.currentTimeMillis() } == true
                     if (limitReached && effectiveActive) {
                         // Com o limite esgotado, "Limite próximo!" contradiz o número.
                         Text(

@@ -240,6 +240,27 @@ object UsageLimitBehaviorPolicy {
         return until.takeIf { it > nowMillis }?.let { minOf(it, ruleEnd) }
     }
 
+    /**
+     * Instantes em que um limite muda de estado sem que o uso mude: o fim do modo
+     * antigo "TIME", o fim de uma regra diária e o fim gravado da pausa ou do bloqueio
+     * do dia. Normalmente caem na meia-noite (ou no alarme da pausa), mas depois de um
+     * relógio mudado à mão ficam em qualquer hora; sem agendá-los, só a reconciliação
+     * periódica liberava o app, até 15 minutos depois.
+     */
+    fun stateChangeBoundaries(
+        lockMode: String,
+        ruleEndMillis: Long?,
+        heldUntilMillis: Long?,
+        nowMillis: Long
+    ): List<Long> {
+        val ruleEndIsBoundary = lockMode.equals("TIME", ignoreCase = true) ||
+            isDailyBehaviorMode(lockMode)
+        return listOfNotNull(
+            ruleEndMillis?.takeIf { ruleEndIsBoundary && it > nowMillis },
+            heldUntilMillis?.takeIf { it > nowMillis }
+        )
+    }
+
     internal fun pauseEndDeadline(
         evaluation: PauseEvaluation,
         nowMillis: Long

@@ -42,6 +42,8 @@ fun WebsiteLimitItem(
     onDelete: () -> Unit
 ) {
     val ruleLabel = WebsiteBlocker.displayRule(site.domain)
+    val (behaviorStatus, ruleExpired) = limitBehaviorStatus(site.lockMode, site.lockUntilTimestamp)
+    val inForce = site.isEnabled && !ruleExpired
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -86,6 +88,18 @@ fun WebsiteLimitItem(
                 } else {
                     0f
                 }
+                behaviorStatus?.let { status ->
+                    Text(
+                        text = status,
+                        color = if (ruleExpired) {
+                            DangerRed
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontSize = 10.sp,
+                        maxLines = 1
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 LinearProgressIndicator(
                     progress = progress,
@@ -98,7 +112,7 @@ fun WebsiteLimitItem(
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     stringResource(R.string.minutes_label, site.dailyLimitMinutes),
-                    color = if (site.isEnabled) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (inForce) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
@@ -108,7 +122,7 @@ fun WebsiteLimitItem(
                             imageVector = if (site.lockMode == "PASSWORD") Icons.Default.Lock else Icons.Default.Security,
                             contentDescription = null,
                             modifier = Modifier.size(12.dp),
-                            tint = if (site.isEnabled) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (inForce) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.width(8.dp))
                     }
