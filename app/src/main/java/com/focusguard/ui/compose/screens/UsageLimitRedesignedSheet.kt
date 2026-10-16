@@ -114,6 +114,11 @@ private fun numericInputTransformation(maxLength: Int): InputTransformation =
 private val DailyMinutesInputTransformation = numericInputTransformation(maxLength = 4)
 private val RuleDurationInputTransformation = numericInputTransformation(maxLength = 3)
 
+/** Um dia não tem mais que isso: acima, o "limite" nunca seria alcançado. */
+private const val MAX_DAILY_LIMIT_MINUTES = 24 * 60
+
+private fun isValidDailyMinutes(minutes: Int): Boolean = minutes in 1..MAX_DAILY_LIMIT_MINUTES
+
 /**
  * Parses the small numeric text-field values without allocating a String on
  * every IME edit. Both fields are capped to at most four characters.
@@ -241,7 +246,7 @@ fun AppLimitRedesignedSheet(
             calculatedRuleEndMillis = calculatedRuleEnd
         )
     }
-    val canSave = detailsDraft.minutes > 0 &&
+    val canSave = isValidDailyMinutes(detailsDraft.minutes) &&
         detailsDraft.duration > 0 &&
         ruleEnd != null
 
@@ -437,7 +442,7 @@ private fun AppLimitDetailsScreen(
     // only invalidates this parent when form validity actually changes.
     val canAdvance by remember(dailyMinutesState, durationAmountState) {
         derivedStateOf {
-            parsePositiveInt(dailyMinutesState.text) > 0 &&
+            isValidDailyMinutes(parsePositiveInt(dailyMinutesState.text)) &&
                 parsePositiveInt(durationAmountState.text) > 0
         }
     }
@@ -602,9 +607,13 @@ private fun AppLimitDetailsScreen(
 
 @Composable
 private fun DailyMinutesEditor(dailyMinutesState: TextFieldState) {
+    val exceedsDay by remember(dailyMinutesState) {
+        derivedStateOf { parsePositiveInt(dailyMinutesState.text) > MAX_DAILY_LIMIT_MINUTES }
+    }
     OutlinedTextField(
         state = dailyMinutesState,
         label = { Text(stringResource(R.string.limits_daily_max_minutes_label)) },
+        isError = exceedsDay,
         lineLimits = TextFieldLineLimits.SingleLine,
         inputTransformation = DailyMinutesInputTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -624,6 +633,14 @@ private fun DailyMinutesEditor(dailyMinutesState: TextFieldState) {
             unfocusedTextColor = TextPrimary
         )
     )
+    if (exceedsDay) {
+        Text(
+            stringResource(R.string.protection_daily_limit_invalid),
+            color = DangerRed,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
     Spacer(Modifier.height(12.dp))
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),

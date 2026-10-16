@@ -185,4 +185,43 @@ class UsageLimitBehaviorPolicyTest {
             UsageLimitBehaviorPolicy.pauseEndDeadline(evaluation, now)
         )
     }
+
+    @Test
+    fun `a daily rule past its end is no longer in force`() {
+        val now = 8_000_000L
+        val pause = UsageLimitBehaviorPolicy.pauseModeFor("com.example.feed")
+        val tomorrow = UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor("com.example.feed")
+
+        assertTrue(UsageLimitBehaviorPolicy.isInForce(true, pause, now + 1L, now))
+        assertFalse(UsageLimitBehaviorPolicy.isInForce(true, pause, now, now))
+        assertFalse(UsageLimitBehaviorPolicy.isInForce(true, tomorrow, now - 1L, now))
+        assertFalse(UsageLimitBehaviorPolicy.isInForce(false, tomorrow, now + 1L, now))
+        // O modo antigo sem fim de regra vale enquanto estiver ligado.
+        assertTrue(UsageLimitBehaviorPolicy.isInForce(true, "NONE", null, now))
+    }
+
+    @Test
+    fun `a pause moves with its rule when the clock is changed by hand`() {
+        val state = UsageLimitBehaviorPolicy.PauseState(
+            ruleEndMillis = 50_000_000L,
+            dayKey = 2026240L,
+            blockedUntilMillis = 9_000_000L
+        )
+        val jump = 2L * 60L * 60L * 1_000L
+
+        val shifted = UsageLimitBehaviorPolicy.shiftedPause(state) { it + jump }
+
+        assertEquals(50_000_000L + jump, shifted.ruleEndMillis)
+        assertEquals(9_000_000L + jump, shifted.blockedUntilMillis)
+        assertEquals(state.dayKey, shifted.dayKey)
+        // Adiantado o relógio pelo mesmo tanto, a pausa ainda segura o app.
+        val evaluation = UsageLimitBehaviorPolicy.evaluatePause(
+            previous = shifted,
+            ruleEndMillis = shifted.ruleEndMillis,
+            nowMillis = 8_000_000L + jump,
+            dayKey = state.dayKey
+        )
+        assertTrue(evaluation.shouldBlock)
+        assertFalse(evaluation.startedPause)
+    }
 }

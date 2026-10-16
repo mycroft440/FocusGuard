@@ -40,7 +40,9 @@ import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.UsageLimitForegroundPolicy
+import com.focusguard.utils.UsageLimitPauseStateStore
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -239,8 +241,12 @@ class BlockingSessionManager @Inject constructor(
             buildSessionEntries(session)
         }.distinctBy { it.identifier }
 
+        // Uma regra já encerrada continua na tela de limites como "encerrada", mas
+        // não está mais segurando nada.
         val appLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
-        val websiteLimits = database.websiteUsageLimitDao().getAllStatic().filter { it.isEnabled }
+            .filter { UsageLimitBehaviorPolicy.isInForce(it, now) }
+        val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
+            .filter { UsageLimitBehaviorPolicy.isInForce(it, now) }
         val limitEntries = appLimits.map { limit ->
             BlockOverview.Entry(
                 identifier = limit.packageName,
@@ -1647,7 +1653,7 @@ class BlockingSessionManager @Inject constructor(
             val anchorWallClock = anchor?.wallClockMillis ?: Long.MAX_VALUE
             if (jump != 0L) {
                 var sessionsShifted = 0
-                var limitsShifted = 0
+                val shiftedLimitModes = mutableListOf<String>()
                 database.withTransaction {
                     database.blockSessionDao().getAllActiveSessionsStatic().forEach { session ->
                         ClockJumpPolicy.shiftSession(session, jump, anchorWallClock)?.let {
@@ -1658,10 +1664,17 @@ class BlockingSessionManager @Inject constructor(
                     database.appUsageLimitDao().getAllStatic().forEach { limit ->
                         ClockJumpPolicy.shiftLimit(limit, jump, anchorWallClock)?.let {
                             database.appUsageLimitDao().update(it)
-                            limitsShifted++
+                            shiftedLimitModes += limit.lockMode
                         }
                     }
                 }
+                // Só depois de o banco aceitar: a pausa acompanha o fim da regra gravado.
+                shiftedLimitModes.forEach { lockMode ->
+                    UsageLimitPauseStateStore.shiftForClockJump(lockMode) {
+                        ClockJumpPolicy.shifted(it, jump)
+                    }
+                }
+                val limitsShifted = shiftedLimitModes.size
                 FocusGuardLogger.log(
                     "BlockingSessionManager",
                     "Relógio mudado à mão em ${jump / 1000L}s: $sessionsShifted bloqueio(s) " +

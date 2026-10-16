@@ -606,8 +606,9 @@ fun AppLimitsTab(
                         val limitDao = db.appUsageLimitDao()
                         var companionWebsiteCreated = false
                         val updated = if (minutes != null && minutes > 0) {
-                            // AppUsageLimitMeter conta o primeiro plano a partir
-                            // de createdAt, então salvar zera a conta do dia aqui.
+                            // AppUsageLimitMeter conta o primeiro plano a partir de
+                            // createdAt: um limite novo começa do zero aqui, e a edição
+                            // mantém a ativação original (o DAO preserva createdAt).
                             val activationTime = System.currentTimeMillis()
                             limitDao.insert(
                                 AppUsageLimit(
@@ -666,7 +667,6 @@ fun AppLimitsTab(
                             appToSave.copy(
                                 currentLimitMinutes = minutes,
                                 isEnabled = enabled,
-                                usageMs = 0L,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
                                 lockUntilTimestamp = lockUntil,
@@ -676,18 +676,32 @@ fun AppLimitsTab(
                             limitDao.getAllStatic()
                                 .firstOrNull { it.packageName == appToSave.packageName }
                                 ?.let { limitDao.delete(it) }
+                            // Sem limite não sobra trava: a de um limite removido
+                            // faria o próximo toque no app abrir o aviso de travado.
                             appToSave.copy(
                                 currentLimitMinutes = null,
                                 isEnabled = false,
                                 lockMode = "NONE",
                                 lockPasswordHash = null,
-                                lockUntilTimestamp = null
+                                lockUntilTimestamp = null,
+                                lockAfter = null
                             )
                         }
                         blockingSessionManager.checkAndEnforce()
+                        // O número da lista é o mesmo que decide o bloqueio: editar
+                        // não zera o uso já contado, e sem limite volta a ser o dia todo.
+                        val savedUsageMillis = loadUsageToday(
+                            context = context,
+                            packages = listOf(updated.packageName),
+                            limits = listOfNotNull(
+                                limitDao.getLimitForPackage(updated.packageName)
+                            ),
+                            nowMillis = System.currentTimeMillis()
+                        )[updated.packageName] ?: 0L
                         withContext(Dispatchers.Main) {
-                            apps = apps.map { if (it.packageName == updated.packageName) updated else it }
-                            selectedApp = updated
+                            val shown = updated.copy(usageMs = savedUsageMillis)
+                            apps = apps.map { if (it.packageName == shown.packageName) shown else it }
+                            selectedApp = shown
                             if (companionWebsiteCreated) onWebsiteLimitCreated()
                             showDialog = false
                         }

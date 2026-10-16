@@ -3,6 +3,7 @@ package com.focusguard.security
 import android.content.Context
 import androidx.room.withTransaction
 import com.focusguard.database.AppDatabase
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -58,9 +59,14 @@ class MasterCredentialConfigurationManager @Inject constructor(
 
     private suspend fun evaluateConfigurationGate(): MasterCredentialPolicy.ConfigurationGate {
         val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+        val now = System.currentTimeMillis()
+        // Uma regra que já chegou ao fim não segura mais nada: não pode travar a
+        // senha mestra para sempre só por continuar na lista.
         val hasActiveUsageLimit =
-            database.appUsageLimitDao().getAllActiveLimitsStatic().isNotEmpty() ||
-                database.websiteUsageLimitDao().getAllStatic().any { it.isEnabled }
+            database.appUsageLimitDao().getAllActiveLimitsStatic()
+                .any { UsageLimitBehaviorPolicy.isInForce(it, now) } ||
+                database.websiteUsageLimitDao().getAllStatic()
+                    .any { UsageLimitBehaviorPolicy.isInForce(it, now) }
 
         return MasterCredentialPolicy.evaluateCredentialConfiguration(
             activeSessions = activeSessions,

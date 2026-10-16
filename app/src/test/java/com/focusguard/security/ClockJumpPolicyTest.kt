@@ -122,8 +122,47 @@ class ClockJumpPolicyTest {
         assertThat(shifted?.lockUntilTimestamp).isEqualTo(20 * day)
         assertThat(shifted?.lockAfter).isEqualTo(13 * day)
         assertThat(
-            ClockJumpPolicy.shiftLimit(limit.copy(lockAfter = null), day)
+            ClockJumpPolicy.shiftLimit(limit.copy(lockAfter = null), day)?.lockAfter
         ).isNull()
+    }
+
+    @Test
+    fun `a daily rule keeps its real end so it cannot be ended early and removed`() {
+        val limit = AppUsageLimit(
+            packageName = "com.example.feed",
+            appName = "Feed",
+            dailyLimitMinutes = 30,
+            lockMode = "BLOCK_UNTIL_TOMORROW:com.example.feed",
+            lockUntilTimestamp = 20 * day,
+            lockAfter = 12 * day,
+            createdAt = 10 * day
+        )
+
+        val shifted = ClockJumpPolicy.shiftLimit(limit, 30 * day)
+
+        assertThat(shifted?.lockUntilTimestamp).isEqualTo(50 * day)
+        assertThat(shifted?.lockAfter).isEqualTo(42 * day)
+        assertThat(
+            ClockJumpPolicy.shiftLimit(
+                limit.copy(lockMode = "PAUSE_30:com.example.feed"),
+                -day
+            )?.lockUntilTimestamp
+        ).isEqualTo(19 * day)
+    }
+
+    @Test
+    fun `the activation moves with the usage history`() {
+        // Criado hoje às 9 h: atrasar o relógio para antes disso zerava o uso contado.
+        val limit = AppUsageLimit(
+            packageName = "com.example.feed",
+            appName = "Feed",
+            dailyLimitMinutes = 30,
+            createdAt = 10 * day + 9 * hour
+        )
+
+        assertThat(ClockJumpPolicy.shiftLimit(limit, -3 * hour)?.createdAt)
+            .isEqualTo(10 * day + 6 * hour)
+        assertThat(ClockJumpPolicy.shiftLimit(limit, 0L)).isNull()
     }
 
     @Test

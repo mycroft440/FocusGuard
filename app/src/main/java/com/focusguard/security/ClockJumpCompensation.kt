@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 import kotlin.math.abs
 
 /**
@@ -15,9 +16,9 @@ import kotlin.math.abs
  * relógio voltando depois. O relógio desde o boot (elapsedRealtime) não muda com a
  * data; a diferença entre os dois, o "boot no relógio de parede", só muda quando a
  * data é trocada. Um salto dessa diferença no mesmo boot desloca os prazos dos
- * bloqueios por tempo (fim, janela de cancelamento) e dos limites (fim do "sem senha
- * por vários dias", trava de edição) pelo mesmo tanto: o tempo real que falta
- * continua o mesmo, para a frente e para trás.
+ * bloqueios por tempo (fim, janela de cancelamento) e dos limites (fim da regra,
+ * trava de edição, ativação e a pausa de 30 minutos em curso) pelo mesmo tanto: o
+ * tempo real que falta continua o mesmo, para a frente e para trás.
  *
  * O ajuste da rede com a hora automática ligada (antes e agora) é a hora certa e não
  * é compensado; isso também cobre o aparelho que liga com a hora errada e é
@@ -67,27 +68,35 @@ internal object ClockJumpPolicy {
     }
 
     /**
-     * O limite com os mesmos prazos em tempo real: o fim do "sem senha por vários
-     * dias" e o momento a partir do qual ele não pode mais ser editado nem removido
-     * (atrasar o relógio à mão o reabria para remoção).
+     * O limite com os mesmos prazos em tempo real: o fim da regra (o "sem senha por
+     * vários dias" e a duração escolhida para os modos diários), o momento a partir
+     * do qual ele não pode mais ser editado nem removido (atrasar o relógio à mão o
+     * reabria para remoção) e a ativação.
+     *
+     * Adiantar o relógio além do fim de uma regra diária a dava por encerrada, e uma
+     * regra encerrada pode ser removida. A ativação acompanha o histórico de uso, que
+     * o Android move pelo mesmo tanto: sem isso, atrasar o relógio para antes dela
+     * zerava o uso contado do dia.
      */
     fun shiftLimit(
         limit: AppUsageLimit,
         jumpMillis: Long,
         anchorWallClockMillis: Long = Long.MAX_VALUE
     ): AppUsageLimit? {
-        if (limit.createdAt > anchorWallClockMillis) return null
-        val hardenedUntil = limit.lockUntilTimestamp?.takeIf {
-            limit.lockMode.equals(MasterCredentialPolicy.LOCK_MODE_TIME, ignoreCase = true)
+        if (jumpMillis == 0L || limit.createdAt > anchorWallClockMillis) return null
+        val ruleEnd = limit.lockUntilTimestamp?.takeIf {
+            limit.lockMode.equals(MasterCredentialPolicy.LOCK_MODE_TIME, ignoreCase = true) ||
+                UsageLimitBehaviorPolicy.isDailyBehaviorMode(limit.lockMode)
         }
-        val lockAfter = limit.lockAfter
-        if (hardenedUntil == null && lockAfter == null) return null
         return limit.copy(
-            lockUntilTimestamp = hardenedUntil?.plusClamped(jumpMillis)
-                ?: limit.lockUntilTimestamp,
-            lockAfter = lockAfter?.plusClamped(jumpMillis)
+            createdAt = limit.createdAt.plusClamped(jumpMillis),
+            lockUntilTimestamp = ruleEnd?.plusClamped(jumpMillis) ?: limit.lockUntilTimestamp,
+            lockAfter = limit.lockAfter?.plusClamped(jumpMillis)
         )
     }
+
+    /** [valueMillis] deslocado pelo salto, saturando nos extremos. */
+    fun shifted(valueMillis: Long, jumpMillis: Long): Long = valueMillis.plusClamped(jumpMillis)
 
     private fun Long.plusClamped(delta: Long): Long {
         val result = this + delta

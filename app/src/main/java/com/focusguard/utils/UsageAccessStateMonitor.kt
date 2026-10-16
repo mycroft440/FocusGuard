@@ -145,10 +145,12 @@ object UsageAccessStateMonitor {
                 // list changes from several screens and a stale count would either
                 // warn about nothing or stay silent when it matters.
                 val enabledAppLimits = runCatching {
+                    val now = System.currentTimeMillis()
                     AppDatabase.getDatabase(context)
                         .appUsageLimitDao()
                         .getAllActiveLimitsStatic()
-                        .size
+                        // Uma regra encerrada não depende mais da medição.
+                        .count { UsageLimitBehaviorPolicy.isInForce(it, now) }
                 }.getOrElse { error ->
                     if (isGenerationActive(generation)) {
                         FocusGuardLogger.logError(
