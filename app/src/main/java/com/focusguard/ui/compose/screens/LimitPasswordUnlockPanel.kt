@@ -119,7 +119,7 @@ internal fun LimitPasswordUnlockPanel(
         onDispose { biometricHandle?.cancel() }
     }
 
-    fun finish(result: BlockingSessionManager.LimitUnlockResult, typed: Boolean) {
+    fun handleResult(result: BlockingSessionManager.LimitUnlockResult, typed: Boolean) {
         when (limitPasswordOutcome(result)) {
             LimitPasswordOutcome.OPEN_APP -> {
                 if (typed) TargetCredentialThrottle.recordSuccess(LIMIT_PASSWORD_THROTTLE_KEY)
@@ -153,7 +153,7 @@ internal fun LimitPasswordUnlockPanel(
             try {
                 // Confere a senha (fora da thread principal) e libera o limite até a
                 // meia-noite numa operação só, já com a reconciliação feita.
-                finish(
+                handleResult(
                     sessionManager.unlockPasswordProtectedLimit(
                         password = typed,
                         blockedPackage = blockedPackage,
@@ -194,7 +194,7 @@ internal fun LimitPasswordUnlockPanel(
                             )
                         }
                         if (stillAllowed) {
-                            finish(
+                            handleResult(
                                 sessionManager.unlockLimitWithVerifiedIdentity(
                                     blockedPackage = blockedPackage,
                                     blockedDomain = null

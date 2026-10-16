@@ -1107,6 +1107,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Uma cortina na tela é um bloqueio já em andamento: não abre outro ciclo.
         if (!isBlockingSessionActive || instantBlockCurtainVisible) return
         val current = activeWindowPackage().orEmpty()
+        // App segurado pelo Modo Foco sem o bloqueio nativo (ex.: o Modo Foco começou
+        // com a tela apagada): volta ao HardBlock ao desbloquear, como numa entrada.
+        if (focusModeFallbackActive && current in focusModeBlockedAppsSet &&
+            current != packageName
+        ) {
+            redirectToFocusGuard(current)
+            return
+        }
         if (blockAppInFront(current)) {
             FocusGuardLogger.log("A11y", "App bloqueado $current na frente: bloqueado de novo")
         }
