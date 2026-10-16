@@ -13,19 +13,24 @@ internal class AppAccessAccumulator(
     private data class ForegroundSession(
         val packageName: String,
         var activityClassName: String?,
-        val eligible: Boolean
+        val eligible: Boolean,
+        val startedAtMs: Long
     )
 
     private val completedAccesses = linkedMapOf<String, Int>()
     private var foregroundSession: ForegroundSession? = null
     private var hasPendingExit = false
 
-    fun onActivityResumed(packageName: String?, activityClassName: String?) {
+    fun onActivityResumed(
+        packageName: String?,
+        activityClassName: String?,
+        timestampMs: Long = 0L
+    ) {
         val resumedPackage = packageName?.takeIf(String::isNotBlank) ?: return
         val current = foregroundSession
 
         if (current == null) {
-            foregroundSession = newSession(resumedPackage, activityClassName)
+            foregroundSession = newSession(resumedPackage, activityClassName, timestampMs)
             hasPendingExit = false
             return
         }
@@ -39,7 +44,22 @@ internal class AppAccessAccumulator(
         }
 
         completeCurrentSession()
-        foregroundSession = newSession(resumedPackage, activityClassName)
+        foregroundSession = newSession(resumedPackage, activityClassName, timestampMs)
+    }
+
+    /**
+     * Uma tela de bloqueio assumiu a frente. O app que acabou de entrar e já deu
+     * lugar a ela foi interceptado na entrada: não conta como acesso. Um app que
+     * estava em uso há mais tempo (um limite que esgotou no meio do uso) conta.
+     */
+    fun onBlockSurfaceShown(timestampMs: Long) {
+        val current = foregroundSession
+        val intercepted = current != null &&
+            current.startedAtMs > 0L &&
+            timestampMs - current.startedAtMs in 0..BlockSurfaceUsage.INTERCEPTED_ENTRY_MILLIS
+        if (!intercepted) completeCurrentSession()
+        foregroundSession = null
+        hasPendingExit = false
     }
 
     fun onActivityPaused(packageName: String?, activityClassName: String?) {
@@ -72,12 +92,16 @@ internal class AppAccessAccumulator(
         return completedAccesses.toMap()
     }
 
-    private fun newSession(packageName: String, activityClassName: String?) =
-        ForegroundSession(
-            packageName = packageName,
-            activityClassName = activityClassName,
-            eligible = isEligibleApp(packageName)
-        )
+    private fun newSession(
+        packageName: String,
+        activityClassName: String?,
+        timestampMs: Long
+    ) = ForegroundSession(
+        packageName = packageName,
+        activityClassName = activityClassName,
+        eligible = isEligibleApp(packageName),
+        startedAtMs = timestampMs
+    )
 
     private fun completeCurrentSession() {
         val completed = foregroundSession

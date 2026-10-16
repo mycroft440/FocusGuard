@@ -484,7 +484,8 @@ private suspend fun loadUsageImpact(
             nowMs = now,
             isDeviceInteractive =
                 (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
-                    ?.isInteractive == true
+                    ?.isInteractive == true,
+            ownPackage = context.packageName
         )
     }
     val label = runCatching {

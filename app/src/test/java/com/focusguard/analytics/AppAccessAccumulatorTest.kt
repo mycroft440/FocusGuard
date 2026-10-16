@@ -92,6 +92,28 @@ class AppAccessAccumulatorTest {
         assertThat(counter.finish()).containsExactly(APP_A, 1)
     }
 
+    @Test
+    fun `app intercepted right at its entry is not an access`() {
+        val counter = counter()
+
+        counter.onActivityResumed(APP_A, "MainActivity", timestampMs = 10_000L)
+        counter.onBlockSurfaceShown(timestampMs = 10_400L)
+        counter.onActivityResumed(APP_B, "MainActivity", timestampMs = 20_000L)
+        counter.onActivityPaused(APP_B, "MainActivity")
+
+        assertThat(counter.finish()).containsExactly(APP_B, 1)
+    }
+
+    @Test
+    fun `app in use that hits its limit still counts as an access`() {
+        val counter = counter()
+
+        counter.onActivityResumed(APP_A, "MainActivity", timestampMs = 10_000L)
+        counter.onBlockSurfaceShown(timestampMs = 10_000L + 20 * 60_000L)
+
+        assertThat(counter.finish()).containsExactly(APP_A, 1)
+    }
+
     private fun counter() = AppAccessAccumulator { true }
 
     private companion object {

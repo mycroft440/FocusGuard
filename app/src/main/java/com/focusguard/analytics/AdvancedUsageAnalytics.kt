@@ -345,18 +345,31 @@ class AdvancedUsageAnalytics(private val context: Context) {
         try {
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
+                // As telas de bloqueio do HardBlock não são um acesso ao app.
+                val surface = BlockSurfaceUsage.isSurface(
+                    event.packageName,
+                    event.className,
+                    context.packageName
+                )
                 when (event.eventType) {
                     UsageEvents.Event.ACTIVITY_RESUMED ->
-                        accessAccumulator.onActivityResumed(
-                            packageName = event.packageName,
-                            activityClassName = event.className
-                        )
+                        if (surface) {
+                            accessAccumulator.onBlockSurfaceShown(event.timeStamp)
+                        } else {
+                            accessAccumulator.onActivityResumed(
+                                packageName = event.packageName,
+                                activityClassName = event.className,
+                                timestampMs = event.timeStamp
+                            )
+                        }
 
                     UsageEvents.Event.ACTIVITY_PAUSED ->
-                        accessAccumulator.onActivityPaused(
-                            packageName = event.packageName,
-                            activityClassName = event.className
-                        )
+                        if (!surface) {
+                            accessAccumulator.onActivityPaused(
+                                packageName = event.packageName,
+                                activityClassName = event.className
+                            )
+                        }
 
                     UsageEvents.Event.SCREEN_NON_INTERACTIVE,
                     UsageEvents.Event.KEYGUARD_SHOWN ->

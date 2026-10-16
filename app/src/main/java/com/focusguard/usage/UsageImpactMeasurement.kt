@@ -91,7 +91,8 @@ internal object UsageImpactMeasurement {
         activationMs: Long,
         windowMs: Long,
         nowMs: Long,
-        isDeviceInteractive: Boolean
+        isDeviceInteractive: Boolean,
+        ownPackage: String
     ): Result {
         val beforeStartMs = activationMs - windowMs
         val afterEndMs = (activationMs + windowMs).coerceAtMost(nowMs)
@@ -100,7 +101,8 @@ internal object UsageImpactMeasurement {
             startMs = (beforeStartMs - LOOKBACK_MILLIS).coerceAtLeast(0L),
             endMs = afterEndMs,
             // Com o fim no passado, um app aberto nesse instante seguia aberto até ele.
-            isDeviceInteractive = afterEndMs < nowMs || isDeviceInteractive
+            isDeviceInteractive = afterEndMs < nowMs || isDeviceInteractive,
+            ownPackage = ownPackage
         )
         scan?.let {
             fromIntervals(

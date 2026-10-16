@@ -30,7 +30,9 @@ internal object ForegroundEventScanner {
         manager: UsageStatsManager,
         startMs: Long,
         endMs: Long,
-        isDeviceInteractive: Boolean
+        isDeviceInteractive: Boolean,
+        /** Pacote do HardBlock: as telas de bloqueio dele não contam como uso do app. */
+        ownPackage: String? = null
     ): ForegroundEventScan? {
         if (endMs <= startMs) return null
         val events = try {
@@ -53,7 +55,11 @@ internal object ForegroundEventScanner {
                 lastEventTimeMs = maxOf(lastEventTimeMs, event.timeStamp)
                 collector.onUsageEvent(
                     eventType = event.eventType,
-                    packageName = event.packageName,
+                    packageName = BlockSurfaceUsage.attributedPackage(
+                        event.packageName,
+                        event.className,
+                        ownPackage
+                    ),
                     activityClassName = event.className,
                     atMillis = event.timeStamp
                 )
@@ -365,7 +371,13 @@ internal object AppUsageHistoryLoader {
             .toEpochMilli()
         val interactive = (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
             ?.isInteractive == true
-        val scan = ForegroundEventScanner.scan(manager, scanStartMs, nowMs, interactive)
+        val scan = ForegroundEventScanner.scan(
+            manager = manager,
+            startMs = scanStartMs,
+            endMs = nowMs,
+            isDeviceInteractive = interactive,
+            ownPackage = context.packageName
+        )
 
         val resolution = resolveDailyAppUsage(
             dates = pastDates,
