@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.activity.OnBackPressedCallback
@@ -53,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     private var windowFocused = false
     private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
+    // Se o quadro que confirmou a volta do Modo Foco foi de fato para a tela.
+    private var curtainFrameCommitted = false
     private val focusModeReturnNonce = mutableLongStateOf(0L)
     private val pomodoroNavigationNonce = mutableLongStateOf(0L)
 
@@ -243,15 +246,39 @@ class MainActivity : AppCompatActivity() {
         if (generation <= 0L) return
         pendingCurtainGeneration = generation
         freshFrameGeneration = 0L
+        curtainFrameCommitted = false
         if (acknowledgePendingCurtainIfPresented()) return
-        window.decorView.doOnPreDraw {
+        val onFramePresented: (Boolean) -> Unit = { frameCommitted ->
             contentDrawn = true
             if (pendingCurtainGeneration == generation &&
                 activityResumed && window.decorView.isShown
             ) {
                 freshFrameGeneration = generation
+                curtainFrameCommitted = frameCommitted
             }
             acknowledgePendingCurtainIfPresented()
+        }
+        // Como nas telas de bloqueio: no Android 10+ o aviso sai com o quadro já na
+        // tela (frame commit) e a cortina da volta do Modo Foco sai após uma espera
+        // curta, não os 160 ms de quando só se sabe que o desenho começou.
+        window.decorView.doOnPreDraw {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                var presented = false
+                window.decorView.viewTreeObserver.registerFrameCommitCallback {
+                    if (!presented) {
+                        presented = true
+                        onFramePresented(true)
+                    }
+                }
+                window.decorView.postDelayed({
+                    if (!presented) {
+                        presented = true
+                        onFramePresented(false)
+                    }
+                }, CURTAIN_FRAME_COMMIT_TIMEOUT_MILLIS)
+            } else {
+                onFramePresented(false)
+            }
         }
         window.decorView.invalidate()
     }
@@ -268,14 +295,17 @@ class MainActivity : AppCompatActivity() {
             windowFocused = windowFocused
         ) == SafeSurfaceReadinessPolicy.Decision.ACK_NOW
         if (!ready) return false
+        val frameCommitted = curtainFrameCommitted &&
+            freshFrameGeneration == generation
         pendingCurtainGeneration = 0L
         freshFrameGeneration = 0L
-        notifyCurtainReady(generation)
+        curtainFrameCommitted = false
+        notifyCurtainReady(generation, frameCommitted)
         return true
     }
 
-    private fun notifyCurtainReady(generation: Long) {
-        CurtainDestinationReadyCoordinator.notifyReady(generation)
+    private fun notifyCurtainReady(generation: Long, frameCommitted: Boolean) {
+        CurtainDestinationReadyCoordinator.notifyReady(generation, frameCommitted)
     }
 
     private fun observeFocusModeVisualState() {
@@ -320,5 +350,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_OPEN_POMODORO = "com.focusguard.extra.OPEN_POMODORO"
+        private const val CURTAIN_FRAME_COMMIT_TIMEOUT_MILLIS = 100L
     }
 }

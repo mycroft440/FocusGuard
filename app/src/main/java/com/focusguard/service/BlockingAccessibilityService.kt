@@ -829,6 +829,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             // O pacote lido aqui é reaproveitado abaixo, sem consultar o app de novo.
             val windowsChangedPackage = activeAppPackageForWindowsChange(event)
             if (windowsChangedPackage != null &&
+                // O mesmo filtro do caminho por TYPE_WINDOWS_CHANGED de antes: o eco
+                // atrasado de um app liberado por senha que acabou de sair (com prova
+                // do uso de que outro app está na frente) não é entrada. Uma volta de
+                // verdade ainda é pega pelo aviso de janela do app ou pela rede de
+                // segurança das entradas, que não aceitam esse eco.
+                !PasswordTargetAccessGrant.shouldSuppressPostExitWindow(windowsChangedPackage) &&
                 blockAppInFront(windowsChangedPackage, event.eventTime)
             ) return
 
@@ -1107,6 +1113,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Uma cortina na tela é um bloqueio já em andamento: não abre outro ciclo.
         if (!isBlockingSessionActive || instantBlockCurtainVisible) return
         val current = activeWindowPackage().orEmpty()
+        // App segurado pelo Modo Foco sem o bloqueio nativo (ex.: o Modo Foco começou
+        // com a tela apagada): volta ao HardBlock ao desbloquear, como numa entrada.
+        if (focusModeFallbackActive && current in focusModeBlockedAppsSet &&
+            current != packageName
+        ) {
+            redirectToFocusGuard(current)
+            return
+        }
         if (blockAppInFront(current)) {
             FocusGuardLogger.log("A11y", "App bloqueado $current na frente: bloqueado de novo")
         }
