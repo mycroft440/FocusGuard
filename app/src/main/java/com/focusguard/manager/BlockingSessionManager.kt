@@ -26,6 +26,8 @@ import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.BlockTargetPolicy
+import com.focusguard.security.ClockJumpAnchorStore
+import com.focusguard.security.ClockJumpPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
@@ -513,6 +515,7 @@ class BlockingSessionManager @Inject constructor(
         }
     )
     private val enforcementMutex = Mutex()
+    private val clockJumpAnchorStore by lazy { ClockJumpAnchorStore(context) }
     private val statePreferences = context.getSharedPreferences(
         STATE_PREFERENCES,
         Context.MODE_PRIVATE
@@ -1433,6 +1436,9 @@ class BlockingSessionManager @Inject constructor(
     private suspend fun checkAndEnforceOrThrow() {
         withContext(Dispatchers.IO) {
             enforcementMutex.withLock {
+                // Antes de qualquer sessão ser dada como vencida: um relógio adiantado à
+                // mão não encerra o jejum (ver ClockJumpPolicy).
+                compensateManualClockJump()
                 val now = System.currentTimeMillis()
                 val focusModeSession = FocusModeStore.readSession(context)
                     ?.takeIf { it.isActive(now) }
@@ -1624,6 +1630,51 @@ class BlockingSessionManager @Inject constructor(
                     )
                 )
         }
+        }
+    }
+
+    /**
+     * Desloca os prazos dos bloqueios por tempo e dos limites pelo salto manual do
+     * relógio desde a última reconciliação, e grava a nova âncora. Uma
+     * falha aqui não pode impedir a reconciliação: o bloqueio segue como antes.
+     */
+    private suspend fun compensateManualClockJump() {
+        try {
+            val store = clockJumpAnchorStore
+            val current = store.current() ?: return
+            val jump = ClockJumpPolicy.compensatedJumpMillis(store.read(), current)
+            if (jump != 0L) {
+                var sessionsShifted = 0
+                var limitsShifted = 0
+                database.withTransaction {
+                    database.blockSessionDao().getAllActiveSessionsStatic().forEach { session ->
+                        ClockJumpPolicy.shiftSession(session, jump)?.let {
+                            database.blockSessionDao().updateBlockSession(it)
+                            sessionsShifted++
+                        }
+                    }
+                    database.appUsageLimitDao().getAllStatic().forEach { limit ->
+                        ClockJumpPolicy.shiftLimit(limit, jump)?.let {
+                            database.appUsageLimitDao().update(it)
+                            limitsShifted++
+                        }
+                    }
+                }
+                FocusGuardLogger.log(
+                    "BlockingSessionManager",
+                    "Relógio mudado à mão em ${jump / 1000L}s: $sessionsShifted bloqueio(s) " +
+                        "e $limitsShifted limite(s) mantêm o tempo real restante"
+                )
+            }
+            store.save(current)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Falha ao compensar mudança manual do relógio",
+                error
+            )
         }
     }
 
