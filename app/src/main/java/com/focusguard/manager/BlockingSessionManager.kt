@@ -535,8 +535,9 @@ class BlockingSessionManager @Inject constructor(
 
     /**
      * Desinstalar só pode ser impedido por uma proteção sem saída antecipada por
-     * senha. Sessões PASSWORD e limites PASSWORD ficam deliberadamente fora:
-     * neles a própria senha mestra é a saída autorizada.
+     * senha: o jejum e um limite travado até o fim da regra. Sessões PASSWORD e
+     * limites PASSWORD ficam deliberadamente fora: neles a própria senha mestra é a
+     * saída autorizada.
      */
     val isUninstallBlockedByTimeFlow: Flow<Boolean> = combine(
         activeSessionsFlow,
@@ -553,17 +554,9 @@ class BlockingSessionManager @Inject constructor(
                     nowMillis = now
                 )
         } || appLimits.any { limit ->
-            limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
-                lockMode = limit.lockMode,
-                lockUntilTimestamp = limit.lockUntilTimestamp,
-                nowMillis = now
-            )
+            MasterCredentialPolicy.isLimitCommitmentActive(limit, now)
         } || websiteLimits.any { limit ->
-            limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
-                lockMode = limit.lockMode,
-                lockUntilTimestamp = limit.lockUntilTimestamp,
-                nowMillis = now
-            )
+            MasterCredentialPolicy.isLimitCommitmentActive(limit, now)
         }
     }
 
@@ -1496,11 +1489,27 @@ class BlockingSessionManager @Inject constructor(
 
                 val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
                     .filter { it.isEnabled }
+                // Um limite travado até o fim da regra é um compromisso como o jejum.
+                val activeLimitCommitment =
+                    activeAppLimits.any { MasterCredentialPolicy.isLimitCommitmentActive(it, now) } ||
+                        activeWebsiteLimits.any {
+                            MasterCredentialPolicy.isLimitCommitmentActive(it, now)
+                        }
                 val policyExpirations = (
                     activeAppLimits.flatMap { limit ->
-                        limitBoundaries(limit.lockMode, limit.lockUntilTimestamp, now)
+                        limitBoundaries(
+                            limit.lockMode,
+                            limit.lockUntilTimestamp,
+                            limit.lockAfter,
+                            now
+                        )
                     } + activeWebsiteLimits.flatMap { limit ->
-                        limitBoundaries(limit.lockMode, limit.lockUntilTimestamp, now)
+                        limitBoundaries(
+                            limit.lockMode,
+                            limit.lockUntilTimestamp,
+                            limit.lockAfter,
+                            now
+                        )
                     }
                 )
                 val nextDailyReset = if (
@@ -1600,7 +1609,7 @@ class BlockingSessionManager @Inject constructor(
                     hasBlockedSites = sitesToBlock.isNotEmpty(),
                     adultFilterEnabled = false,
                     focusModeActive = focusModeSession != null
-                ) || activeTimeCommitment
+                ) || activeTimeCommitment || activeLimitCommitment
                 if (selfProtectionRequired) {
                     // Persist before DevicePolicyManager/broadcast work. The
                     // AccessibilityService can be recreated between any two of
@@ -1638,13 +1647,18 @@ class BlockingSessionManager @Inject constructor(
     }
 
     /** Ver [UsageLimitBehaviorPolicy.stateChangeBoundaries]. */
-    private fun limitBoundaries(lockMode: String, ruleEndMillis: Long?, now: Long): List<Long> =
-        UsageLimitBehaviorPolicy.stateChangeBoundaries(
-            lockMode = lockMode,
-            ruleEndMillis = ruleEndMillis,
-            heldUntilMillis = UsageLimitPauseStateStore.heldUntil(lockMode, ruleEndMillis, now),
-            nowMillis = now
-        )
+    private fun limitBoundaries(
+        lockMode: String,
+        ruleEndMillis: Long?,
+        lockAfter: Long?,
+        now: Long
+    ): List<Long> = UsageLimitBehaviorPolicy.stateChangeBoundaries(
+        lockMode = lockMode,
+        ruleEndMillis = ruleEndMillis,
+        heldUntilMillis = UsageLimitPauseStateStore.heldUntil(lockMode, ruleEndMillis, now),
+        nowMillis = now,
+        lockAfterMillis = lockAfter
+    )
 
     /**
      * Aplica já a compensação de um relógio mudado à mão, sem esperar a próxima

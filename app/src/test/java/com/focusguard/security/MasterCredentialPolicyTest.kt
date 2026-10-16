@@ -230,4 +230,51 @@ class MasterCredentialPolicyTest {
         assertThat(MasterCredentialPolicy.blocksUninstall("PASSWORD")).isFalse()
         assertThat(MasterCredentialPolicy.blocksUninstall("POMODORO")).isFalse()
     }
+
+    @Test
+    fun `a locked daily limit is a commitment until its rule ends`() {
+        val hour = 3_600_000L
+        val createdAt = 1_000L * hour
+        val limit = AppUsageLimit(
+            packageName = "com.example.feed",
+            appName = "Feed",
+            dailyLimitMinutes = 30,
+            lockMode = "BLOCK_UNTIL_TOMORROW:com.example.feed",
+            lockUntilTimestamp = createdAt + 30L * 24L * hour,
+            lockAfter = createdAt + 48L * hour,
+            createdAt = createdAt
+        )
+
+        // Dentro das 48 h ainda pode ser removido: não segura nada além do próprio limite.
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(limit, createdAt + hour)
+        ).isFalse()
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(limit, createdAt + 49L * hour)
+        ).isTrue()
+        // Acabada a regra, ou com o limite desligado, não há mais compromisso.
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(limit, createdAt + 31L * 24L * hour)
+        ).isFalse()
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(
+                limit.copy(isEnabled = false),
+                createdAt + 49L * hour
+            )
+        ).isFalse()
+        // Sem fim de regra (limites antigos) a trava das 48 h não vira compromisso.
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(
+                limit.copy(lockMode = "NONE", lockUntilTimestamp = null),
+                createdAt + 49L * hour
+            )
+        ).isFalse()
+        // O modo antigo "TIME" continua valendo até o prazo dele.
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(
+                limit.copy(lockMode = "TIME", lockAfter = null),
+                createdAt + hour
+            )
+        ).isTrue()
+    }
 }

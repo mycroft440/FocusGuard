@@ -2,6 +2,7 @@ package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
+import com.focusguard.database.WebsiteUsageLimit
 
 /**
  * Central policy for irreversible protection and the master credential boundary.
@@ -17,7 +18,8 @@ import com.focusguard.database.BlockSession
  *     out before its end is the optional cancel window chosen at creation (48 h by
  *     default); once it passes, the block cannot be undone.
  *  2. A time-hardened usage limit and Safety Mode cannot be mutated before their
- *     own protection rules permit it.
+ *     own protection rules permit it. While a limit is locked that way it is also
+ *     a commitment like the fast: it arms self-protection and refuses uninstall.
  */
 object MasterCredentialPolicy {
 
@@ -153,6 +155,48 @@ object MasterCredentialPolicy {
         } else {
             createdAtMillis
         }
+
+    /**
+     * Limite sem volta agora: o modo antigo "TIME" dentro do prazo ou, nos limites
+     * atuais, travado entre o fim da janela das 48 h (ou a criação, com ela desligada)
+     * e o fim da regra. Como o jejum, arma a autoproteção e impede desinstalar: sem
+     * isso, desligar a acessibilidade, revogar o Acesso de uso ou desinstalar o app
+     * desfazia um limite que não podia mais ser removido.
+     */
+    fun isLimitCommitmentActive(
+        isEnabled: Boolean,
+        lockMode: String,
+        lockUntilTimestamp: Long?,
+        lockAfter: Long?,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = isEnabled && (
+        isTimeHardened(lockMode, lockUntilTimestamp, nowMillis) ||
+            // Sem fim de regra não há "até": um limite assim nunca vira compromisso.
+            (lockUntilTimestamp != null &&
+                isLimitLockedAfterCancelWindow(lockAfter, lockUntilTimestamp, nowMillis))
+        )
+
+    fun isLimitCommitmentActive(
+        limit: AppUsageLimit,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = isLimitCommitmentActive(
+        isEnabled = limit.isEnabled,
+        lockMode = limit.lockMode,
+        lockUntilTimestamp = limit.lockUntilTimestamp,
+        lockAfter = limit.lockAfter,
+        nowMillis = nowMillis
+    )
+
+    fun isLimitCommitmentActive(
+        limit: WebsiteUsageLimit,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = isLimitCommitmentActive(
+        isEnabled = limit.isEnabled,
+        lockMode = limit.lockMode,
+        lockUntilTimestamp = limit.lockUntilTimestamp,
+        lockAfter = limit.lockAfter,
+        nowMillis = nowMillis
+    )
 
     fun isTimeHardened(
         lockMode: String,
