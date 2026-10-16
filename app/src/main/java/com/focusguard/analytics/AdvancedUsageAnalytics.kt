@@ -179,7 +179,10 @@ class AdvancedUsageAnalytics(private val context: Context) {
             zoneId = zoneId,
             storedCompleteDays = storedCompleteDays,
             completeDatesCoveredByEvents = completePeriodDates,
-            detailedEventsAvailable = eventLoopCompleted,
+            // Os eventos de tela ligada/desligada só existem a partir do Android 9.
+            // Antes disso, nenhum intervalo não quer dizer zero de uso: é sem dados.
+            detailedEventsAvailable = eventLoopCompleted &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.P,
             detailedIntervals = detailedIntervals,
             aggregatedBuckets = queryAggregatedScreenBuckets(
                 manager = manager,
