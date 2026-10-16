@@ -255,7 +255,7 @@ internal fun WebsiteUsageLimitEditorSheet(
         )
     }
     val canSave = targetValid &&
-        detailsDraft.minutes > 0 &&
+        UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(detailsDraft.minutes) &&
         detailsDraft.duration > 0 &&
         ruleEnd != null
 
@@ -449,7 +449,9 @@ private fun WebsiteLimitDetailsScreen(
 
     val minutes = dailyMinutes.toIntOrNull() ?: 0
     val duration = durationAmount.toIntOrNull() ?: 0
-    val canAdvance = targetValid && minutes > 0 && duration > 0
+    val canAdvance = targetValid &&
+        UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(minutes) &&
+        duration > 0
     val configuration = LocalConfiguration.current
     val currentLocale = configuration.locales[0]
     val formattedCurrentRuleEnd = remember(editMode, currentRuleEnd, nowMillis, currentLocale) {
@@ -641,6 +643,7 @@ private fun WebsiteDailyMinutesEditor(
     value: String,
     onValueChange: (String) -> Unit
 ) {
+    val exceedsDay = (value.toIntOrNull() ?: 0) > UsageLimitBehaviorPolicy.MAX_DAILY_LIMIT_MINUTES
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -654,8 +657,17 @@ private fun WebsiteDailyMinutesEditor(
         ),
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
+        isError = exceedsDay,
         colors = websiteLimitFieldColors()
     )
+    if (exceedsDay) {
+        Text(
+            stringResource(R.string.protection_daily_limit_invalid),
+            color = DangerRed,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
     Spacer(Modifier.height(12.dp))
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),

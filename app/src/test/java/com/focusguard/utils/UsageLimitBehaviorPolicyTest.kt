@@ -224,4 +224,91 @@ class UsageLimitBehaviorPolicyTest {
         assertTrue(evaluation.shouldBlock)
         assertFalse(evaluation.startedPause)
     }
+
+    @Test
+    fun `an exhausted day is recorded once with the next midnight`() {
+        val now = 9_000_000L
+        val ruleEnd = now + 10L * DAY
+        val recorded = UsageLimitBehaviorPolicy.dailyBlockToRecord(
+            previous = null,
+            ruleEndMillis = ruleEnd,
+            nowMillis = now,
+            dayKey = 2026240L
+        )
+
+        assertNotNull(recorded)
+        assertTrue(recorded!!.blockedUntilMillis!! in (now + 1L)..(now + DAY))
+        assertEquals(
+            null,
+            UsageLimitBehaviorPolicy.dailyBlockToRecord(recorded, ruleEnd, now + 1_000L, 2026240L)
+        )
+        // Registro antigo, só do aviso: ganha o fim do bloqueio sem repetir o aviso.
+        val legacy = recorded.copy(blockedUntilMillis = null)
+        assertNotNull(
+            UsageLimitBehaviorPolicy.dailyBlockToRecord(legacy, ruleEnd, now, 2026240L)
+                ?.blockedUntilMillis
+        )
+        // Um bloqueio já levado para a frente pelo relógio mudado não encurta.
+        val shifted = recorded.copy(dayKey = 2026239L, blockedUntilMillis = now + 5L * DAY)
+        assertEquals(
+            now + 5L * DAY,
+            UsageLimitBehaviorPolicy.dailyBlockToRecord(shifted, ruleEnd, now, 2026240L)
+                ?.blockedUntilMillis
+        )
+    }
+
+    @Test
+    fun `an exhausted rule keeps holding even when the count goes back to zero`() {
+        val now = 10_000_000L
+        val ruleEnd = now + 10L * DAY
+        val tomorrow = UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor("com.example.feed")
+        val pause = UsageLimitBehaviorPolicy.pauseModeFor("com.example.feed")
+        val daily = UsageLimitBehaviorPolicy.DailyBlockState(ruleEnd, 2026240L, now + HOUR)
+        val pauseState = UsageLimitBehaviorPolicy.PauseState(ruleEnd, 2026239L, now + 60_000L)
+
+        assertEquals(
+            now + HOUR,
+            UsageLimitBehaviorPolicy.heldUntil(null, daily, tomorrow, ruleEnd, now)
+        )
+        // A pausa em curso vale até o fim mesmo depois da virada do dia.
+        assertEquals(
+            now + 60_000L,
+            UsageLimitBehaviorPolicy.heldUntil(pauseState, null, pause, ruleEnd, now)
+        )
+        // Outra regra, bloqueio vencido ou regra encerrada não seguram nada.
+        assertEquals(
+            null,
+            UsageLimitBehaviorPolicy.heldUntil(null, daily, tomorrow, ruleEnd + 1L, now)
+        )
+        assertEquals(
+            null,
+            UsageLimitBehaviorPolicy.heldUntil(null, daily, tomorrow, ruleEnd, now + HOUR)
+        )
+        assertEquals(null, UsageLimitBehaviorPolicy.heldUntil(null, daily, "NONE", ruleEnd, now))
+        // Nunca passa do fim da própria regra.
+        val endsSoon = now + 30L * 60_000L
+        assertEquals(
+            endsSoon,
+            UsageLimitBehaviorPolicy.heldUntil(
+                null,
+                daily.copy(ruleEndMillis = endsSoon),
+                tomorrow,
+                endsSoon,
+                now
+            )
+        )
+    }
+
+    @Test
+    fun `daily allowance accepts up to a full day`() {
+        assertTrue(UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(1))
+        assertTrue(UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(24 * 60))
+        assertFalse(UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(0))
+        assertFalse(UsageLimitBehaviorPolicy.isValidDailyLimitMinutes(24 * 60 + 1))
+    }
+
+    private companion object {
+        const val HOUR = 60L * 60L * 1_000L
+        const val DAY = 24L * HOUR
+    }
 }

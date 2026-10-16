@@ -47,9 +47,11 @@ object UsageImpactRouter {
             val mode = limit.lockMode.trim().uppercase()
             if (mode == "PASSWORD" || mode == "WARNING") return@withContext false
 
+            // Sem medição (Acesso de uso revogado) a conta é zero, mas uma regra que já
+            // se esgotou hoje continua segurando o app até o fim da pausa ou do dia.
             val usedMillis = BlockingSessionManager.getInstance(appContext)
                 .appLimitUsageMillis(listOf(limit), now)[packageName]
-                ?: return@withContext false
+                ?: 0L
 
             val blocked = shouldRouteConfiguredAppLimit(
                 limit = limit,

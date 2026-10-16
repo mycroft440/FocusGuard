@@ -212,6 +212,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var activeAppLimitsByPackage:
         Map<String, com.focusguard.database.AppUsageLimit> = emptyMap()
     @Volatile private var hasActiveAppLimits = false
+    /** O aviso de limites sem medição vai ao log uma vez por perda do Acesso de uso. */
+    @Volatile private var appLimitMeasurementLossLogged = false
     @Volatile private var lastEnforcementFingerprint: String? = null
 
     private var lastLoadTime = 0L
@@ -1435,45 +1437,50 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun calculateExceededAppLimits(
         limits: List<com.focusguard.database.AppUsageLimit>
     ): Set<String> {
-        val manager = usageStatsManager ?: return emptySet()
         if (limits.isEmpty()) return emptySet()
+        val manager = usageStatsManager
 
-        // Without Usage Access, queryAndAggregateUsageStats returns an empty map and
-        // every limit below reads as "0 minutes used" — indistinguishable from a
-        // limit that is genuinely satisfied. Enforcement stops with nothing in the
-        // logs to say why, so record it explicitly. UsageAccessStateMonitor turns
-        // the same condition into a user-visible warning.
-        if (UsageAccessPausePolicy.measurementIsUnavailable(
+        // Without Usage Access every limit below reads as "0 minutes used" —
+        // indistinguishable from a limit that is genuinely satisfied. Record it once
+        // per loss (the pulse runs every second); UsageAccessStateMonitor turns the
+        // same condition into a user-visible warning. A rule that was already
+        // exhausted keeps holding its pause or its block until midnight anyway.
+        val measurementUnavailable = manager == null ||
+            UsageAccessPausePolicy.measurementIsUnavailable(
                 usageAccessGranted = PermissionUtils.isUsageAccessEnabled(this),
                 enabledAppLimitCount = limits.size
             )
-        ) {
+        if (measurementUnavailable && !appLimitMeasurementLossLogged) {
             FocusGuardLogger.log(
                 "A11y",
                 "Acesso de uso revogado: ${limits.size} limite(s) de app sem medicao"
             )
-            return emptySet()
         }
+        appLimitMeasurementLossLogged = measurementUnavailable
 
         val now = System.currentTimeMillis()
         // Só primeiro plano real conta, e só enquanto nenhuma camada acima do
         // limite (período agendado, jejum) segura o app.
-        val usedMillisByPackage = AppUsageLimitMeter.usedMillisByPackage(
-            usageStatsManager = manager,
-            limits = limits,
-            waitingSessions = appLimitWaitingSessions,
-            nowMillis = now,
-            isDeviceInteractive = powerManager?.isInteractive == true
-        )
+        val usedMillisByPackage = if (measurementUnavailable || manager == null) {
+            emptyMap()
+        } else {
+            AppUsageLimitMeter.usedMillisByPackage(
+                usageStatsManager = manager,
+                limits = limits,
+                waitingSessions = appLimitWaitingSessions,
+                nowMillis = now,
+                isDeviceInteractive = powerManager?.isInteractive == true
+            )
+        }
 
         return limits.filter { limit ->
-            UsageLimitForegroundPolicy.usedMinutes(usedMillisByPackage[limit.packageName] ?: 0L) >=
-                limit.dailyLimitMinutes &&
-                limit.preventOpeningAfterLimit &&
-                WebsiteUsageLimitPolicy.isBlockingModeActive(
-                    limit.lockMode,
-                    limit.lockUntilTimestamp,
-                    now
+            limit.preventOpeningAfterLimit &&
+                WebsiteUsageLimitPolicy.shouldBlock(
+                    usedMillis = usedMillisByPackage[limit.packageName] ?: 0L,
+                    dailyLimitMinutes = limit.dailyLimitMinutes,
+                    lockMode = limit.lockMode,
+                    lockUntilTimestamp = limit.lockUntilTimestamp,
+                    nowMillis = now
                 )
         }.mapTo(mutableSetOf()) { it.packageName }
     }

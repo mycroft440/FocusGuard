@@ -54,6 +54,7 @@ import com.focusguard.ui.compose.components.limits.WebsiteLimitItem
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.UsageLimitBehaviorPolicy
+import com.focusguard.utils.UsageLimitPauseStateStore
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -687,6 +688,9 @@ fun AppLimitsTab(
                                 lockAfter = null
                             )
                         }
+                        // Um limite com mais minutos (ou criado de novo) não herda o
+                        // "esgotado" de hoje; se ainda estiver esgotado, volta a valer já.
+                        UsageLimitPauseStateStore.clearDailyStateFor(appToSave.packageName)
                         blockingSessionManager.checkAndEnforce()
                         // O número da lista é o mesmo que decide o bloqueio: editar
                         // não zera o uso já contado, e sem limite volta a ser o dia todo.
@@ -930,6 +934,7 @@ fun WebsiteLimitsTab(
                         WebsiteBlocker.normalizeRule(it.domain) == normalized
                     }
                     ?.let { dao.delete(it) }
+                UsageLimitPauseStateStore.clearDailyStateFor(normalized)
                 blockingSessionManager.checkAndEnforce()
                 withContext(Dispatchers.Main) {
                     sites = sites.filterNot {
@@ -1201,6 +1206,7 @@ fun WebsiteLimitsTab(
                                 lockAfter = effectiveLockAfter
                             )
                         )
+                        UsageLimitPauseStateStore.clearDailyStateFor(clean)
                         blockingSessionManager.checkAndEnforce()
                         withContext(Dispatchers.Main) {
                             sites = sites.filterNot {
@@ -1274,6 +1280,7 @@ fun WebsiteLimitsTab(
                                 WebsiteBlocker.normalizeRule(it.domain) == normalizedRule
                             }
                             ?.let { dao.delete(it) }
+                        UsageLimitPauseStateStore.clearDailyStateFor(normalizedRule)
                         blockingSessionManager.checkAndEnforce()
                         withContext(Dispatchers.Main) {
                             sites = sites.filterNot {
@@ -1296,6 +1303,7 @@ fun WebsiteLimitsTab(
                             lockAfter = siteToEdit.lockAfter
                         )
                     )
+                    UsageLimitPauseStateStore.clearDailyStateFor(normalizedRule)
                     blockingSessionManager.checkAndEnforce()
                     withContext(Dispatchers.Main) {
                         sites = sites.map {

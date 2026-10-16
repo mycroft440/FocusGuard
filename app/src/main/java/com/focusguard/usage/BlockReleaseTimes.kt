@@ -72,22 +72,22 @@ object BlockReleaseTimes {
     /**
      * Até quando um limite de uso diário esgotado mantém o app bloqueado.
      *
-     * O uso volta a zero na virada do dia, então nenhum modo segura além da
-     * próxima meia-noite. A pausa de 30 minutos segura só até o fim da pausa, e
-     * a regra inteira nunca passa do seu prazo final.
+     * [heldUntil] é o fim gravado quando a regra se esgotou (a pausa de 30 minutos
+     * ou a meia-noite daquele dia, que pode já não ser a próxima meia-noite com o
+     * relógio mudado à mão). Sem ele, nenhum modo segura além da próxima
+     * meia-noite, e a regra inteira nunca passa do seu prazo final.
      */
     fun usageLimitBlockedUntil(
         limit: AppUsageLimit,
         nowMillis: Long,
-        pauseBlockedUntil: Long?,
+        heldUntil: Long?,
         timeZone: TimeZone = TimeZone.getDefault()
     ): Long {
         val midnight = nextMidnight(nowMillis, timeZone)
         val mode = limit.lockMode.uppercase(Locale.ROOT)
+        val held = heldUntil?.takeIf { it > nowMillis }
         val candidate = when {
-            UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode) ->
-                pauseBlockedUntil?.takeIf { it > nowMillis } ?: midnight
-            UsageLimitBehaviorPolicy.isBlockUntilTomorrowMode(limit.lockMode) -> midnight
+            UsageLimitBehaviorPolicy.isDailyBehaviorMode(limit.lockMode) -> held ?: midnight
             mode == "TIME" -> limit.lockUntilTimestamp
                 ?.takeIf { it > nowMillis }
                 ?.let { minOf(it, midnight) }

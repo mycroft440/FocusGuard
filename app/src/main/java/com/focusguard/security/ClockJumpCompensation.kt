@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
+import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.utils.UsageLimitBehaviorPolicy
 import kotlin.math.abs
 
@@ -16,9 +17,10 @@ import kotlin.math.abs
  * relógio voltando depois. O relógio desde o boot (elapsedRealtime) não muda com a
  * data; a diferença entre os dois, o "boot no relógio de parede", só muda quando a
  * data é trocada. Um salto dessa diferença no mesmo boot desloca os prazos dos
- * bloqueios por tempo (fim, janela de cancelamento) e dos limites (fim da regra,
- * trava de edição, ativação e a pausa de 30 minutos em curso) pelo mesmo tanto: o
- * tempo real que falta continua o mesmo, para a frente e para trás.
+ * bloqueios por tempo (fim, janela de cancelamento) e dos limites de apps e de sites
+ * (fim da regra, trava de edição, ativação, a pausa de 30 minutos e o bloqueio até a
+ * meia-noite em curso) pelo mesmo tanto: o tempo real que falta continua o mesmo,
+ * para a frente e para trás.
  *
  * O ajuste da rede com a hora automática ligada (antes e agora) é a hora certa e não
  * é compensado; isso também cobre o aparelho que liga com a hora errada e é
@@ -63,7 +65,11 @@ internal object ClockJumpPolicy {
         return session.copy(
             startTime = session.startTime.plusClamped(jumpMillis),
             endTime = endTime.plusClamped(jumpMillis),
-            cancelableUntil = session.cancelableUntil?.plusClamped(jumpMillis)
+            cancelableUntil = session.cancelableUntil?.plusClamped(jumpMillis),
+            // A criação também anda: com ela na hora antiga, um segundo salto para
+            // trás deixava o bloqueio de fora como se tivesse sido criado depois, e
+            // a janela de cancelamento (já vencida) voltava a valer.
+            createdAt = session.createdAt.plusClamped(jumpMillis)
         )
     }
 
@@ -82,16 +88,52 @@ internal object ClockJumpPolicy {
         limit: AppUsageLimit,
         jumpMillis: Long,
         anchorWallClockMillis: Long = Long.MAX_VALUE
-    ): AppUsageLimit? {
-        if (jumpMillis == 0L || limit.createdAt > anchorWallClockMillis) return null
-        val ruleEnd = limit.lockUntilTimestamp?.takeIf {
-            limit.lockMode.equals(MasterCredentialPolicy.LOCK_MODE_TIME, ignoreCase = true) ||
-                UsageLimitBehaviorPolicy.isDailyBehaviorMode(limit.lockMode)
+    ): AppUsageLimit? = shiftedLimitDeadlines(
+        createdAt = limit.createdAt,
+        lockMode = limit.lockMode,
+        lockUntilTimestamp = limit.lockUntilTimestamp,
+        lockAfter = limit.lockAfter,
+        jumpMillis = jumpMillis,
+        anchorWallClockMillis = anchorWallClockMillis
+    )?.let { (createdAt, lockUntil, lockAfter) ->
+        limit.copy(createdAt = createdAt, lockUntilTimestamp = lockUntil, lockAfter = lockAfter)
+    }
+
+    /** O mesmo que [shiftLimit] para um limite de site ou palavra. */
+    fun shiftWebsiteLimit(
+        limit: WebsiteUsageLimit,
+        jumpMillis: Long,
+        anchorWallClockMillis: Long = Long.MAX_VALUE
+    ): WebsiteUsageLimit? = shiftedLimitDeadlines(
+        createdAt = limit.createdAt,
+        lockMode = limit.lockMode,
+        lockUntilTimestamp = limit.lockUntilTimestamp,
+        lockAfter = limit.lockAfter,
+        jumpMillis = jumpMillis,
+        anchorWallClockMillis = anchorWallClockMillis
+    )?.let { (createdAt, lockUntil, lockAfter) ->
+        limit.copy(createdAt = createdAt, lockUntilTimestamp = lockUntil, lockAfter = lockAfter)
+    }
+
+    /** Ativação, fim da regra e trava de edição de um limite deslocados; null: nada a mover. */
+    private fun shiftedLimitDeadlines(
+        createdAt: Long,
+        lockMode: String,
+        lockUntilTimestamp: Long?,
+        lockAfter: Long?,
+        jumpMillis: Long,
+        anchorWallClockMillis: Long
+    ): Triple<Long, Long?, Long?>? {
+        if (jumpMillis == 0L || createdAt > anchorWallClockMillis) return null
+        // No modo PASSWORD o horário é uma liberação até a meia-noite, não um prazo.
+        val ruleEnd = lockUntilTimestamp?.takeIf {
+            lockMode.equals(MasterCredentialPolicy.LOCK_MODE_TIME, ignoreCase = true) ||
+                UsageLimitBehaviorPolicy.isDailyBehaviorMode(lockMode)
         }
-        return limit.copy(
-            createdAt = limit.createdAt.plusClamped(jumpMillis),
-            lockUntilTimestamp = ruleEnd?.plusClamped(jumpMillis) ?: limit.lockUntilTimestamp,
-            lockAfter = limit.lockAfter?.plusClamped(jumpMillis)
+        return Triple(
+            createdAt.plusClamped(jumpMillis),
+            ruleEnd?.plusClamped(jumpMillis) ?: lockUntilTimestamp,
+            lockAfter?.plusClamped(jumpMillis)
         )
     }
 
