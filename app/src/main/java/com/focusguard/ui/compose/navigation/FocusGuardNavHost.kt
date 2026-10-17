@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -131,7 +132,7 @@ fun FocusGuardNavHost(
     var missingProtectionPermissions by remember {
         mutableStateOf(ProtectionPermission.entries.toList())
     }
-    var focusModeInteractionNonce by remember { mutableStateOf(0L) }
+    var focusModeInteractionNonce by remember { mutableLongStateOf(0L) }
     val navigationScope = rememberCoroutineScope()
     val userProfileStore = remember(activity.applicationContext) {
         UserProfileStore(activity.applicationContext)
@@ -160,7 +161,7 @@ fun FocusGuardNavHost(
     // "Configurar" no widget abre a aba Pomodoro da tela inicial, com a barra de
     // abas e o Voltar de sempre. Antes era uma tela solta, sem seta nem abas, de
     // onde o Voltar fechava o app.
-    var handledPomodoroNavigationNonce by remember { mutableStateOf(0L) }
+    var handledPomodoroNavigationNonce by remember { mutableLongStateOf(0L) }
     LaunchedEffect(pomodoroNavigationNonce) {
         if (pomodoroNavigationNonce <= handledPomodoroNavigationNonce) return@LaunchedEffect
         handledPomodoroNavigationNonce = pomodoroNavigationNonce
