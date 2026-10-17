@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -57,7 +58,10 @@ class MainActivity : AppCompatActivity() {
     // Se o quadro que confirmou a volta do Modo Foco foi de fato para a tela.
     private var curtainFrameCommitted = false
     private val focusModeReturnNonce = mutableLongStateOf(0L)
-    private val pomodoroNavigationNonce = mutableLongStateOf(0L)
+    // Pedido do "Configurar" do widget, consumido uma vez pela navegação: um
+    // contador seria reaplicado a cada vez que a navegação é recriada (cada volta
+    // ao primeiro plano passa pelo portão de entrada).
+    private val pomodoroNavigationPending = mutableStateOf(false)
 
     /**
      * Last-resort Back guard for every FocusGuard screen. Compose screens keep
@@ -132,7 +136,10 @@ class MainActivity : AppCompatActivity() {
                         pomodoroManager = pomodoroManager,
                         focusModeManager = focusModeManager,
                         focusModeReturnNonce = focusModeReturnNonce.longValue,
-                        pomodoroNavigationNonce = pomodoroNavigationNonce.longValue,
+                        pomodoroNavigationRequested = pomodoroNavigationPending.value,
+                        onPomodoroNavigationHandled = {
+                            pomodoroNavigationPending.value = false
+                        },
                         onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
                     )
                 }
@@ -230,7 +237,7 @@ class MainActivity : AppCompatActivity() {
         if (!sourceIntent.getBooleanExtra(EXTRA_OPEN_POMODORO, false)) return
         sourceIntent.removeExtra(EXTRA_OPEN_POMODORO)
         if (!focusModeManager.isActive()) {
-            pomodoroNavigationNonce.longValue = pomodoroNavigationNonce.longValue + 1L
+            pomodoroNavigationPending.value = true
         }
     }
 
