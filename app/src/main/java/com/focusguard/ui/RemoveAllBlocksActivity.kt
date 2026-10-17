@@ -76,6 +76,7 @@ import com.focusguard.security.RemoveAllBlocksAuthorizationPolicy
 import com.focusguard.security.RemoveAllBlocksAuthorizationPolicy.Gate
 import com.focusguard.security.RemoveAllBlocksAuthorizationPolicy.Summary
 import com.focusguard.ui.compose.screens.BlockTypeUi
+import com.focusguard.ui.compose.screens.blockedTargetCount
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -147,8 +148,9 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                     Summary(
                         passwordBlocks = overview.passwordEntries.size,
                         dailyLimits = overview.dailyLimitEntries.size,
-                        scheduledPeriods = overview.scheduledTimeEntries.size,
-                        timeBlocks = overview.dopamineFastEntries.size,
+                        // Uma linha por sessão na lista; aqui conta cada app ou site uma vez.
+                        scheduledPeriods = blockedTargetCount(overview.scheduledTimeEntries),
+                        timeBlocks = blockedTargetCount(overview.dopamineFastEntries),
                         adultFilterActive = AuthManager.isAdultFilterConfigured(
                             applicationContext
                         ),

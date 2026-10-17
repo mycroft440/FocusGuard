@@ -79,9 +79,7 @@ fun BlockDurationPicker(
                 value = amountText,
                 onValueChange = { value ->
                     val digits = value.filter(Char::isDigit).take(5)
-                    val clamped = digits.toIntOrNull()
-                        ?.coerceAtMost(BlockDurationPolicy.maxAmountFor(unit))
-                    onAmountChange(clamped?.toString() ?: digits)
+                    onAmountChange(BlockDurationPolicy.clampAmountText(unit, digits))
                 },
                 modifier = Modifier.width(110.dp),
                 placeholder = { Text("30", color = TextHint) },
@@ -121,6 +119,8 @@ fun BlockDurationPicker(
                         text = { Text(stringResource(option.labelRes())) },
                         onClick = {
                             onUnitChange(option)
+                            val clamped = BlockDurationPolicy.clampAmountText(option, amountText)
+                            if (clamped != amountText) onAmountChange(clamped)
                             expanded = false
                         }
                     )

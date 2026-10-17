@@ -92,6 +92,17 @@ object BlockDurationPolicy {
         return Duration.Finite(hours.coerceAtMost(cappedHours).toInt())
     }
 
+    /**
+     * O número digitado ajustado ao teto da unidade, também ao trocar de unidade:
+     * "48 horas" passadas para meses ficavam "48 meses" na tela enquanto o bloqueio,
+     * sem volta, saía com o teto de [MAX_DAYS] dias.
+     */
+    fun clampAmountText(unit: Unit, amountText: String): String {
+        if (!requiresAmount(unit)) return amountText
+        val amount = amountText.toIntOrNull() ?: return amountText
+        return amount.coerceAtMost(maxAmountFor(unit)).toString()
+    }
+
     /** Largest amount that still makes sense for the unit, for input clamping. */
     fun maxAmountFor(unit: Unit): Int = when (unit) {
         Unit.HOURS -> MAX_DAYS * 24

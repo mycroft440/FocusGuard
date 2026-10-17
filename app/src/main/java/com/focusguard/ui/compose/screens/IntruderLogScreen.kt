@@ -20,6 +20,7 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.runtime.rememberCoroutineScope
 import com.focusguard.utils.IntruderPhotoExporter
@@ -67,7 +68,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun IntruderLogScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    var photos by remember { mutableStateOf<List<File>>(emptyList()) }
+    // null enquanto a pasta é lida: começar com a lista vazia mostrava "nenhum
+    // intruso" por um instante mesmo com fotos gravadas.
+    var photos by remember { mutableStateOf<List<File>?>(null) }
 
     LaunchedEffect(Unit) {
         photos = withContext(Dispatchers.IO) {
@@ -96,7 +99,15 @@ fun IntruderLogScreen(onBack: () -> Unit) {
         },
         containerColor = DarkBg
     ) { paddingValues ->
-        if (photos.isEmpty()) {
+        val loadedPhotos = photos
+        if (loadedPhotos == null) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = AccentCyan)
+            }
+        } else if (loadedPhotos.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
                 contentAlignment = Alignment.Center
@@ -111,7 +122,7 @@ fun IntruderLogScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize().padding(paddingValues)
             ) {
-                items(photos, key = { it.absolutePath }) { photoFile ->
+                items(loadedPhotos, key = { it.absolutePath }) { photoFile ->
                     IntruderPhotoCard(photoFile)
                 }
             }
@@ -126,11 +137,17 @@ fun IntruderPhotoCard(file: File) {
     var bitmap by remember(file.absolutePath, file.lastModified()) {
         mutableStateOf<ImageBitmap?>(null)
     }
+    // Foto que não abre (arquivo cortado, por exemplo) não fica girando para sempre.
+    var decodeFailed by remember(file.absolutePath, file.lastModified()) {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(file.absolutePath, file.lastModified()) {
-        bitmap = withContext(Dispatchers.IO) {
+        val decoded = withContext(Dispatchers.IO) {
             decodeScaledBitmap(file)
         }
+        bitmap = decoded
+        decodeFailed = decoded == null
     }
 
     Card(
@@ -155,11 +172,20 @@ fun IntruderPhotoCard(file: File) {
                     modifier = Modifier.weight(1f).fillMaxWidth().background(DarkCardElevated),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = AccentCyan,
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
-                    )
+                    if (decodeFailed) {
+                        Icon(
+                            Icons.Default.BrokenImage,
+                            contentDescription = stringResource(R.string.intruder_photo_desc),
+                            tint = TextHint,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            color = AccentCyan,
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
                 }
             }
             Row(
