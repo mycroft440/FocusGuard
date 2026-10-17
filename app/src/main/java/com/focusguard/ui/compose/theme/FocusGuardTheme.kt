@@ -1,6 +1,5 @@
 package com.focusguard.ui.compose.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -256,9 +255,15 @@ val FocusGuardTypography = Typography(
     ),
 )
 
+/**
+ * @param darkTheme escuro sempre, por padrão. As telas são desenhadas só no escuro
+ *   (fundo, cartões e textos com cores fixas, e o tema XML é Material3.Dark): seguir
+ *   o modo claro do sistema trocava só parte das cores e deixava texto escuro sobre
+ *   cartão escuro, ilegível, no Perfil e na Segurança extra, por exemplo.
+ */
 @Composable
 fun FocusGuardTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
