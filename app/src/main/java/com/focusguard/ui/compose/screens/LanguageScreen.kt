@@ -67,7 +67,9 @@ internal val SUPPORTED_APP_LANGUAGES = listOf(
 /**
  * A opção da lista que corresponde ao idioma escolhido no app: "" quando ele segue
  * o aparelho e null quando o idioma salvo não está na lista (escolhido nas
- * configurações do Android, por exemplo). Sem tag exata, vale a mesma língua.
+ * configurações do Android, por exemplo). Sem tag exata vale a opção que começa a
+ * tag ("id-ID" → "id", "zh-Hans-CN" → "zh-Hans"). A tag, e não Locale.language:
+ * no Android esta ainda devolve códigos antigos, como "in" para o indonésio.
  */
 internal fun selectedAppLanguageTag(
     current: Locale?,
@@ -76,7 +78,8 @@ internal fun selectedAppLanguageTag(
     if (current == null) return ""
     val tag = current.toLanguageTag()
     return options.firstOrNull { it.equals(tag, ignoreCase = true) }
-        ?: options.firstOrNull { it.equals(current.language, ignoreCase = true) }
+        ?: options.filter { tag.startsWith("$it-", ignoreCase = true) }
+            .maxByOrNull { it.length }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -171,6 +171,9 @@ fun FinalConfigStep(
     }
 
     fun navigateBack() {
+        // Durante o salvamento o assistente fecha sozinho ao terminar; voltar uma
+        // página nesse meio-tempo só fazia a tela pular antes de fechar.
+        if (isSaving) return
         if (unlockMode == null) {
             onBack()
         } else {

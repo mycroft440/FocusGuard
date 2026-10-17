@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -215,6 +215,8 @@ fun TimeBlockSessionConfigScreen(
         (!isScheduled || (selectedDays.isNotEmpty() && timeWindowValid))
 
     fun navigateBack() {
+        // Como no bloqueio por senha: com o bloqueio sendo salvo, o Voltar espera.
+        if (isSaving) return
         if (page == TimeBlockConfigPage.SCHEDULE) {
             page = TimeBlockConfigPage.TERMS
         } else {
@@ -224,10 +226,10 @@ fun TimeBlockSessionConfigScreen(
 
     BackHandler(onBack = ::navigateBack)
 
-    // As duas páginas dividem a mesma rolagem: sem voltar ao topo, quem rolava os
-    // termos até "Continuar" via a página de horários já no meio, sem os dias.
-    val scrollState = rememberScrollState()
-    LaunchedEffect(page) { scrollState.scrollTo(0) }
+    // Uma rolagem por página: com uma só, quem rolava os termos até "Continuar" via
+    // a página de horários já no meio, sem os dias. Salva com a Activity, a posição
+    // de cada página continua onde estava ao girar a tela.
+    val scrollState = rememberSaveable(page, saver = ScrollState.Saver) { ScrollState(0) }
 
     if (showMasterCredentialSetup) {
         DeactivationCredentialDialog(
@@ -450,7 +452,7 @@ fun TimeBlockSessionConfigScreen(
                             }
                         }
                     },
-                    onBack = { page = TimeBlockConfigPage.TERMS }
+                    onBack = ::navigateBack
                 )
             }
         }

@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.theme
 
+import android.os.Build
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -17,12 +18,18 @@ import androidx.compose.ui.platform.LocalContext
 import com.focusguard.utils.findActivity
 
 /**
- * Se a janela pediu `adjustResize` no manifesto: nela o conteúdo também precisa
- * sair de baixo do teclado.
+ * Se a moldura também sai de baixo do teclado: só numa janela que pediu
+ * `adjustResize` e só do Android 15 em diante, onde a janela vai de ponta a ponta
+ * e o sistema deixou de encolhê-la. Até o Android 14 é o próprio sistema que
+ * encolhe a janela; somar o teclado ali abriria uma faixa vazia durante a
+ * animação dele.
  */
-internal fun followsKeyboardResize(softInputMode: Int): Boolean =
+internal fun followsKeyboardResize(
+    softInputMode: Int,
+    sdkInt: Int = Build.VERSION.SDK_INT
+): Boolean = sdkInt >= Build.VERSION_CODES.VANILLA_ICE_CREAM &&
     (softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST) ==
-        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
 
 /**
  * Deixa o conteúdo fora das barras do sistema, sobre a mesma cor que o tema dá a
@@ -43,7 +50,7 @@ internal fun FocusGuardSystemBarsFrame(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val resizesForKeyboard = remember(context) {
         context.findActivity()?.window?.attributes?.softInputMode
-            ?.let(::followsKeyboardResize) == true
+            ?.let { followsKeyboardResize(it) } == true
     }
     val bars = WindowInsets.systemBars.union(WindowInsets.displayCutout)
     Box(
