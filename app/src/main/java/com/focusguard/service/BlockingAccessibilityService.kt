@@ -1963,6 +1963,17 @@ class BlockingAccessibilityService : AccessibilityService() {
             event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
         ) return false
 
+        // A página em uso é anotada em toda troca de janela, mesmo sem proteção
+        // ativa: um bloqueio que começa com a pessoa já parada nas informações do
+        // HardBlock ainda é pego pelos eventos de conteúdo seguintes. Só a classe
+        // e o título do evento, sem consulta à árvore.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            settingsAppPage = SettingsInterceptionPolicy.appPageForWindow(
+                className = event.className?.toString().orEmpty(),
+                windowTitle = event.text.orEmpty()
+            )
+        }
+
         // ACTION_DELETE was opened by FocusGuard itself after the master
         // credential (or the day-15 window) authorized removal. Do not block
         // the Android-owned confirmation screen during that short hand-off.
@@ -2166,7 +2177,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilitySettingsPolicy.textTargetsOwnServicePage(
                     eventValues,
                     ownServicePageMarkers
-                )
+                ),
+            appPage = if (isSystemUi) SettingsInterceptionPolicy.AppPage.NONE else settingsAppPage
         )
 
         val masterRemovalTarget = when {
@@ -2210,6 +2222,23 @@ class BlockingAccessibilityService : AccessibilityService() {
                 mentionsOwnAccessibilityServicePage = {
                     ownServicePageRootCheckAllowed(event.eventType, nowElapsed) &&
                         rootMentionsOwnAccessibilityServicePage()
+                },
+                eventWindowNamesFocusGuard = {
+                    ownAppPageCheckAllowed(event.eventType, nowElapsed) &&
+                        eventWindowContainsAny(
+                            event = event,
+                            searchTerms = listOf(ownAppLabel),
+                            classifier = ManagedSelfProtectionPolicy::textTargetsFocusGuard,
+                            screenLabel = "página do HardBlock"
+                        )
+                },
+                eventWindowShowsAppPageControls = {
+                    eventWindowContainsAny(
+                        event = event,
+                        searchTerms = ManagedSelfProtectionPolicy.appPageControlSearchTerms,
+                        classifier = ManagedSelfProtectionPolicy::textTargetsAppPageControl,
+                        screenLabel = "botões da página do app"
+                    )
                 }
             )
         )
@@ -2231,17 +2260,21 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
 
             SettingsInterceptionPolicy.Decision.PROTECT_AND_ARM_GUARD -> {
+                // Hoje só a página do próprio HardBlock (informações ou
+                // notificações) chega aqui, sempre sem clique. Ela sai pelo mesmo
+                // portão do clique em "Informações do app", que limpa a tarefa do
+                // Configurações: sem isso, os Recentes a devolveriam aberta.
+                val target = masterRemovalTarget ?: MasterRemovalActivity.Target.APP_INFO
                 pendingSettingsProtectionUntilElapsed =
                     nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
                 val generation = executeProtectionAction(
                     eventTimeUptimeMillis = event.eventTime,
                     eventDeliveredAtUptimeMillis = eventDeliveredAtUptimeMillis,
                     eventDetectedAtNanos = eventDetectedAtNanos,
-                    holdUntilSafeSurface = masterRemovalTarget != null,
-                    forceLauncherFallback =
-                        masterRemovalTarget == MasterRemovalActivity.Target.DEVICE_ADMIN
+                    holdUntilSafeSurface = true,
+                    forceLauncherFallback = target == MasterRemovalActivity.Target.DEVICE_ADMIN
                 )
-                masterRemovalTarget?.let { launchMasterRemovalGate(it, generation) }
+                launchMasterRemovalGate(target, generation)
                 true
             }
         }
@@ -2517,6 +2550,63 @@ class BlockingAccessibilityService : AccessibilityService() {
         ) return false
         lastOwnServicePageRootCheckElapsed = nowElapsed
         return true
+    }
+
+    private val ownAppLabel: String by lazy { getString(R.string.app_name) }
+
+    private var settingsAppPage = SettingsInterceptionPolicy.AppPage.NONE
+    private var lastOwnAppPageCheckElapsed = 0L
+
+    /**
+     * Mesma cadência da página do serviço de acessibilidade, mais curta: a troca
+     * de janela sempre confere, e o conteúdo que termina de carregar depois
+     * confere a cada 150 ms. A conferência é uma busca só, pelo rótulo do app.
+     */
+    private fun ownAppPageCheckAllowed(eventType: Int, nowElapsed: Long): Boolean {
+        val transition = eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        if (!transition &&
+            nowElapsed - lastOwnAppPageCheckElapsed < OWN_APP_PAGE_CHECK_INTERVAL_MS
+        ) return false
+        lastOwnAppPageCheckElapsed = nowElapsed
+        return true
+    }
+
+    /**
+     * Procura na janela do próprio evento, nunca em [rootInActiveWindow]: na
+     * troca, a janela ativa ainda pode ser o launcher, com o ícone do HardBlock
+     * à vista e "Desinstalar" no menu do ícone, enquanto o Configurações abre as
+     * informações de outro app.
+     */
+    private fun eventWindowContainsAny(
+        event: AccessibilityEvent,
+        searchTerms: Iterable<String>,
+        classifier: (Iterable<CharSequence?>) -> Boolean,
+        screenLabel: String
+    ): Boolean {
+        val root = runCatching {
+            windows.firstOrNull { window -> window.id == event.windowId }?.root
+        }.getOrNull() ?: return false
+        return try {
+            root.packageName?.toString() in SettingsInterceptionPolicy.settingsPackages &&
+                searchTerms.any { term ->
+                    val nodes = root.findAccessibilityNodeInfosByText(term)
+                    val found = nodes.any { node ->
+                        classifier(listOf(node.text, node.contentDescription, node.viewIdResourceName))
+                    }
+                    nodes.forEach(::recycleSafely)
+                    found
+                }
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao identificar tela de $screenLabel",
+                error
+            )
+            false
+        } finally {
+            recycleSafely(root)
+        }
     }
 
     private fun rootMentionsOwnAccessibilityServicePage(): Boolean {
@@ -3531,6 +3621,7 @@ class BlockingAccessibilityService : AccessibilityService() {
          * widens nothing about what the service observes.
          */
         private const val OWN_SERVICE_PAGE_ROOT_CHECK_INTERVAL_MS = 300L
+        private const val OWN_APP_PAGE_CHECK_INTERVAL_MS = 150L
         private val settingsInterceptionEventTypes = setOf(
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             AccessibilityEvent.TYPE_VIEW_FOCUSED,

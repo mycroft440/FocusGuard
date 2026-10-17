@@ -135,4 +135,34 @@ class ManagedSelfProtectionPolicyTest {
         assertThat(signals.destructiveControl).isTrue()
         assertThat(signals.essentialSpecialAccess).isTrue()
     }
+
+    @Test
+    fun `app page controls match the whole button text only`() {
+        assertThat(ManagedSelfProtectionPolicy.textTargetsAppPageControl(listOf("Forçar parada")))
+            .isTrue()
+        assertThat(ManagedSelfProtectionPolicy.textTargetsAppPageControl(listOf("Desinstalar")))
+            .isTrue()
+        assertThat(ManagedSelfProtectionPolicy.textTargetsAppPageControl(listOf("FORCE STOP")))
+            .isTrue()
+        // Rótulos das listas de apps que só contêm um dos termos.
+        assertThat(ManagedSelfProtectionPolicy.textTargetsAppPageControl(listOf("Disabled apps")))
+            .isFalse()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsAppPageControl(listOf("Desinstalar apps não usados"))
+        ).isFalse()
+    }
+
+    @Test
+    fun `app notification pages are recognized by class`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.classTargetsAppNotificationSettings(
+                "com.android.settings.Settings\$ChannelNotificationSettingsActivity"
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.classTargetsAppNotificationSettings(
+                "com.android.settings.Settings\$NotificationAppListActivity"
+            )
+        ).isFalse()
+    }
 }
