@@ -6,8 +6,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +18,7 @@ import androidx.compose.ui.Modifier
 import com.focusguard.security.MasterCredentialConfigurationManager
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.ui.compose.screens.DeactivationCredentialDialog
+import com.focusguard.ui.compose.theme.FocusGuardAmbientBackground
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 
 /**
@@ -47,15 +46,10 @@ class MasterPasswordActivity : ComponentActivity() {
             }
 
             FocusGuardTheme {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(androidx.compose.material3.MaterialTheme.colorScheme.background),
-                    contentAlignment = Alignment.Center
-                ) {
+                FocusGuardAmbientBackground(modifier = Modifier.fillMaxSize()) {
                     val gate = configurationGate
                     if (gate == null) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     } else {
                         DeactivationCredentialDialog(
                             managementLocked = gate != MasterCredentialPolicy.ConfigurationGate.ALLOWED,
