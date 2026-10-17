@@ -113,24 +113,30 @@
             android:theme="@style/Theme.FocusGuard"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- singleTop nas telas abertas por um botão: um toque duplo empilhava duas
+             (dois assistentes de bloqueio, dois "remover todos"). -->
         <activity
             android:name=".ui.PermissionsActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
             android:name=".ui.CreateSessionActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
             android:name=".ui.MasterPasswordActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
             android:name=".ui.RemoveAllBlocksActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
