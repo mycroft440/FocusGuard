@@ -54,6 +54,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -170,6 +172,20 @@ internal fun selectionExclusions(
 }
 
 /**
+ * Guarda a escolha de apps (pacote e nome) junto com a Activity: girar a tela ou o
+ * Android encerrar o app em segundo plano devolvia o assistente na mesma página,
+ * mas sem nada escolhido, e o passo final ficava sem alvo e com o botão desligado.
+ */
+internal val SelectedAppsSaver = listSaver<List<SelectableAppUi>, String>(
+    save = { apps -> apps.flatMap { listOf(it.packageName, it.appName) } },
+    restore = { saved ->
+        saved.chunked(2).map { (packageName, appName) ->
+            SelectableAppUi(packageName = packageName, appName = appName, isSelected = true)
+        }
+    }
+)
+
+/**
  * O que segue para o passo final, ou null quando nada foi escolhido. Sem alvo o
  * passo seguinte abria com o botão de ativar desligado e nenhuma explicação.
  */
@@ -199,8 +215,10 @@ fun CreateSessionWizard(
             continuousTime = timeBlockMode == TimeBlockConfigMode.CONTINUOUS
         )
     }
-    var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var selectedRules by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedApps by rememberSaveable(stateSaver = SelectedAppsSaver) {
+        mutableStateOf(emptyList())
+    }
+    var selectedRules by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
 
     HorizontalPager(
         state = pagerState,
@@ -276,7 +294,9 @@ fun AppSelectionStep(
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var configuredBlockedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var rules by remember { mutableStateOf(initialRules) }
+    // A escolha sobrevive à recriação da Activity; a lista de apps é relida.
+    var rules by rememberSaveable { mutableStateOf(initialRules.toList()) }
+    var chosenPackages by rememberSaveable { mutableStateOf(initialSelectedPackages.toList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(initialSelectedPackages, allowCompatibleProtection, selectionSessionType) {
@@ -300,6 +320,7 @@ fun AppSelectionStep(
             )
             val blockedPackages = exclusions.appPackages
             val blockedRules = exclusions.websiteRules
+            val preselected = chosenPackages.toSet()
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val launcherQueryFlags = PackageManager.MATCH_DISABLED_COMPONENTS
             val launchables = pm.queryIntentActivities(launcherIntent, launcherQueryFlags)
@@ -320,7 +341,7 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = info.packageName,
                         appName = info.loadLabel(pm).toString(),
-                        isSelected = info.packageName in initialSelectedPackages &&
+                        isSelected = info.packageName in preselected &&
                             info.packageName !in blockedPackages,
                         isInstalled = true,
                         isAlreadyBlocked = info.packageName in blockedPackages
@@ -339,7 +360,7 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = it.packageName,
                         appName = it.appName,
-                        isSelected = it.packageName in initialSelectedPackages &&
+                        isSelected = it.packageName in preselected &&
                             it.packageName !in blockedPackages,
                         isInstalled = false,
                         category = it.category,
@@ -372,6 +393,7 @@ fun AppSelectionStep(
                 if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it
             }
         }
+        chosenPackages = apps.filter { it.isSelected }.map { it.packageName }
     }
 
     val proceed: () -> Unit = {
@@ -409,7 +431,7 @@ fun AppSelectionStep(
             if (kinds.keywords) add(BlockTargetTab.KEYWORDS)
         }
     }
-    var selectedTab by remember { mutableStateOf(tabs.first()) }
+    var selectedTab by rememberSaveable { mutableStateOf(tabs.first()) }
     val onAlreadyBlocked: () -> Unit = {
         Toast.makeText(
             context,

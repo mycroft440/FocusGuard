@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import com.focusguard.manager.BlockingSessionManager
+import androidx.compose.runtime.saveable.SaverScope
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -112,5 +113,25 @@ class AppSelectionModeTest {
         assertThat(selection.second).containsExactly("example.com")
         assertThat(selectionToProceed(emptyList(), listOf("example.com"), emptySet()))
             .isNotNull()
+    }
+
+    @Test
+    fun `chosen apps survive the activity being recreated`() {
+        val chosen = listOf(
+            SelectableAppUi("com.instagram.android", "Instagram", isSelected = true),
+            SelectableAppUi("com.example.feed", "Feed, o app", isSelected = true)
+        )
+        val scope = object : SaverScope {
+            override fun canBeSaved(value: Any): Boolean = true
+        }
+
+        val saved = with(SelectedAppsSaver) { scope.save(chosen) }!!
+        val restored = SelectedAppsSaver.restore(saved)!!
+
+        assertThat(restored.map { it.packageName })
+            .containsExactly("com.instagram.android", "com.example.feed")
+            .inOrder()
+        assertThat(restored.map { it.appName }).containsExactly("Instagram", "Feed, o app").inOrder()
+        assertThat(restored.all { it.isSelected }).isTrue()
     }
 }
