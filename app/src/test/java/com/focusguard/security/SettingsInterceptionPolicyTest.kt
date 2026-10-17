@@ -1,5 +1,6 @@
 package com.focusguard.security
 
+import com.focusguard.security.SettingsInterceptionPolicy.AppPage
 import com.focusguard.security.SettingsInterceptionPolicy.Decision
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
@@ -32,7 +33,8 @@ class SettingsInterceptionPolicyTest {
         textMentionsDestructiveControl: Boolean = false,
         textMentionsEssentialSpecialAccess: Boolean = false,
         textMentionsAppInfoGateway: Boolean = false,
-        textMentionsOwnAccessibilityServicePage: Boolean = false
+        textMentionsOwnAccessibilityServicePage: Boolean = false,
+        appPage: SettingsInterceptionPolicy.AppPage = SettingsInterceptionPolicy.AppPage.NONE
     ) = SettingsInterceptionPolicy.EventSignals(
         packageName = packageName,
         isViewClickedEvent = isViewClickedEvent,
@@ -53,7 +55,8 @@ class SettingsInterceptionPolicyTest {
         textMentionsDestructiveControl = textMentionsDestructiveControl,
         textMentionsEssentialSpecialAccess = textMentionsEssentialSpecialAccess,
         textMentionsAppInfoGateway = textMentionsAppInfoGateway,
-        textMentionsOwnAccessibilityServicePage = textMentionsOwnAccessibilityServicePage
+        textMentionsOwnAccessibilityServicePage = textMentionsOwnAccessibilityServicePage,
+        appPage = appPage
     )
 
     private fun roots(
@@ -62,14 +65,18 @@ class SettingsInterceptionPolicyTest {
         focusGuard: Boolean = false,
         destructive: Boolean = false,
         essential: Boolean = false,
-        ownServicePage: Boolean = false
+        ownServicePage: Boolean = false,
+        windowNamesFocusGuard: Boolean = false,
+        windowShowsAppPageControls: Boolean = false
     ) = SettingsInterceptionPolicy.RootSignals(
         mentionsAccessibility = { accessibility },
         mentionsDeviceAdmin = { deviceAdmin },
         mentionsFocusGuard = { focusGuard },
         mentionsDestructiveControl = { destructive },
         mentionsEssentialSpecialAccess = { essential },
-        mentionsOwnAccessibilityServicePage = { ownServicePage }
+        mentionsOwnAccessibilityServicePage = { ownServicePage },
+        eventWindowNamesFocusGuard = { windowNamesFocusGuard },
+        eventWindowShowsAppPageControls = { windowShowsAppPageControls }
     )
 
     private fun decide(
@@ -329,6 +336,107 @@ class SettingsInterceptionPolicyTest {
                 rootSignals = roots(ownServicePage = true)
             )
         ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `own app info opened directly is protected by its header`() {
+        // Pelo ícone no launcher: o evento traz só "Informações do aplicativo".
+        assertThat(
+            decide(
+                signals(
+                    isWindowTransitionEvent = true,
+                    classTargetsAppDetails = true,
+                    textMentionsAppInfoGateway = true,
+                    appPage = AppPage.DETAILS
+                ),
+                rootSignals = roots(windowNamesFocusGuard = true, windowShowsAppPageControls = true)
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        // O cabeçalho termina de carregar depois: o evento de conteúdo chega com
+        // a classe da View, e a página vem da troca de janela anterior.
+        assertThat(
+            decide(
+                signals(appPage = AppPage.DETAILS),
+                rootSignals = roots(windowNamesFocusGuard = true, windowShowsAppPageControls = true)
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `own notification settings opened directly are protected`() {
+        assertThat(
+            decide(
+                signals(isWindowTransitionEvent = true, appPage = AppPage.NOTIFICATIONS),
+                rootSignals = roots(windowNamesFocusGuard = true)
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `another app info page stays available`() {
+        assertThat(
+            decide(
+                signals(isWindowTransitionEvent = true, appPage = AppPage.DETAILS),
+                rootSignals = roots(windowShowsAppPageControls = true)
+            )
+        ).isEqualTo(Decision.IGNORE)
+        assertThat(
+            decide(
+                signals(isWindowTransitionEvent = true, appPage = AppPage.NOTIFICATIONS),
+                rootSignals = roots()
+            )
+        ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `app list hosted by the app details class stays available`() {
+        // SpaActivity também hospeda "Todos os apps": o HardBlock é uma linha da
+        // lista, sem os botões de Forçar parada e Desinstalar.
+        assertThat(
+            decide(
+                signals(isWindowTransitionEvent = true, appPage = AppPage.DETAILS),
+                rootSignals = roots(windowNamesFocusGuard = true)
+            )
+        ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `own app info stays open without protection or during maintenance`() {
+        val ownPage = roots(windowNamesFocusGuard = true, windowShowsAppPageControls = true)
+        assertThat(
+            decide(signals(appPage = AppPage.DETAILS), engaged = false, rootSignals = ownPage)
+        ).isEqualTo(Decision.IGNORE)
+        assertThat(
+            decide(signals(appPage = AppPage.DETAILS), maintenanceActive = true, rootSignals = ownPage)
+        ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `app page windows are classified by activity class or title`() {
+        assertThat(
+            SettingsInterceptionPolicy.appPageForWindow(
+                "com.android.settings.applications.InstalledAppDetailsTop",
+                emptyList()
+            )
+        ).isEqualTo(AppPage.DETAILS)
+        assertThat(
+            SettingsInterceptionPolicy.appPageForWindow(
+                "com.android.settings.SubSettings",
+                listOf("Informações do aplicativo")
+            )
+        ).isEqualTo(AppPage.DETAILS)
+        assertThat(
+            SettingsInterceptionPolicy.appPageForWindow(
+                "com.android.settings.Settings\$AppNotificationSettingsActivity",
+                listOf("Notificações do app")
+            )
+        ).isEqualTo(AppPage.NOTIFICATIONS)
+        assertThat(
+            SettingsInterceptionPolicy.appPageForWindow(
+                "com.android.settings.Settings\$ConfigureNotificationSettingsActivity",
+                listOf("Notificações")
+            )
+        ).isEqualTo(AppPage.NONE)
     }
 
     @Test

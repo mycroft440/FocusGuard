@@ -38,6 +38,13 @@ object ManagedSelfProtectionPolicy {
         "SpaAppBridgeActivity"
     )
 
+    /** As páginas de notificações de um app só (as do app e as de um canal dele). */
+    private val appNotificationClassMarkers = setOf(
+        "AppNotificationSettings",
+        "ChannelNotificationSettings",
+        "ChannelGroupNotificationSettings"
+    )
+
     private val uninstallClassMarkers = setOf(
         "UninstallerActivity",
         "UninstallActivity",
@@ -122,6 +129,19 @@ object ManagedSelfProtectionPolicy {
         "Borrar datos"
     )
 
+    /**
+     * Os botões fixos da página de informações de um app. Comparados ao texto
+     * inteiro do nó, e não como trecho: as listas de apps também mostram
+     * "Desativados" ou "Disabled apps", e nenhuma delas tem estes botões.
+     */
+    internal val appPageControlSearchTerms = listOf(
+        "Forçar parada",
+        "Force stop",
+        "Forzar detención",
+        "Desinstalar",
+        "Uninstall"
+    )
+
     internal val essentialSpecialAccessSearchTerms = listOf(
         "Acesso ao uso",
         "Acesso de uso",
@@ -155,6 +175,7 @@ object ManagedSelfProtectionPolicy {
         destructiveControlSearchTerms.map(::normalize)
     private val normalizedEssentialSpecialAccessSearchTerms =
         essentialSpecialAccessSearchTerms.map(::normalize)
+    private val normalizedAppPageControls = appPageControlSearchTerms.map(::normalize).toSet()
 
     /**
      * Kept for the existing service API, but intentionally never identifies a
@@ -169,6 +190,9 @@ object ManagedSelfProtectionPolicy {
 
     fun classTargetsAppDetails(className: String): Boolean =
         containsAny(className, appDetailsClassMarkers)
+
+    fun classTargetsAppNotificationSettings(className: String): Boolean =
+        containsAny(className, appNotificationClassMarkers)
 
     fun classTargetsUninstall(className: String): Boolean =
         containsAny(className, uninstallClassMarkers)
@@ -233,6 +257,9 @@ object ManagedSelfProtectionPolicy {
             normalizeValues(values),
             normalizedDestructiveControlSearchTerms
         )
+
+    fun textTargetsAppPageControl(values: Iterable<CharSequence?>): Boolean =
+        normalizeValues(values).any { it in normalizedAppPageControls }
 
     fun textTargetsEssentialSpecialAccess(values: Iterable<CharSequence?>): Boolean =
         valuesContainAnyNormalized(
