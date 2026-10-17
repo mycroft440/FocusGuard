@@ -147,7 +147,6 @@ fun MainScreen(
                     .fillMaxSize()
                     .background(contentBackground)
                     .padding(paddingValues)
-                    .then(if (usesFullHeightContent) Modifier.statusBarsPadding() else Modifier)
             ) {
                 if (focusModeActive) {
                     FocusModeNavigationRail(

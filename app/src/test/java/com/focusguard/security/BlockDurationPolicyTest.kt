@@ -149,4 +149,19 @@ class BlockDurationPolicyTest {
         )
     }
 
+
+    @Test
+    fun `switching to a larger unit pulls the amount down to what is armed`() {
+        // "48 horas" passadas para meses: a tela mostraria 48 meses e o bloqueio
+        // sairia com o teto. O número precisa virar o teto da unidade.
+        assertThat(BlockDurationPolicy.clampAmountText(Unit.MONTHS, "48")).isEqualTo("4")
+        assertThat(BlockDurationPolicy.clampAmountText(Unit.DAYS, "500")).isEqualTo("120")
+        assertThat(BlockDurationPolicy.clampAmountText(Unit.DAYS, "48")).isEqualTo("48")
+    }
+
+    @Test
+    fun `blank text and forever are left as they are`() {
+        assertThat(BlockDurationPolicy.clampAmountText(Unit.HOURS, "")).isEqualTo("")
+        assertThat(BlockDurationPolicy.clampAmountText(Unit.FOREVER, "48")).isEqualTo("48")
+    }
 }

@@ -274,7 +274,8 @@ fun FocusGuardTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = FocusGuardTypography,
-        shapes = FocusGuardShapes,
-        content = content
-    )
+        shapes = FocusGuardShapes
+    ) {
+        FocusGuardSystemBarsFrame(content)
+    }
 }
