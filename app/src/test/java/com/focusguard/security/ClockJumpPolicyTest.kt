@@ -60,6 +60,45 @@ class ClockJumpPolicyTest {
     }
 
     @Test
+    fun `without the boot count a reboot is told apart by the time since boot`() {
+        val anchor = ClockJumpPolicy.Anchor(
+            bootCount = ClockJumpPolicy.UNKNOWN,
+            bootWallClockMillis = 1_000_000L,
+            autoTimeEnabled = true,
+            elapsedRealtimeMillis = 5 * hour
+        )
+        // Mesmo boot: o tempo desde o boot só avançou.
+        assertThat(
+            ClockJumpPolicy.compensatedJumpMillis(
+                anchor,
+                anchor.copy(
+                    bootWallClockMillis = 1_000_000L + 2 * day,
+                    autoTimeEnabled = false,
+                    elapsedRealtimeMillis = 6 * hour
+                )
+            )
+        ).isEqualTo(2 * day)
+        // Reiniciou: o tempo desde o boot voltou para trás.
+        assertThat(
+            ClockJumpPolicy.compensatedJumpMillis(
+                anchor,
+                anchor.copy(
+                    bootWallClockMillis = 1_000_000L + 2 * day,
+                    autoTimeEnabled = false,
+                    elapsedRealtimeMillis = hour
+                )
+            )
+        ).isEqualTo(0L)
+        // Sem nenhuma das duas informações não há como saber.
+        assertThat(
+            ClockJumpPolicy.compensatedJumpMillis(
+                anchor.copy(elapsedRealtimeMillis = -1L),
+                anchor.copy(bootWallClockMillis = 1_000_000L + 2 * day, autoTimeEnabled = false)
+            )
+        ).isEqualTo(0L)
+    }
+
+    @Test
     fun `a time block keeps its real remaining time and cancel window`() {
         val session = BlockSession(
             id = 3,

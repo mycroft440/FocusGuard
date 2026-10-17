@@ -31,23 +31,42 @@ internal object ClockJumpPolicy {
     /** Ajustes menores que isso são deriva do relógio, não troca de data. */
     const val MIN_COMPENSATED_JUMP_MILLIS = 60_000L
 
+    /** Número do boot ou tempo desde o boot que o aparelho não informou. */
+    const val UNKNOWN = -1
+
     data class Anchor(
+        /** [UNKNOWN] quando o Android não informa o número do boot. */
         val bootCount: Int,
         val bootWallClockMillis: Long,
         val autoTimeEnabled: Boolean,
         /** A hora de parede em que a âncora foi gravada. */
-        val wallClockMillis: Long = Long.MAX_VALUE
+        val wallClockMillis: Long = Long.MAX_VALUE,
+        /** O tempo desde o boot em que a âncora foi gravada; negativo se desconhecido. */
+        val elapsedRealtimeMillis: Long = UNKNOWN.toLong()
     )
 
     /** O salto a compensar desde [anchor]; 0 quando não há o que compensar. */
     fun compensatedJumpMillis(anchor: Anchor?, current: Anchor?): Long {
         if (anchor == null || current == null) return 0L
         // Outro boot: o relógio desde o boot recomeçou e a diferença não diz nada.
-        if (anchor.bootCount != current.bootCount) return 0L
+        if (!sameBoot(anchor, current)) return 0L
         val jump = current.bootWallClockMillis - anchor.bootWallClockMillis
         if (abs(jump) < MIN_COMPENSATED_JUMP_MILLIS) return 0L
         if (anchor.autoTimeEnabled && current.autoTimeEnabled) return 0L
         return jump
+    }
+
+    /**
+     * Se as duas âncoras são do mesmo boot. Sem o número do boot (alguns aparelhos
+     * não o informam, e então a compensação nunca rodava), vale o tempo desde o boot:
+     * ele só volta para trás quando o aparelho reinicia.
+     */
+    internal fun sameBoot(anchor: Anchor, current: Anchor): Boolean = when {
+        anchor.bootCount != UNKNOWN && current.bootCount != UNKNOWN ->
+            anchor.bootCount == current.bootCount
+        anchor.elapsedRealtimeMillis >= 0L && current.elapsedRealtimeMillis >= 0L ->
+            current.elapsedRealtimeMillis >= anchor.elapsedRealtimeMillis
+        else -> false
     }
 
     /**
@@ -159,10 +178,14 @@ internal class ClockJumpAnchorStore(context: Context) {
     fun read(): ClockJumpPolicy.Anchor? {
         if (!prefs.contains(KEY_BOOT_COUNT) || !prefs.contains(KEY_BOOT_WALL_CLOCK)) return null
         return ClockJumpPolicy.Anchor(
-            bootCount = prefs.getInt(KEY_BOOT_COUNT, -1),
+            bootCount = prefs.getInt(KEY_BOOT_COUNT, ClockJumpPolicy.UNKNOWN),
             bootWallClockMillis = prefs.getLong(KEY_BOOT_WALL_CLOCK, 0L),
             autoTimeEnabled = prefs.getBoolean(KEY_AUTO_TIME, true),
-            wallClockMillis = prefs.getLong(KEY_WALL_CLOCK, Long.MAX_VALUE)
+            wallClockMillis = prefs.getLong(KEY_WALL_CLOCK, Long.MAX_VALUE),
+            elapsedRealtimeMillis = prefs.getLong(
+                KEY_ELAPSED_REALTIME,
+                ClockJumpPolicy.UNKNOWN.toLong()
+            )
         )
     }
 
@@ -172,24 +195,27 @@ internal class ClockJumpAnchorStore(context: Context) {
             .putLong(KEY_BOOT_WALL_CLOCK, anchor.bootWallClockMillis)
             .putBoolean(KEY_AUTO_TIME, anchor.autoTimeEnabled)
             .putLong(KEY_WALL_CLOCK, anchor.wallClockMillis)
+            .putLong(KEY_ELAPSED_REALTIME, anchor.elapsedRealtimeMillis)
             .apply()
     }
 
-    /** O estado do relógio agora; null quando o Android não diz o número do boot. */
-    fun current(): ClockJumpPolicy.Anchor? {
+    /** O estado do relógio agora. */
+    fun current(): ClockJumpPolicy.Anchor {
         val resolver = appContext.contentResolver
         val bootCount = runCatching {
             Settings.Global.getInt(resolver, Settings.Global.BOOT_COUNT)
-        }.getOrNull() ?: return null
+        }.getOrDefault(ClockJumpPolicy.UNKNOWN)
         val autoTime = runCatching {
             Settings.Global.getInt(resolver, Settings.Global.AUTO_TIME, 1) != 0
         }.getOrDefault(true)
         val wallClock = System.currentTimeMillis()
+        val elapsed = SystemClock.elapsedRealtime()
         return ClockJumpPolicy.Anchor(
             bootCount = bootCount,
-            bootWallClockMillis = wallClock - SystemClock.elapsedRealtime(),
+            bootWallClockMillis = wallClock - elapsed,
             autoTimeEnabled = autoTime,
-            wallClockMillis = wallClock
+            wallClockMillis = wallClock,
+            elapsedRealtimeMillis = elapsed
         )
     }
 
@@ -199,5 +225,6 @@ internal class ClockJumpAnchorStore(context: Context) {
         const val KEY_BOOT_WALL_CLOCK = "boot_wall_clock_millis"
         const val KEY_AUTO_TIME = "auto_time_enabled"
         const val KEY_WALL_CLOCK = "wall_clock_millis"
+        const val KEY_ELAPSED_REALTIME = "elapsed_realtime_millis"
     }
 }
