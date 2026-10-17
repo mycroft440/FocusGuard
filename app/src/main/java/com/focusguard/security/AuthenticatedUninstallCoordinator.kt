@@ -42,6 +42,10 @@ object AuthenticatedUninstallCoordinator {
         val sessionManager = BlockingSessionManager.getInstance(appContext)
         val deviceOwnerManager = DeviceOwnerManager.getInstance(appContext)
 
+        // Uma data adiantada à mão só chega ao banco quando a compensação roda. Sem
+        // ela, o jejum pareceria vencido aqui e a desinstalação seria liberada.
+        sessionManager.syncManualClockCompensation()
+
         val irreversibleBlockActive = sessionManager.isUninstallBlockedByTimeFlow.first()
         val maintenanceActive = deviceOwnerManager.isMaintenanceActive()
         if (irreversibleBlockActive && !maintenanceActive) {
