@@ -23,7 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
@@ -592,7 +592,7 @@ private fun ProfileSettingsCard(
                 )
             }
             Icon(
-                imageVector = Icons.Default.ChevronRight,
+                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = stringResource(R.string.action_open),
                 tint = TextHint,
                 modifier = Modifier.size(20.dp)
@@ -647,7 +647,7 @@ fun SettingsItem(
                 )
             }
             Icon(
-                imageVector = Icons.Default.ChevronRight,
+                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = stringResource(R.string.action_open),
                 tint = TextHint,
                 modifier = Modifier.size(20.dp)

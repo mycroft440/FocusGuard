@@ -15,7 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.automirrored.rounded.NavigateNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -394,7 +395,7 @@ fun DrawerMenuButton(
             Spacer(modifier = Modifier.width(14.dp))
             Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = labelColor)
             Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = TextHint, modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = stringResource(R.string.action_open), tint = TextHint, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -521,7 +522,7 @@ fun HomeContent(
                             )
                         }
                         Icon(
-                            Icons.Default.ChevronRight,
+                            Icons.AutoMirrored.Filled.NavigateNext,
                             contentDescription = stringResource(R.string.action_open),
                             tint = DangerRed,
                             modifier = Modifier.size(20.dp)
@@ -651,7 +652,7 @@ private fun CreatorInstagramCard(
             }
             Spacer(Modifier.width(8.dp))
             Icon(
-                imageVector = Icons.Default.ChevronRight,
+                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = stringResource(R.string.action_open),
                 tint = Color(0xFFE1306C),
                 modifier = Modifier.size(20.dp)
@@ -729,7 +730,7 @@ private fun CreatorFeedbackButton(
             }
             Spacer(Modifier.width(8.dp))
             Icon(
-                imageVector = Icons.Default.ChevronRight,
+                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = stringResource(R.string.action_open),
                 tint = TextHint,
                 modifier = Modifier.size(18.dp)
@@ -807,7 +808,7 @@ fun SessionCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.ChevronRight,
+                        Icons.AutoMirrored.Filled.NavigateNext,
                         contentDescription = stringResource(R.string.action_open),
                         modifier = Modifier.size(17.dp),
                         tint = accent.copy(alpha = 0.85f)
@@ -917,7 +918,7 @@ private fun MetricsShortcutButton(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Rounded.ChevronRight,
+                    Icons.AutoMirrored.Rounded.NavigateNext,
                     contentDescription = null,
                     tint = TextPrimary,
                     modifier = Modifier.size(18.dp)

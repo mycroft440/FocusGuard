@@ -31,7 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Lock
@@ -487,7 +487,7 @@ private fun ProtectionActionCard(
                 Spacer(Modifier.height(3.dp))
                 Text(subtitle, color = TextSecondary, fontSize = 12.sp)
             }
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextHint)
+            Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = null, tint = TextHint)
         }
     }
 }
@@ -1034,7 +1034,7 @@ private fun ProtectionModeCard(
                 Spacer(Modifier.height(4.dp))
                 Text(subtitle, color = TextSecondary, fontSize = 13.sp)
             }
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextHint)
+            Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = null, tint = TextHint)
         }
     }
 }

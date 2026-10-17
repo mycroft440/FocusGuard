@@ -21,7 +21,7 @@ import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -700,7 +700,7 @@ private fun UnlockModeChoiceButton(
                 fontSize = 15.sp
             )
             Icon(
-                Icons.Default.ChevronRight,
+                Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = null,
                 tint = if (enabled) AccentCyan else TextHint
             )
