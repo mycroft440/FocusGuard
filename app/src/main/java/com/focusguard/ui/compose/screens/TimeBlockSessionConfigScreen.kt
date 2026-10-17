@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Switch
@@ -124,15 +125,19 @@ fun TimeBlockSessionConfigScreen(
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     val isScheduled = mode == TimeBlockConfigMode.DAILY_PERIODS
 
-    var page by remember { mutableStateOf(TimeBlockConfigPage.TERMS) }
+    // As escolhas ficam salvas com a Activity: girar a tela (ou o Android encerrar o
+    // app em segundo plano) não volta aos termos com tudo desmarcado.
+    var page by rememberSaveable { mutableStateOf(TimeBlockConfigPage.TERMS) }
     val websiteCompanionOptions = remember(apps) {
         AssociatedBlockTargets.websiteCompanionsForApps(apps)
     }
     val appCompanionOptions = remember(sites) {
         AssociatedBlockTargets.appCompanionsForWebsiteRules(sites)
     }
-    var selectedCompanionDomains by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var selectedCompanionPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedCompanionDomains by rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedCompanionPackages by rememberSaveable {
+        mutableStateOf<Set<String>>(emptySet())
+    }
 
     val availableWebsiteCompanionOptions = remember(websiteCompanionOptions, sites) {
         websiteCompanionOptions.filterNot { option ->
@@ -169,22 +174,22 @@ fun TimeBlockSessionConfigScreen(
             hasApps = effectiveApps.isNotEmpty()
         )
     }
-    var durationUnit by remember { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
+    var durationUnit by rememberSaveable { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
     if (durationUnit !in availableUnits) {
         durationUnit = BlockDurationPolicy.Unit.DAYS
     }
-    var amountText by remember { mutableStateOf("") }
+    var amountText by rememberSaveable { mutableStateOf("") }
     // Ligado por padrão: nas primeiras 48 h o bloqueio ainda pode ser cancelado.
-    var cancelWindowEnabled by remember { mutableStateOf(true) }
-    var termsAccepted by remember { mutableStateOf(false) }
+    var cancelWindowEnabled by rememberSaveable { mutableStateOf(true) }
+    var termsAccepted by rememberSaveable { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
-    var selectedDays by remember {
+    var selectedDays by rememberSaveable {
         mutableStateOf(DOPAMINE_WEEKDAYS.mapTo(linkedSetOf()) { it.calendarDay }.toSet())
     }
-    var startHour by remember { mutableIntStateOf(0) }
-    var startMinute by remember { mutableIntStateOf(0) }
-    var endHour by remember { mutableIntStateOf(24) }
-    var endMinute by remember { mutableIntStateOf(0) }
+    var startHour by rememberSaveable { mutableIntStateOf(0) }
+    var startMinute by rememberSaveable { mutableIntStateOf(0) }
+    var endHour by rememberSaveable { mutableIntStateOf(24) }
+    var endMinute by rememberSaveable { mutableIntStateOf(0) }
     var pendingProtectionReason by remember {
         mutableStateOf<BlockingProtectionUnavailableException.Reason?>(null)
     }
