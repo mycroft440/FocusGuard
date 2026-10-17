@@ -30,6 +30,9 @@ class LanguageOptionsTest {
     @Test
     fun `regional variant set outside the app falls back to its language`() {
         assertThat(selectedAppLanguageTag(Locale.forLanguageTag("pt-BR"))).isEqualTo("pt")
+        // No Android Locale.language devolve "in" para o indonésio; a tag é "id".
+        assertThat(selectedAppLanguageTag(Locale.forLanguageTag("id-ID"))).isEqualTo("id")
+        assertThat(selectedAppLanguageTag(Locale.forLanguageTag("zh-Hans-CN"))).isEqualTo("zh-Hans")
         assertThat(selectedAppLanguageTag(Locale.forLanguageTag("it"))).isNull()
     }
 }
