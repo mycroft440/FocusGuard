@@ -284,147 +284,126 @@ fun BlockTypeDetailScreen(
             },
             containerColor = Color.Transparent
         ) { padding ->
-            Column(
+            val current = entries
+            // Aplicativos e sites em seções próprias: são coisas diferentes de
+            // gerenciar — um se reconhece pelo ícone, o outro pelo endereço — e
+            // misturados numa lista só a pessoa precisa ler item a item para achar
+            // o que procura.
+            val apps = current.orEmpty().filterNot { it.isWebsite }
+            val sites = current.orEmpty().filter { it.isWebsite }
+
+            // Uma rolagem só para a tela inteira. Com o cabeçalho, as ferramentas da
+            // senha e o botão fixos no topo, a lista ficava com o que sobrava: em
+            // tela baixa ou com fonte grande, uma faixa de uma linha (ou nenhuma).
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 20.dp)
+                    .padding(padding),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                BlockTypeHeader(type)
+                item(key = "type_header") { BlockTypeHeader(type) }
 
                 // Ferramentas que pertencem ao bloqueio por senha ficam junto
                 // da própria proteção, em vez de escondidas em Configurações.
                 if (type == BlockTypeUi.PASSWORD) {
-                    Spacer(Modifier.height(16.dp))
-                    PasswordProtectionTools(
-                        accent = type.accent,
-                        reloadTrigger = reloadTrigger,
-                        onIntruderLogClick = onIntruderLogClick
-                    )
-                }
-
-                Spacer(Modifier.height(20.dp))
-
-                // Botão principal em degradê da cor do tipo: fica o elemento mais
-                // luminoso da tela, que é o que se espera da ação que a tela existe
-                // para oferecer.
-                Button(
-                    onClick = onAddClick,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 54.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(type.accent, type.accent.copy(alpha = 0.78f))
-                                ),
-                                RoundedCornerShape(16.dp)
-                            ),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(type.actionRes),
-                            color = DarkBg,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                    item(key = "password_tools") {
+                        PasswordProtectionTools(
+                            accent = type.accent,
+                            reloadTrigger = reloadTrigger,
+                            onIntruderLogClick = onIntruderLogClick,
+                            modifier = Modifier.padding(top = 8.dp)
                         )
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                item(key = "add_button") {
+                    AddBlockButton(
+                        type = type,
+                        onClick = onAddClick,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 16.dp)
+                    )
+                }
 
-                val current = entries
                 when {
-                    current == null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        CircularProgressIndicator(color = type.accent)
+                    current == null -> item(key = "loading") {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 24.dp),
+                            Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = type.accent)
+                        }
                     }
 
-                    current.isEmpty() -> EmptyBlockList(type)
+                    current.isEmpty() -> item(key = "empty") { EmptyBlockList(type) }
 
                     else -> {
-                        StatusPill(
-                            text = stringResource(
-                                R.string.block_type_already_blocked,
-                                current.size
-                            ),
-                            accent = type.accent,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        // Aplicativos e sites em seções próprias: são coisas
-                        // diferentes de gerenciar — um se reconhece pelo ícone, o
-                        // outro pelo endereço — e misturados numa lista só a pessoa
-                        // precisa ler item a item para achar o que procura.
-                        val apps = current.filterNot { it.isWebsite }
-                        val sites = current.filter { it.isWebsite }
-                        LazyColumn(
-                            contentPadding = PaddingValues(bottom = 24.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (apps.isNotEmpty()) {
-                                item(key = "header_apps") {
-                                    BlockedSectionHeader(
-                                        text = stringResource(
-                                            R.string.block_type_section_apps,
-                                            apps.size
-                                        ),
-                                        accent = type.accent
-                                    )
-                                }
-                                items(apps, key = { "app_${it.identifier}" }) { entry ->
-                                    BlockedEntryRow(
-                                        entry = entry,
-                                        accent = type.accent,
-                                        showSchedule = type != BlockTypeUi.PASSWORD,
-                                        onCancelBlock = if (canCancelTimeBlock(type, entry)) {
-                                            { cancelTarget = entry }
-                                        } else {
-                                            null
-                                        },
-                                        onRemove = if (type == BlockTypeUi.PASSWORD) {
-                                            { removalTarget = entry }
-                                        } else {
-                                            null
-                                        }
-                                    )
-                                }
+                        item(key = "blocked_count") {
+                            StatusPill(
+                                text = stringResource(
+                                    R.string.block_type_already_blocked,
+                                    blockedTargetCount(current)
+                                ),
+                                accent = type.accent,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        if (apps.isNotEmpty()) {
+                            item(key = "header_apps") {
+                                BlockedSectionHeader(
+                                    text = stringResource(
+                                        R.string.block_type_section_apps,
+                                        blockedTargetCount(apps)
+                                    ),
+                                    accent = type.accent
+                                )
                             }
-                            if (sites.isNotEmpty()) {
-                                item(key = "header_sites") {
-                                    BlockedSectionHeader(
-                                        text = stringResource(
-                                            R.string.block_type_section_sites,
-                                            sites.size
-                                        ),
-                                        accent = type.accent
-                                    )
-                                }
-                                items(sites, key = { "site_${it.identifier}" }) { entry ->
-                                    BlockedEntryRow(
-                                        entry = entry,
-                                        accent = type.accent,
-                                        showSchedule = type != BlockTypeUi.PASSWORD,
-                                        onCancelBlock = if (canCancelTimeBlock(type, entry)) {
-                                            { cancelTarget = entry }
-                                        } else {
-                                            null
-                                        },
-                                        onRemove = if (type == BlockTypeUi.PASSWORD) {
-                                            { removalTarget = entry }
-                                        } else {
-                                            null
-                                        }
-                                    )
-                                }
+                            items(apps, key = { "app_${it.identifier}_${it.sessionId}" }) { entry ->
+                                BlockedEntryRow(
+                                    entry = entry,
+                                    accent = type.accent,
+                                    showSchedule = type != BlockTypeUi.PASSWORD,
+                                    onCancelBlock = if (canCancelTimeBlock(type, entry)) {
+                                        { cancelTarget = entry }
+                                    } else {
+                                        null
+                                    },
+                                    onRemove = if (type == BlockTypeUi.PASSWORD) {
+                                        { removalTarget = entry }
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
+                        }
+                        if (sites.isNotEmpty()) {
+                            item(key = "header_sites") {
+                                BlockedSectionHeader(
+                                    text = stringResource(
+                                        R.string.block_type_section_sites,
+                                        blockedTargetCount(sites)
+                                    ),
+                                    accent = type.accent
+                                )
+                            }
+                            items(sites, key = { "site_${it.identifier}_${it.sessionId}" }) { entry ->
+                                BlockedEntryRow(
+                                    entry = entry,
+                                    accent = type.accent,
+                                    showSchedule = type != BlockTypeUi.PASSWORD,
+                                    onCancelBlock = if (canCancelTimeBlock(type, entry)) {
+                                        { cancelTarget = entry }
+                                    } else {
+                                        null
+                                    },
+                                    onRemove = if (type == BlockTypeUi.PASSWORD) {
+                                        { removalTarget = entry }
+                                    } else {
+                                        null
+                                    }
+                                )
                             }
                         }
                     }
@@ -497,7 +476,8 @@ fun BlockTypeDetailScreen(
 private fun PasswordProtectionTools(
     accent: Color,
     reloadTrigger: Int,
-    onIntruderLogClick: () -> Unit
+    onIntruderLogClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val authManager = remember(context) { AuthManager(context) }
@@ -565,7 +545,7 @@ private fun PasswordProtectionTools(
         }
     }
 
-    Column {
+    Column(modifier) {
         FocusCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -637,6 +617,50 @@ private fun PasswordProtectionTools(
     }
 }
 
+/**
+ * Botão principal em degradê da cor do tipo: fica o elemento mais luminoso da
+ * tela, que é o que se espera da ação que a tela existe para oferecer.
+ */
+@Composable
+private fun AddBlockButton(
+    type: BlockTypeUi,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(54.dp),
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 54.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(type.accent, type.accent.copy(alpha = 0.78f))
+                    ),
+                    RoundedCornerShape(16.dp)
+                ),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(type.actionRes),
+                color = DarkBg,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
 @Composable
 private fun ToggleRow(
     title: String,
@@ -701,7 +725,7 @@ private fun BlockTypeHeader(type: BlockTypeUi) {
 
 @Composable
 private fun EmptyBlockList(type: BlockTypeUi) {
-    Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
+    Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
         // A lista vazia deixa de ser um ícone cinza solto no vazio: vira um
         // painel tracejado, que se lê como um espaço à espera de conteúdo em
         // vez de uma tela que não carregou.
@@ -893,6 +917,14 @@ private fun BlockedEntryRow(
         }
     }
 }
+
+/**
+ * Quantos apps e sites distintos a lista segura. Um mesmo app em dois bloqueios
+ * por período tem uma linha por bloqueio, mas é um alvo só.
+ */
+internal fun blockedTargetCount(
+    entries: List<BlockingSessionManager.BlockOverview.Entry>
+): Int = entries.distinctBy { it.isWebsite to it.identifier }.size
 
 /**
  * Um bloqueio por tempo (sem senha ou por períodos) criado com o prazo de 48 h ainda

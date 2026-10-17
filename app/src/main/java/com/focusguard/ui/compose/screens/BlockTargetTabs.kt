@@ -116,11 +116,15 @@ fun WebsiteRulesTab(
                         // Só domínio: normalizeRule aceitaria a palavra solta e a
                         // gravaria como keyword, o que não é o que se pede aqui.
                         val domain = WebsiteBlocker.extractDomain(input)
-                        if (domain.isEmpty()) {
-                            invalidInput = true
-                        } else {
-                            toggle(domain)
-                            input = ""
+                        when {
+                            domain.isEmpty() -> invalidInput = true
+                            // Digitar de novo um site já escolhido não pode desmarcá-lo,
+                            // como o toque nos atalhos faz.
+                            domain in rules -> input = ""
+                            else -> {
+                                toggle(domain)
+                                input = ""
+                            }
                         }
                     }
                 )
@@ -136,16 +140,8 @@ fun WebsiteRulesTab(
                     fontSize = 12.sp
                 )
             }
-            item { SectionLabel(stringResource(R.string.protection_sites_common)) }
-            items(PredefinedWebsites.ALL_PRESETS, key = { "preset_${it.domain}" }) { website ->
-                val normalized = WebsiteBlocker.normalizeRule(website.domain)
-                WebsitePresetRow(
-                    website = website,
-                    selected = normalized in rules,
-                    onToggle = { toggle(normalized) }
-                )
-            }
-
+            // Os escolhidos logo abaixo do campo: depois dos atalhos eles ficavam a
+            // dezenas de linhas, e o site recém-digitado parecia não ter entrado.
             val chosenSites = rules.filterNot(WebsiteBlocker::isKeywordRule)
             item { SelectedSectionHeader(stringResource(R.string.protection_sites_selected)) }
             if (chosenSites.isEmpty()) {
@@ -165,6 +161,15 @@ fun WebsiteRulesTab(
                         onRemove = { onRulesChange(rules.filterNot { it == rule }) }
                     )
                 }
+            }
+            item { SectionLabel(stringResource(R.string.protection_sites_common)) }
+            items(PredefinedWebsites.ALL_PRESETS, key = { "preset_${it.domain}" }) { website ->
+                val normalized = WebsiteBlocker.normalizeRule(website.domain)
+                WebsitePresetRow(
+                    website = website,
+                    selected = normalized in rules,
+                    onToggle = { toggle(normalized) }
+                )
             }
         }
 

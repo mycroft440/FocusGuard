@@ -274,10 +274,6 @@ internal fun WebsiteUsageLimitEditorSheet(
     }
     val focusManager = LocalFocusManager.current
 
-    BackHandler(enabled = step == WebsiteLimitEditorStep.BLOCK_MODE) {
-        step = WebsiteLimitEditorStep.DETAILS
-    }
-
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -295,6 +291,11 @@ internal fun WebsiteUsageLimitEditorSheet(
             )
         }
     ) {
+        // Dentro da folha: ela é uma janela própria, com o próprio Voltar. Declarado
+        // fora, o BackHandler nunca era chamado e o Voltar fechava o editor inteiro.
+        BackHandler(enabled = step == WebsiteLimitEditorStep.BLOCK_MODE) {
+            step = WebsiteLimitEditorStep.DETAILS
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()

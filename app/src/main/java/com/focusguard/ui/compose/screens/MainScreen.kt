@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.UserProfile
 import com.focusguard.security.ProtectionPermission
+import com.focusguard.ui.compose.navigation.MainTabBackPolicy
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
 
@@ -65,6 +66,13 @@ fun MainScreen(
 
     BackHandler(enabled = focusModeActive) {
         if (selectedTab != 4) onTabChange(4)
+    }
+
+    // Fora do Modo Foco o Voltar numa aba que não é a Proteção volta para ela em
+    // vez de fechar o app (as Métricas nem têm seta própria).
+    val backTab = MainTabBackPolicy.backTarget(selectedTab, focusModeActive)
+    BackHandler(enabled = backTab != null) {
+        backTab?.let(onTabChange)
     }
 
     // O halo ciano cobre barra de título, conteúdo e barra de navegação de uma

@@ -262,10 +262,6 @@ fun AppLimitRedesignedSheet(
     }
     val focusManager = LocalFocusManager.current
 
-    BackHandler(enabled = step == AppLimitEditorStep.BLOCK_MODE) {
-        step = AppLimitEditorStep.DETAILS
-    }
-
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -283,6 +279,11 @@ fun AppLimitRedesignedSheet(
             )
         }
     ) {
+        // Dentro da folha: ela é uma janela própria, com o próprio Voltar. Declarado
+        // fora, o BackHandler nunca era chamado e o Voltar fechava o editor inteiro.
+        BackHandler(enabled = step == AppLimitEditorStep.BLOCK_MODE) {
+            step = AppLimitEditorStep.DETAILS
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()

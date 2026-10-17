@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -79,5 +80,37 @@ class AppSelectionModeTest {
 
         assertThat(excluded.appPackages).containsExactly("com.example.app")
         assertThat(excluded.websiteRules).containsExactly("example.com")
+    }
+
+    private fun app(packageName: String, selected: Boolean) = SelectableAppUi(
+        packageName = packageName,
+        appName = packageName,
+        isSelected = selected
+    )
+
+    @Test
+    fun `nothing chosen does not move on to the final step`() {
+        val apps = listOf(app("com.a", selected = false), app("com.b", selected = false))
+
+        assertThat(selectionToProceed(apps, emptyList(), emptySet())).isNull()
+    }
+
+    @Test
+    fun `an app already held by the same protection does not count as a choice`() {
+        val apps = listOf(app("com.a", selected = true))
+
+        assertThat(selectionToProceed(apps, emptyList(), setOf("com.a"))).isNull()
+    }
+
+    @Test
+    fun `chosen apps and sites move on together`() {
+        val apps = listOf(app("com.a", selected = true), app("com.b", selected = false))
+
+        val selection = selectionToProceed(apps, listOf("example.com"), emptySet())
+
+        assertThat(selection!!.first.map { it.packageName }).containsExactly("com.a")
+        assertThat(selection.second).containsExactly("example.com")
+        assertThat(selectionToProceed(emptyList(), listOf("example.com"), emptySet()))
+            .isNotNull()
     }
 }
