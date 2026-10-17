@@ -232,13 +232,17 @@ class BlockingSessionManager @Inject constructor(
             websiteRules = getSitesForSessions(passwordIds)
         )
 
+        // Cada sessão é uma camada própria: o mesmo app em dois períodos (manhã e
+        // noite) aparece uma vez por sessão, com o horário e o prazo de cancelamento
+        // dela. Reduzido a um por alvo, o segundo bloqueio sumia da tela e não havia
+        // como cancelá-lo dentro das 48 h.
         val scheduledTimeEntries = scheduledTimeSessions.flatMap { session ->
             buildSessionEntries(session)
-        }.distinctBy { it.identifier }
+        }
 
         val fastEntries = continuousTimeSessions.flatMap { session ->
             buildSessionEntries(session)
-        }.distinctBy { it.identifier }
+        }
 
         // Uma regra já encerrada continua na tela de limites como "encerrada", mas
         // não está mais segurando nada.
@@ -257,6 +261,7 @@ class BlockingSessionManager @Inject constructor(
                 cancelableUntilMillis = limit.lockAfter
             )
         } + websiteLimits.map { limit ->
+            // Domínios antigos gravados sem normalizar podem cair na mesma regra.
             BlockOverview.Entry(
                 identifier = WebsiteBlocker.normalizeRule(limit.domain),
                 isWebsite = true,
@@ -266,13 +271,18 @@ class BlockingSessionManager @Inject constructor(
                 // Nos limites, até quando ainda dá para alterar (opção das 48 h).
                 cancelableUntilMillis = limit.lockAfter
             )
-        }
+        }.distinctBy { it.identifier }
 
+        val sessionOrder = compareBy<BlockOverview.Entry>(
+            { it.identifier },
+            { it.startAtMillis ?: 0L },
+            { it.sessionId ?: 0 }
+        )
         BlockOverview(
             passwordEntries = passwordEntries.sortedBy { it.identifier },
             dailyLimitEntries = limitEntries.sortedBy { it.identifier },
-            scheduledTimeEntries = scheduledTimeEntries.sortedBy { it.identifier },
-            dopamineFastEntries = fastEntries.sortedBy { it.identifier }
+            scheduledTimeEntries = scheduledTimeEntries.sortedWith(sessionOrder),
+            dopamineFastEntries = fastEntries.sortedWith(sessionOrder)
         )
     }
 

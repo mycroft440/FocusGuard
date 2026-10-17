@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -84,6 +85,7 @@ fun FocusGuardNavHost(
     pomodoroManager: PomodoroManager,
     focusModeManager: FocusModeManager,
     focusModeReturnNonce: Long = 0L,
+    pomodoroNavigationNonce: Long = 0L,
     onEnforceFocusModeLockTask: () -> Unit
 ) {
     var resumeKey by remember { mutableIntStateOf(0) }
@@ -102,7 +104,9 @@ fun FocusGuardNavHost(
     // Password/pattern/biometric credentials live on protected targets only;
     // the master password is reserved for administrative protection boundaries.
 
-    var currentRoute by remember {
+    // Salvos com a Activity: girar a tela ou trocar o idioma recria a MainActivity,
+    // e com remember a pessoa caía sempre na tela inicial no meio do que fazia.
+    var currentRoute by rememberSaveable {
         mutableStateOf(
             if (UnknownSourcesSecurityManager.getInstance(activity.applicationContext)
                     .isActivationPending()
@@ -113,9 +117,15 @@ fun FocusGuardNavHost(
             }
         )
     }
-    var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
-    var selectedTab by remember {
-        mutableIntStateOf(if (focusModeManager.isActive()) 4 else 1)
+    var selectedBlockType by rememberSaveable { mutableStateOf(BlockTypeUi.PASSWORD) }
+    var selectedTab by rememberSaveable {
+        mutableIntStateOf(
+            if (focusModeManager.isActive()) {
+                FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
+            } else {
+                MainTabBackPolicy.PROTECTION_TAB
+            }
+        )
     }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var missingProtectionPermissions by remember {
@@ -145,6 +155,18 @@ fun FocusGuardNavHost(
             currentRoute = FocusGuardRoute.Home
             selectedTab = FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
         }
+    }
+
+    // "Configurar" no widget abre a aba Pomodoro da tela inicial, com a barra de
+    // abas e o Voltar de sempre. Antes era uma tela solta, sem seta nem abas, de
+    // onde o Voltar fechava o app.
+    var handledPomodoroNavigationNonce by remember { mutableStateOf(0L) }
+    LaunchedEffect(pomodoroNavigationNonce) {
+        if (pomodoroNavigationNonce <= handledPomodoroNavigationNonce) return@LaunchedEffect
+        handledPomodoroNavigationNonce = pomodoroNavigationNonce
+        if (focusModeManager.isActive()) return@LaunchedEffect
+        currentRoute = FocusGuardRoute.Home
+        selectedTab = MainTabBackPolicy.POMODORO_TAB
     }
 
     LaunchedEffect(
@@ -194,7 +216,7 @@ fun FocusGuardNavHost(
         currentPomodoro?.isActive
     ) {
         val protectionHomeVisible = currentRoute == FocusGuardRoute.Home &&
-            selectedTab == 1 &&
+            selectedTab == MainTabBackPolicy.PROTECTION_TAB &&
             currentPomodoro?.isActive != true
 
         if (!protectionHomeVisible || creatorInstagramPresented) {

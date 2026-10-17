@@ -219,6 +219,11 @@ fun TimeBlockSessionConfigScreen(
 
     BackHandler(onBack = ::navigateBack)
 
+    // As duas páginas dividem a mesma rolagem: sem voltar ao topo, quem rolava os
+    // termos até "Continuar" via a página de horários já no meio, sem os dias.
+    val scrollState = rememberScrollState()
+    LaunchedEffect(page) { scrollState.scrollTo(0) }
+
     if (showMasterCredentialSetup) {
         DeactivationCredentialDialog(
             managementLocked = false,
@@ -312,7 +317,7 @@ fun TimeBlockSessionConfigScreen(
                 .background(DarkBg)
                 .padding(innerPadding)
                 .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             when (page) {

@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -169,6 +170,18 @@ fun FinalConfigStep(
         configError = null
     }
 
+    fun navigateBack() {
+        if (unlockMode == null) {
+            onBack()
+        } else {
+            returnToMethodSelection()
+        }
+    }
+
+    // O Voltar do sistema faz o mesmo que a seta. Sem isto ele fechava o assistente
+    // inteiro e a escolha de apps e sites se perdia.
+    BackHandler(onBack = ::navigateBack)
+
     if (showPatternDialog) {
         PatternSetupDialog(
             hideTrace = hidePatternTrace,
@@ -188,15 +201,7 @@ fun FinalConfigStep(
             TopAppBar(
                 title = { Text(stringResource(R.string.final_config_title), color = TextPrimary) },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (unlockMode == null) {
-                                onBack()
-                            } else {
-                                returnToMethodSelection()
-                            }
-                        }
-                    ) {
+                    IconButton(onClick = ::navigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             stringResource(R.string.common_back),

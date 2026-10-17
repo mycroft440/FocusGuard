@@ -169,6 +169,19 @@ internal fun selectionExclusions(
     else -> SelectionExclusions(emptySet(), emptySet())
 }
 
+/**
+ * O que segue para o passo final, ou null quando nada foi escolhido. Sem alvo o
+ * passo seguinte abria com o botão de ativar desligado e nenhuma explicação.
+ */
+internal fun selectionToProceed(
+    apps: List<SelectableAppUi>,
+    rules: List<String>,
+    blockedPackages: Set<String>
+): Pair<List<SelectableAppUi>, List<String>>? {
+    val chosenApps = apps.filter { it.isSelected && it.packageName !in blockedPackages }
+    return if (chosenApps.isEmpty() && rules.isEmpty()) null else chosenApps to rules
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreateSessionWizard(
@@ -362,10 +375,16 @@ fun AppSelectionStep(
     }
 
     val proceed: () -> Unit = {
-        onNext(
-            apps.filter { it.isSelected && it.packageName !in configuredBlockedPackages },
-            rules
-        )
+        val selection = selectionToProceed(apps, rules, configuredBlockedPackages)
+        if (selection == null) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.protection_continue_hint),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            onNext(selection.first, selection.second)
+        }
     }
 
     if (!kinds.needsTabs) {
