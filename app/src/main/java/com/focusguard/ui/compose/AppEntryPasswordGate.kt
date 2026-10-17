@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -178,8 +179,15 @@ fun AppEntryPasswordGate(
         AppEntryGateState.Loading(foregroundGeneration)
     }
 
+    // Cada volta ao primeiro plano tira a navegação de composição enquanto a
+    // entrada é conferida. O holder guarda o estado salvo dela (tela, aba, tipo de
+    // bloqueio) e o devolve na liberação: sem ele, quem saía do HardBlock por um
+    // instante voltava sempre para a tela inicial.
+    val contentStateHolder = rememberSaveableStateHolder()
+
     when (val state = visibleState) {
-        is AppEntryGateState.Unlocked -> content()
+        is AppEntryGateState.Unlocked ->
+            contentStateHolder.SaveableStateProvider(APP_ENTRY_CONTENT_STATE_KEY, content)
         is AppEntryGateState.Loading -> AppEntryLockLoading()
         is AppEntryGateState.Locked -> {
             val passwordCredentials = state.credentials.filter {
@@ -468,3 +476,5 @@ private fun AppEntryLockScreen(
         }
     }
 }
+
+private const val APP_ENTRY_CONTENT_STATE_KEY = "app_entry_content"

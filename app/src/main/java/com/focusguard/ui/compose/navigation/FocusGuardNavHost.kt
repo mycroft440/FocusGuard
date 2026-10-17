@@ -86,7 +86,8 @@ fun FocusGuardNavHost(
     pomodoroManager: PomodoroManager,
     focusModeManager: FocusModeManager,
     focusModeReturnNonce: Long = 0L,
-    pomodoroNavigationNonce: Long = 0L,
+    pomodoroNavigationRequested: Boolean = false,
+    onPomodoroNavigationHandled: () -> Unit = {},
     onEnforceFocusModeLockTask: () -> Unit
 ) {
     var resumeKey by remember { mutableIntStateOf(0) }
@@ -160,11 +161,10 @@ fun FocusGuardNavHost(
 
     // "Configurar" no widget abre a aba Pomodoro da tela inicial, com a barra de
     // abas e o Voltar de sempre. Antes era uma tela solta, sem seta nem abas, de
-    // onde o Voltar fechava o app.
-    var handledPomodoroNavigationNonce by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(pomodoroNavigationNonce) {
-        if (pomodoroNavigationNonce <= handledPomodoroNavigationNonce) return@LaunchedEffect
-        handledPomodoroNavigationNonce = pomodoroNavigationNonce
+    // onde o Voltar fechava o app. O pedido é consumido aqui, uma vez só.
+    LaunchedEffect(pomodoroNavigationRequested) {
+        if (!pomodoroNavigationRequested) return@LaunchedEffect
+        onPomodoroNavigationHandled()
         if (focusModeManager.isActive()) return@LaunchedEffect
         currentRoute = FocusGuardRoute.Home
         selectedTab = MainTabBackPolicy.POMODORO_TAB
