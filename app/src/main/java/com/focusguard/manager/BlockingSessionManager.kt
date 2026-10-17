@@ -1677,7 +1677,7 @@ class BlockingSessionManager @Inject constructor(
     private suspend fun compensateManualClockJump() {
         try {
             val store = clockJumpAnchorStore
-            val current = store.current() ?: return
+            val current = store.current()
             val anchor = store.read()
             val jump = ClockJumpPolicy.compensatedJumpMillis(anchor, current)
             val anchorWallClock = anchor?.wallClockMillis ?: Long.MAX_VALUE
