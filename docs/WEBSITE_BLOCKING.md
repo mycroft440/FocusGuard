@@ -1,39 +1,49 @@
 # Bloqueio de sites
 
 O bloqueio de sites do FocusGuard é o motor do antigo app **Bloquear Sites**, incorporado
-sem mudanças de comportamento no pacote `com.focusguard.sitesblocker`. Ele é o único
-bloqueio de sites do app: sessões, bloqueios por senha e limites de uso não recebem mais
-sites nem palavras-chave, e as políticas antigas de sites (`URLBlocklist` do Chrome/Edge
-por Device Owner, DNS familiar da categoria Pornografia e o filtro adulto global) são
-desfeitas na primeira reconciliação depois da atualização.
+no pacote `com.focusguard.sitesblocker`. Ele é o único bloqueio de sites do app, e as
+políticas antigas de sites (`URLBlocklist` do Chrome/Edge por Device Owner, DNS familiar
+da categoria Pornografia e o filtro adulto global) são desfeitas na primeira reconciliação
+depois da atualização.
 
 ## Onde fica
 
-- **Configurações → Bloquear sites** (`SitesBlockerScreen`): estado do serviço de
-  acessibilidade, uso da bateria em segundo plano (e atalhos da Xiaomi), **Bloquear
-  pornografia**, lista de domínios e navegadores instalados.
+- Os sites e palavras vêm só dos bloqueios do FocusGuard (`BlockTargetPolicy`): bloqueio
+  por senha, limite diário, períodos do dia e bloquear sem senha por tempo. O
+  `BlockingAccessibilityService` passa essas regras ao motor pelo
+  `SiteBlockEngine.ExternalRules`.
 - `SiteBlockEngine` roda dentro do `BlockingAccessibilityService`, que repassa a ele os
   eventos, o ciclo de vida e o teclado do serviço (`onCreateInputMethod`). O serviço
   declara `canPerformGestures` e `flagInputMethodEditor`, e recebe todos os tipos de
   evento, como o serviço original.
-- Os dados ficam nas mesmas preferências do app original (`blocked_sites`,
-  `identified_browsers`, `rejected_browsers`, `verified_browsers`, `unreadable_browsers`).
+- Os navegadores ficam nas mesmas preferências do app original (`identified_browsers`,
+  `rejected_browsers`, `verified_browsers`, `unreadable_browsers`).
+
+### Lista da antiga tela Bloquear sites
+
+De 25 a 29/09/2026, o app teve a tela **Configurações → Bloquear sites**, com uma lista
+própria de domínios e a opção **Bloquear pornografia**, gravadas em `blocked_sites`
+(`BlockedSitesStore`, como no app original). A tela saiu, mas o motor continuou lendo esse
+arquivo: os sites postos ali seguiam bloqueados sem aparecer em nenhum bloqueio e sem como
+tirá-los, e os navegadores sem suporte seguiam fechados mesmo sem nenhum bloqueio. Agora o
+motor só aplica as regras dos bloqueios, e o arquivo que sobrou é apagado ao abrir o app
+(`LegacySitesList`).
 
 ## Como funciona
 
-1. O usuário adiciona um domínio, por exemplo `instagram.com`.
-2. O app normaliza e salva apenas o domínio localmente em `SharedPreferences`.
+1. O usuário escolhe sites ou palavras num bloqueio, por exemplo `instagram.com`.
+2. O app normaliza e salva as regras localmente, no banco dos bloqueios.
 3. Depois que o usuário consente e ativa manualmente o serviço nas Configurações de Acessibilidade do Android, o serviço observa mudanças da interface.
 4. Para navegadores conhecidos, o app usa o método da família do navegador (veja abaixo) para achar a barra de endereço.
-5. Um navegador fora da lista é testado com o método de cada família; se nenhuma se encaixa, ele é bloqueado enquanto houver sites na lista ou o bloqueio de pornografia estiver ligado. Apps que não são navegadores passam por um fallback genérico que procura nós cujo ID se parece com barra de URL/endereço.
-6. A URL visível é normalizada para host e comparada com a lista. `example.com` também bloqueia `www.example.com` e `sub.example.com`, mas não bloqueia `evil-example.com`.
+5. Um navegador fora da lista é testado com o método de cada família; se nenhuma se encaixa, ele é bloqueado enquanto algum bloqueio tiver sites. Apps que não são navegadores passam por um fallback genérico que procura nós cujo ID se parece com barra de URL/endereço.
+6. A URL visível é normalizada para host e comparada com as regras dos bloqueios. `example.com` também bloqueia `www.example.com` e `sub.example.com`, mas não bloqueia `evil-example.com`.
 7. Ao detectar um domínio bloqueado, o serviço cobre a tela por alguns instantes e leva o navegador para o destino do redirecionamento (Configurações > **Destino do redirecionamento**; `google.com` por padrão) na própria aba: toca na barra de endereço, digita o endereço, confere o texto e confirma com o Enter de acessibilidade (Android 11+); na tela de pesquisa do Mi Browser, com a ação **Ir** do teclado de acessibilidade do serviço (Android 13+). Se a barra não puder ser usada (Android 10 ou anterior, Custom Tabs, navegador não reconhecido ou barra não encontrada), o destino é aberto em uma aba nova (no Firefox, depois da ação **Voltar**). O destino fica isento da lista para não entrar em loop; por isso um destino que algum bloqueio pega é recusado ao salvar e, se passar a ser bloqueado depois, o redirecionamento volta ao Google.
 
-A lista e as URLs lidas da interface permanecem no aparelho: nada disso é enviado para fora dele.
+As regras e as URLs lidas da interface permanecem no aparelho: nada disso é enviado para fora dele.
 
 ## Funcionamento em segundo plano
 
-Com o app fora da tela, a otimização de bateria do Android e as economias de energia dos fabricantes atrasam o serviço de acessibilidade, e o bloqueio chegava segundos depois de o site ou o navegador abrir. A tela **Bloquear sites** mostra se o app está liberado e oferece:
+Com o app fora da tela, a otimização de bateria do Android e as economias de energia dos fabricantes atrasam o serviço de acessibilidade, e o bloqueio chegava segundos depois de o site ou o navegador abrir. A antiga tela **Bloquear sites** mostrava se o app estava liberado e oferecia o que segue; o código continua em `BackgroundAccess`, mas nenhuma tela o usa desde que ela saiu:
 
 - **Liberar uso da bateria:** ao abrir a tela com a bateria otimizada, o diálogo do Android (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) aparece sozinho por cima do app, e basta tocar em **Permitir**. Se o pedido for recusado, ele volta na próxima abertura, e o aviso laranja e o botão **Liberar uso da bateria** o repetem na hora. Sem o diálogo, abre a lista de otimização de bateria ou os detalhes do app. Com a bateria liberada, sobra só o aviso verde.
 - **Xiaomi, Redmi e POCO (MIUI/HyperOS):** atalhos para o **Início automático** e para a **Economia de bateria** do app, onde deve ser escolhido "Sem restrições". Se a tela do fabricante não existir na versão do sistema, abre os detalhes do app.
@@ -61,7 +71,6 @@ Navegadores que expõem a barra de endereço do mesmo jeito ficam na mesma famí
 - Com algo a bloquear, o navegador em uso é lido de novo a cada 2 segundos, mesmo sem eventos, até sair da tela; no Firefox, o mesmo domínio precisa aparecer numa segunda leitura, 120 ms depois. Um site bloqueado que escapou da troca (por exemplo, com Voltar) não fica liberado à espera de um evento.
 - O serviço do FocusGuard recebe os eventos sem atraso (`notificationTimeout` 0, exigido pela autoproteção); os limites de leitura acima (Firefox, Opera GX, outros apps) evitam consultas repetidas numa rajada.
 - Durante a troca, a chegada ao Google é conferida a cada 250 ms e pelos eventos, no máximo uma vez a cada 100 ms.
-- A lista de sites fica guardada já normalizada, e o domínio aberto é comparado consultando o host e cada domínio acima dele, sem percorrer a lista.
 - No Opera GX, a barra não tem IDs e é lida pela estrutura da tela, o que percorre a árvore. O evento não consulta o navegador (que demora a responder enquanto a página carrega): os eventos de uma rajada só agendam uma leitura, 120 ms depois, feita numa só passada pela árvore. Sem um campo do Opera GX conectado ao teclado do serviço (Android 13+), não há endereço em edição, e a leitura para no primeiro texto da barra com URL. A troca pela barra abre uma tela de pesquisa. A cortina fica na tela até a troca terminar (até 12 segundos), e não só os 3 segundos dos outros navegadores. No Android 13+, o destino é digitado pela conexão de entrada do serviço, como um teclado (seleciona tudo e escreve por cima): o `ACTION_SET_TEXT` às vezes não ficava no campo em Compose. A espera pela tela de pesquisa e a conferência do texto usam o teclado do serviço (`ServiceInputMethod`), sem percorrer a árvore. Se a tela de pesquisa for fechada no meio da troca (Voltar), a troca pela barra é tentada até 3 vezes antes da aba nova, e Voltar só é usado se a tela ainda estiver aberta. Se a troca desistir, o site é conferido de novo e bloqueado outra vez se continuar na tela.
 - A tela de pesquisa do Mi Browser só navega com a ação **Ir** do teclado; o Enter de acessibilidade chega com outra ação e é ignorado. Por isso o serviço declara `flagInputMethodEditor` e envia a ação pela própria conexão de entrada (Android 13+), sem ler o que é digitado. No Android 12 ou anterior, o Google abre em uma aba nova no Mi Browser.
 - Os pacotes das famílias acima formam a lista de navegadores suportados.
@@ -69,13 +78,13 @@ Navegadores que expõem a barra de endereço do mesmo jeito ficam na mesma famí
 
 ### Navegadores bloqueados
 
-Via (`mark.via.gp`, `mark.via`), UC Browser (`com.UCMobile.intl`, `com.UCMobile`) e UC Mini (`com.uc.browser.en`) ficam em `KNOWN_UNSUPPORTED`: nos testes, a barra deles mostrava o título da página, e sites abertos por links ou pela pesquisa ficavam acessíveis. Eles nunca são identificados e são fechados assim que aparecem, enquanto houver sites na lista.
+Via (`mark.via.gp`, `mark.via`), UC Browser (`com.UCMobile.intl`, `com.UCMobile`) e UC Mini (`com.uc.browser.en`) ficam em `KNOWN_UNSUPPORTED`: nos testes, a barra deles mostrava o título da página, e sites abertos por links ou pela pesquisa ficavam acessíveis. Eles nunca são identificados e são fechados assim que aparecem, enquanto algum bloqueio tiver sites.
 
 ## Navegadores sem suporte
 
 O app identifica como navegador todo app que abre um link `https` de qualquer site (`BrowserDetector`): o teste usa um domínio inexistente, então apps que só abrem links do próprio site (YouTube, redes sociais) não entram. O bloco `<queries>` do manifesto dá essa visibilidade no Android 11+, sem a permissão de ver todos os apps.
 
-Enquanto houver sites na lista ou o bloqueio de pornografia estiver ligado, só os navegadores suportados ficam liberados:
+Enquanto algum bloqueio tiver sites (inclusive a categoria Pornografia), só os navegadores suportados ficam liberados:
 
 - **Navegador fora da lista:** é testado com o método de cada família, sempre com uma página web na tela. A tela inicial própria de um navegador pode mostrar um endereço que as páginas não mostram. Uma leitura não basta: a mesma família precisa ler a URL da barra, sem falhar, por 2 segundos (`IdentificationConfirmation`). Assim, navegadores que mostram a URL só enquanto a página carrega e depois trocam pelo título ficam de fora.
 - **Nenhuma família se encaixa:** o navegador é trocado pela página do app "navegador bloqueado" (`UnsupportedBrowserActivity`), com o botão **Voltar** para a tela inicial e um banner, e fica registrado como rejeitado. O primeiro bloqueio espera 2 segundos e um novo teste, para não bloquear um navegador que mostra a URL na barra depois do conteúdo. Um navegador já rejeitado é fechado assim que mostra uma página, sem esse prazo, a menos que uma família tenha acabado de ler a URL. Ele continua sendo testado a cada abertura, para o caso de uma atualização passar a funcionar.
@@ -83,7 +92,7 @@ Enquanto houver sites na lista ou o bloqueio de pornografia estiver ligado, só 
 
 Exigir conteúdo web na tela evita fechar apps que abrem links sem navegar, como gerenciadores de download. Apps instalados a partir de sites e abertos pelo Chrome sem barra de endereço (Trusted Web Activities) também são fechados se forem a primeira página depois de uma atualização do Chrome; uma página normal aberta no Chrome confere a barra de novo.
 
-A tela **Bloquear sites** lista os navegadores instalados: ✅ suportado (com a família), ⛔ não suportado ou com a barra não lida nesta versão (bloqueado), ❓ em teste (ainda não aberto com uma página).
+A lista dos navegadores instalados (✅ suportado, ⛔ bloqueado, ❓ em teste) ficava na antiga tela **Bloquear sites** e saiu com ela.
 
 Apps que não são navegadores continuam passando pelo fallback genérico baseado no ID do nó (`url_bar`, `address_bar`, `omnibar`…), que cobre alguns navegadores embutidos em outros apps. Depois de uma leitura, os eventos do mesmo app nos 300 ms seguintes não consultam o app e viram uma só leitura no fim desse intervalo. A conferência da barra por versão (`VerifiedBrowsers`) vale só para navegadores com família, e não roda nesses apps.
 
@@ -91,7 +100,7 @@ Os IDs vêm dos APKs de cada navegador e podem mudar em atualizações.
 
 ## Bloquear pornografia
 
-A opção **Bloquear pornografia**, na tela **Bloquear sites**, bloqueia conteúdo adulto sem depender da lista de sites (`AdultContentFilter`). Tudo roda no aparelho, e as listas vêm dentro do app. Uma página bloqueada é trocada pelo Google, como os sites da lista.
+A categoria **Pornografia**, escolhida num bloqueio sem senha (por tempo, períodos do dia ou limite esgotado), liga o filtro de conteúdo adulto (`AdultContentFilter`). Tudo roda no aparelho, e as listas vêm dentro do app. Uma página bloqueada é trocada pelo Google, como os outros sites bloqueados.
 
 O serviço de acessibilidade só vê texto: ele não analisa o conteúdo das imagens nem dos vídeos. Por isso o filtro usa quatro sinais:
 
@@ -102,7 +111,7 @@ O serviço de acessibilidade só vê texto: ele não analisa o conteúdo das ima
 
 Palavras comuns fora da pornografia (sexo, nude, pelada, naked) só contam dentro de expressões ("sexo explícito", "mulheres peladas"), para não bloquear "sexo biológico", "batom nude" ou "pelada de futebol".
 
-Com a opção ligada, os navegadores sem suporte também são fechados, mesmo com a lista de sites vazia.
+Com a categoria em vigor, os navegadores sem suporte também são fechados.
 
 Limites: uma busca inocente que retorne imagens explícitas sem citar sites adultos nem termos explícitos não é detectada. Sites adultos com nomes comuns, fora da lista, só são pegos pelo texto da página. Para reforçar, ative o SafeSearch na conta Google.
 

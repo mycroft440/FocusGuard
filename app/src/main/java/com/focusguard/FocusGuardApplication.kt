@@ -13,6 +13,7 @@ import com.focusguard.security.AppEntryAuthSession
 import com.focusguard.security.DeviceAdminActivationWindow
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.security.LegacyPasswordUsageLimitMigration
+import com.focusguard.sitesblocker.LegacySitesList
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
@@ -89,6 +90,19 @@ class FocusGuardApplication : Application() {
                     BlockingSessionManager.getInstance(this@FocusGuardApplication)
                         .checkAndEnforce()
                 }
+            }
+
+            // A lista da antiga tela Bloquear sites não vale mais: sem a tela, os sites postos
+            // nela seguiam bloqueados sem aparecer em nenhum bloqueio.
+            applicationScope.launch {
+                runCatching { LegacySitesList.delete(this@FocusGuardApplication) }
+                    .onFailure { error ->
+                        FocusGuardLogger.logError(
+                            "SitesBlocker",
+                            "Falha ao apagar a lista da antiga tela Bloquear sites",
+                            error
+                        )
+                    }
             }
 
             // Instanciar o manager também instancia dependências protegidas pelo

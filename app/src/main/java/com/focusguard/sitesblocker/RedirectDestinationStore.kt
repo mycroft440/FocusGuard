@@ -37,20 +37,10 @@ object RedirectDestinationStore {
         isBlockedByFocusGuard: (String) -> Boolean
     ): SaveResult {
         val url = normalize(rawUrl) ?: return SaveResult.INVALID_URL
-        if (url != DEFAULT_URL &&
-            (isBlockedBySitesList(BlockedSitesStore(context), url) || isBlockedByFocusGuard(url))
-        ) {
-            return SaveResult.BLOCKED
-        }
+        if (url != DEFAULT_URL && isBlockedByFocusGuard(url)) return SaveResult.BLOCKED
         preferences(context).edit().putString(KEY_URL, url).apply()
         return SaveResult.SAVED
     }
-
-    /** Lista e filtro de pornografia do Bloquear sites. */
-    @JvmStatic
-    fun isBlockedBySitesList(store: BlockedSitesStore, url: String): Boolean =
-        DomainMatcher.findMatchedDomainNormalized(url, store.normalizedDomains) != null ||
-            (store.isAdultFilterEnabled && AdultContentFilter.blocksUrl(url))
 
     /**
      * "exemplo.com", "https://www.exemplo.com/" → "https://exemplo.com". Só a raiz do site,
