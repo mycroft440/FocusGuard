@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Arrière-plan sur Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Démarrage automatique et économiseur de batterie (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Sur les téléphones Xiaomi, Redmi et POCO (MIUI ou HyperOS), le système a sa propre économie d\'énergie, qui peut retarder ou arrêter les blocages quand l\'app est fermée. Activez le Démarrage automatique et choisissez \"Aucune restriction\" dans l\'économiseur de batterie de l\'app.</string>
+    <string name="xiaomi_background_autostart">Démarrage auto</string>
+    <string name="xiaomi_background_battery">Économiseur de batterie</string>
+</resources>

@@ -10,6 +10,6 @@
 *Dica para Agentes: Este mapa foi gerado automaticamente. Atualize-o com responsabilidades específicas.*
 
 ## Proteção web
-- `sitesblocker/` (Java + `SitesBlockerScreen.kt`): único bloqueio de sites e de navegadores não suportados, vindo do app Bloquear Sites. `SiteBlockEngine` recebe os eventos do `BlockingAccessibilityService`; `BlockRedirectController`/`AddressBarNavigator` cobrem a tela e trocam o site pelo Google; `BrowserProfiles`/`IdentifiedBrowsers`/`VerifiedBrowsers` decidem quais navegadores são suportados; `AdultContentFilter` é o bloqueio de pornografia.
-- Sessões, senhas e limites só aceitam apps (`BlockTargetPolicy`). `WebsiteBlocker` ficou só com utilidades de texto para dados legados.
+- `sitesblocker/` (Java): único bloqueio de sites e de navegadores não suportados, vindo do app Bloquear Sites. `SiteBlockEngine` recebe os eventos do `BlockingAccessibilityService`; `BlockRedirectController`/`AddressBarNavigator` cobrem a tela e trocam o site pelo Google; `BrowserProfiles`/`IdentifiedBrowsers`/`VerifiedBrowsers` decidem quais navegadores são suportados; `AdultContentFilter` é o bloqueio de pornografia. As regras vêm só dos bloqueios, pelo `SiteBlockEngine.ExternalRules`; a lista da antiga tela Bloquear sites (`blocked_sites`) é apagada por `LegacySitesList`.
+- Bloqueio por senha, limite diário e períodos do dia aceitam apps e sites; bloquear sem senha por tempo também aceita palavras (`BlockTargetPolicy`). `WebsiteBlocker` compara as URLs com essas regras.
 - Detalhes: `docs/WEBSITE_BLOCKING.md`.

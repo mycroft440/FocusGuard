@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Segundo plano en Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Inicio automático y ahorro de batería (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">En los teléfonos Xiaomi, Redmi y POCO (MIUI o HyperOS), el sistema tiene su propio ahorro de energía, que puede retrasar o detener los bloqueos con la app cerrada. Activa el Inicio automático y elige \"Sin restricciones\" en el ahorro de batería de la app.</string>
+    <string name="xiaomi_background_autostart">Inicio automático</string>
+    <string name="xiaomi_background_battery">Ahorro de batería</string>
+</resources>

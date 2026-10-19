@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Xiaomi-তে ব্যাকগ্রাউন্ড</string>
+    <string name="xiaomi_background_subtitle">অটোস্টার্ট ও ব্যাটারি সেভার (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Xiaomi, Redmi ও POCO ফোনে (MIUI বা HyperOS) সিস্টেমের নিজস্ব পাওয়ার সেভিং থাকে, যা অ্যাপ বন্ধ থাকলে ব্লক দেরি করাতে বা থামিয়ে দিতে পারে। অটোস্টার্ট চালু করুন এবং অ্যাপের ব্যাটারি সেভারে \"কোনো সীমাবদ্ধতা নেই\" বেছে নিন।</string>
+    <string name="xiaomi_background_autostart">অটোস্টার্ট</string>
+    <string name="xiaomi_background_battery">ব্যাটারি সেভার</string>
+</resources>

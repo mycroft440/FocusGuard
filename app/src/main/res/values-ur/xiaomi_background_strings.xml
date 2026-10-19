@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Xiaomi پر پس منظر</string>
+    <string name="xiaomi_background_subtitle">آٹو اسٹارٹ اور بیٹری سیور (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Xiaomi، Redmi اور POCO فونز (MIUI یا HyperOS) میں سسٹم کی اپنی پاور سیونگ ہوتی ہے، جو ایپ بند ہونے پر بلاک کو تاخیر سے چلا سکتی ہے یا روک سکتی ہے۔ آٹو اسٹارٹ آن کریں اور ایپ کے بیٹری سیور میں \"کوئی پابندی نہیں\" منتخب کریں۔</string>
+    <string name="xiaomi_background_autostart">آٹو اسٹارٹ</string>
+    <string name="xiaomi_background_battery">بیٹری سیور</string>
+</resources>

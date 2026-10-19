@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">小米后台运行</string>
+    <string name="xiaomi_background_subtitle">自启动和省电策略（MIUI/HyperOS）</string>
+    <string name="xiaomi_background_desc">在小米、红米和 POCO 手机（MIUI 或 HyperOS）上，系统有自己的省电机制，可能会在应用关闭时延迟或停止拦截。请开启自启动，并在应用的省电策略中选择\"无限制\"。</string>
+    <string name="xiaomi_background_autostart">自启动</string>
+    <string name="xiaomi_background_battery">省电策略</string>
+</resources>

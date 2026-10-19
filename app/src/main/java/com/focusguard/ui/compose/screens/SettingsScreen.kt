@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.runtime.collectAsState
 import com.focusguard.monetization.PremiumManager
 import com.focusguard.ui.compose.components.PremiumDialog
+import com.focusguard.ui.compose.components.XiaomiBackgroundShortcuts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -87,6 +89,7 @@ import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.WebsiteBlocker
+import com.focusguard.utils.XiaomiBackgroundSettings
 import kotlinx.coroutines.launch
 
 /**
@@ -117,6 +120,8 @@ fun SettingsScreen(
     var revocationWorking by remember { mutableStateOf(false) }
     var showPremium by remember { mutableStateOf(false) }
     var showRedirectDestination by remember { mutableStateOf(false) }
+    var showXiaomiBackground by remember { mutableStateOf(false) }
+    val xiaomiSystem = remember(context) { XiaomiBackgroundSettings.isXiaomiSystem(context) }
     var redirectDestinationUrl by remember {
         mutableStateOf(RedirectDestinationStore.url(context))
     }
@@ -220,6 +225,14 @@ fun SettingsScreen(
                 ),
                 onClick = { showRedirectDestination = true }
             )
+            if (xiaomiSystem) {
+                SettingsItem(
+                    Icons.Default.BatteryChargingFull,
+                    stringResource(R.string.xiaomi_background_title),
+                    stringResource(R.string.xiaomi_background_subtitle),
+                    onClick = { showXiaomiBackground = true }
+                )
+            }
             SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.master_remove_all_blocks_title),
@@ -290,6 +303,19 @@ fun SettingsScreen(
             onSaved = { url ->
                 redirectDestinationUrl = url
                 showRedirectDestination = false
+            }
+        )
+    }
+
+    if (showXiaomiBackground) {
+        AlertDialog(
+            onDismissRequest = { showXiaomiBackground = false },
+            title = { Text(stringResource(R.string.xiaomi_background_title)) },
+            text = { XiaomiBackgroundShortcuts() },
+            confirmButton = {
+                TextButton(onClick = { showXiaomiBackground = false }) {
+                    Text(stringResource(R.string.fg_close))
+                }
             }
         )
     }

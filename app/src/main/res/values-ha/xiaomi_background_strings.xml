@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Bayan fage a Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Farawa kai tsaye da mai adana baturi (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">A wayoyin Xiaomi, Redmi da POCO (MIUI ko HyperOS), tsarin yana da nasa tsarin adana wuta wanda zai iya jinkirta ko dakatar da toshewa idan an rufe manhajar. Kunna Farawa kai tsaye kuma zaɓi \"Babu ƙuntatawa\" a mai adana baturin manhajar.</string>
+    <string name="xiaomi_background_autostart">Farawa kai tsaye</string>
+    <string name="xiaomi_background_battery">Mai adana baturi</string>
+</resources>

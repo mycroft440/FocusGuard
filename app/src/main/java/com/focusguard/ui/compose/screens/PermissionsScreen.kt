@@ -66,6 +66,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.security.DeviceAdminActivationWindow
 import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.ui.compose.components.XiaomiBackgroundShortcuts
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -79,6 +80,7 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.XiaomiBackgroundSettings
 
 enum class PermissionFlowMode {
     FullSetup,
@@ -653,9 +655,12 @@ private fun PermissionsSummaryCard(
     onReviewEssentials: () -> Unit,
     onFinish: () -> Unit
 ) {
+    val context = LocalContext.current
     val grantedCount = countGranted(permissionState, steps)
     val protectionReady = permissionState.hasAllProtectionPermissions()
     val statusColor = if (protectionReady) SuccessGreen else WarningAmber
+    // A otimização de bateria do Android não basta na Xiaomi: o sistema tem restrições próprias.
+    val xiaomiSystem = remember(context) { XiaomiBackgroundSettings.isXiaomiSystem(context) }
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -700,6 +705,18 @@ private fun PermissionsSummaryCard(
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
+            if (xiaomiSystem) {
+                Spacer(modifier = Modifier.height(18.dp))
+                Text(
+                    text = stringResource(R.string.xiaomi_background_title),
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                XiaomiBackgroundShortcuts(textAlign = TextAlign.Center)
+            }
             Spacer(modifier = Modifier.height(24.dp))
             if (protectionReady) {
                 Button(

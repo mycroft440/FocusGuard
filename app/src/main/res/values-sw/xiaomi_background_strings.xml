@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Chinichini kwenye Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Kuanza kiotomatiki na kiokoa betri (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Kwenye simu za Xiaomi, Redmi na POCO (MIUI au HyperOS), mfumo una uokoaji wake wa nishati unaoweza kuchelewesha au kusimamisha vizuizi programu ikiwa imefungwa. Washa Kuanza kiotomatiki na uchague \"Bila vikwazo\" kwenye kiokoa betri cha programu.</string>
+    <string name="xiaomi_background_autostart">Kuanza kiotomatiki</string>
+    <string name="xiaomi_background_battery">Kiokoa betri</string>
+</resources>

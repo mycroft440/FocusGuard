@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">الشغل في الخلفية على Xiaomi</string>
+    <string name="xiaomi_background_subtitle">التشغيل التلقائي وتوفير البطارية (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">في موبايلات Xiaomi وRedmi وPOCO (بنظام MIUI أو HyperOS)، النظام عنده توفير طاقة خاص بيه ممكن يأخر الحظر أو يوقفه والتطبيق مقفول. شغّل التشغيل التلقائي واختار \"بدون قيود\" في توفير البطارية بتاع التطبيق.</string>
+    <string name="xiaomi_background_autostart">التشغيل التلقائي</string>
+    <string name="xiaomi_background_battery">توفير البطارية</string>
+</resources>

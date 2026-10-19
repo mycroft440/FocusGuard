@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Hintergrund auf Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Autostart und Akkusparmodus (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Auf Xiaomi-, Redmi- und POCO-Handys (MIUI oder HyperOS) hat das System eine eigene Energiesparfunktion, die Sperren bei geschlossener App verzögern oder stoppen kann. Aktiviere Autostart und wähle im Akkusparmodus der App \"Keine Einschränkungen\".</string>
+    <string name="xiaomi_background_autostart">Autostart</string>
+    <string name="xiaomi_background_battery">Akkusparmodus</string>
+</resources>

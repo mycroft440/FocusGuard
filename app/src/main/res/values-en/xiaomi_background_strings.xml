@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Background on Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Autostart and battery saver (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">On Xiaomi, Redmi and POCO phones (MIUI or HyperOS), the system has its own power saving that can delay or stop blocks while the app is closed. Turn on Autostart and choose \"No restrictions\" in the app\'s battery saver.</string>
+    <string name="xiaomi_background_autostart">Autostart</string>
+    <string name="xiaomi_background_battery">Battery saver</string>
+</resources>
