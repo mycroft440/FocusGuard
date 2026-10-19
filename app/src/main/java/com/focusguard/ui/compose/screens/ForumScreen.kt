@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.text.format.DateUtils
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,13 +19,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,34 +60,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.focusguard.R
+import com.focusguard.data.ForumBackendConfig
 import com.focusguard.data.ForumComment
+import com.focusguard.data.ForumGoogleSignIn
+import com.focusguard.data.ForumGoogleSignInResult
 import com.focusguard.data.ForumNotification
 import com.focusguard.data.ForumNotificationType
 import com.focusguard.data.ForumPost
 import com.focusguard.data.ForumPostPolicy
-import com.focusguard.data.ForumPostStore
-import com.focusguard.data.ForumRepository
 import com.focusguard.data.UserProfile
-import com.focusguard.data.toForumAuthor
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
+import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
+import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.findActivity
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private enum class ForumSection {
-    FEED,
-    NOTIFICATIONS,
-    MY_POSTS
-}
 
 @Composable
 fun ForumScreen(
@@ -84,100 +98,64 @@ fun ForumScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val repository: ForumRepository = remember(context) { ForumPostStore(context) }
-    val scope = rememberCoroutineScope()
-    var sectionName by rememberSaveable { mutableStateOf(ForumSection.FEED.name) }
-    val section = ForumSection.valueOf(sectionName)
+    val factory = remember(context) { ForumViewModel.factory(context) }
+    val viewModel: ForumViewModel = viewModel(factory = factory)
+    val state by viewModel.state.collectAsState()
 
-    var posts by remember { mutableStateOf(emptyList<ForumPost>()) }
-    var postsLoaded by remember { mutableStateOf(false) }
-    var myPosts by remember { mutableStateOf(emptyList<ForumPost>()) }
-    var myPostsLoaded by remember { mutableStateOf(false) }
-    var notifications by remember { mutableStateOf(emptyList<ForumNotification>()) }
-    var notificationsLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(viewModel, profile) {
+        viewModel.bind(profile)
+    }
 
+    when (state.access) {
+        ForumAccess.CHECKING -> Box(modifier = modifier.fillMaxSize()) {
+            ForumLoadingState()
+        }
+
+        ForumAccess.SIGNED_OUT,
+        ForumAccess.SIGNING_IN -> ForumSignIn(
+            state = state,
+            viewModel = viewModel,
+            modifier = modifier
+        )
+
+        ForumAccess.LOCAL,
+        ForumAccess.SIGNED_IN -> ForumContent(
+            state = state,
+            profile = profile,
+            viewModel = viewModel,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun ForumContent(
+    state: ForumUiState,
+    profile: UserProfile,
+    viewModel: ForumViewModel,
+    modifier: Modifier
+) {
     var composerExpanded by rememberSaveable { mutableStateOf(false) }
     var draft by rememberSaveable { mutableStateOf("") }
-    var publishInFlight by remember { mutableStateOf(false) }
+    var postPendingDelete by remember { mutableStateOf<ForumPost?>(null) }
 
-    val unreadNotificationCount = notifications.count { notification -> !notification.isRead }
-    val visiblePosts = if (section == ForumSection.MY_POSTS) myPosts else posts
-    val visiblePostsLoaded = if (section == ForumSection.MY_POSTS) {
-        myPostsLoaded
-    } else {
-        postsLoaded
+    val section = state.section
+    val visiblePosts = if (section == ForumSection.MY_POSTS) state.myPosts else state.feed
+    val sectionLoading = when (section) {
+        ForumSection.NOTIFICATIONS -> state.notifications.loading
+        ForumSection.FEED,
+        ForumSection.MY_POSTS -> visiblePosts.loading
     }
 
-    LaunchedEffect(repository, profile.userId) {
-        postsLoaded = false
-        notificationsLoaded = false
-
-        runCatching {
-            repository.loadPosts(profile.userId)
-        }.onSuccess {
-            posts = it
-        }
-        postsLoaded = true
-
-        runCatching {
-            repository.loadNotifications(profile.userId)
-        }.onSuccess {
-            notifications = it
-        }
-        notificationsLoaded = true
-
-        if (section == ForumSection.MY_POSTS) {
-            myPostsLoaded = false
-            runCatching {
-                repository.loadUserPosts(profile.userId)
-            }.onSuccess {
-                myPosts = it
-            }
-            myPostsLoaded = true
-        }
-    }
-
-    fun openFeed() {
-        sectionName = ForumSection.FEED.name
-    }
-
-    fun openNotifications() {
-        sectionName = ForumSection.NOTIFICATIONS.name
-        notificationsLoaded = false
-        scope.launch {
-            try {
-                val loaded = repository.loadNotifications(profile.userId)
-                notifications = if (loaded.any { notification -> !notification.isRead }) {
-                    repository.markAllNotificationsRead(profile.userId)
-                } else {
-                    loaded
-                }
-            } finally {
-                notificationsLoaded = true
-            }
-        }
-    }
-
-    fun openMyPosts() {
-        sectionName = ForumSection.MY_POSTS.name
-        myPostsLoaded = false
-        scope.launch {
-            try {
-                myPosts = repository.loadUserPosts(profile.userId)
-            } finally {
-                myPostsLoaded = true
-            }
-        }
-    }
-
-    fun refreshPostViews() {
-        scope.launch {
-            posts = repository.loadPosts(profile.userId)
-            if (myPostsLoaded || section == ForumSection.MY_POSTS) {
-                myPosts = repository.loadUserPosts(profile.userId)
-                myPostsLoaded = true
-            }
-        }
+    postPendingDelete?.let { post ->
+        ForumDeleteDialog(
+            title = stringResource(R.string.forum_delete_post_title),
+            onConfirm = {
+                postPendingDelete = null
+                viewModel.deletePost(post)
+            },
+            onDismiss = { postPendingDelete = null }
+        )
     }
 
     LazyColumn(
@@ -194,11 +172,24 @@ fun ForumScreen(
             ForumSocialHeader(
                 profile = profile,
                 section = section,
-                unreadNotificationCount = unreadNotificationCount,
-                onFeedClick = ::openFeed,
-                onNotificationsClick = ::openNotifications,
-                onMyPostsClick = ::openMyPosts
+                unreadNotificationCount = state.unreadNotificationCount,
+                shared = state.shared,
+                refreshing = sectionLoading,
+                onFeedClick = { viewModel.selectSection(ForumSection.FEED) },
+                onNotificationsClick = { viewModel.selectSection(ForumSection.NOTIFICATIONS) },
+                onMyPostsClick = { viewModel.selectSection(ForumSection.MY_POSTS) },
+                onRefresh = viewModel::refresh,
+                onSignOut = viewModel::signOut
             )
+        }
+
+        state.message?.let { message ->
+            item(key = "forum_message") {
+                ForumMessageBanner(
+                    message = message,
+                    onDismiss = { viewModel.consumeMessage(message.id) }
+                )
+            }
         }
 
         if (section == ForumSection.FEED) {
@@ -207,29 +198,13 @@ fun ForumScreen(
                     profile = profile,
                     expanded = composerExpanded,
                     draft = draft,
+                    publishing = state.publishing,
                     onExpand = { composerExpanded = true },
                     onDraftChange = { draft = ForumPostPolicy.limitBodyInput(it) },
                     onPublish = {
-                        if (!publishInFlight) {
-                            publishInFlight = true
-                            scope.launch {
-                                try {
-                                    val published = repository.publish(
-                                        author = profile.toForumAuthor(),
-                                        body = draft
-                                    )
-                                    if (published != null) {
-                                        posts = repository.loadPosts(profile.userId)
-                                        if (myPostsLoaded) {
-                                            myPosts = repository.loadUserPosts(profile.userId)
-                                        }
-                                        draft = ""
-                                        composerExpanded = false
-                                    }
-                                } finally {
-                                    publishInFlight = false
-                                }
-                            }
+                        viewModel.publish(draft) {
+                            draft = ""
+                            composerExpanded = false
                         }
                     }
                 )
@@ -237,7 +212,13 @@ fun ForumScreen(
 
             item(key = "forum_storage_notice") {
                 Text(
-                    text = stringResource(R.string.forum_local_storage_notice),
+                    text = stringResource(
+                        if (state.shared) {
+                            R.string.forum_remote_storage_notice
+                        } else {
+                            R.string.forum_local_storage_notice
+                        }
+                    ),
                     color = TextHint,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
@@ -260,14 +241,24 @@ fun ForumScreen(
 
         when (section) {
             ForumSection.NOTIFICATIONS -> {
+                val notifications = state.notifications
                 when {
-                    !notificationsLoaded -> {
+                    !notifications.loaded && notifications.problem != null -> {
+                        item(key = "forum_notifications_problem") {
+                            ForumProblemState(
+                                problem = notifications.problem,
+                                onRetry = viewModel::refresh
+                            )
+                        }
+                    }
+
+                    !notifications.loaded -> {
                         item(key = "forum_notifications_loading") {
                             ForumLoadingState()
                         }
                     }
 
-                    notifications.isEmpty() -> {
+                    notifications.items.isEmpty() -> {
                         item(key = "forum_notifications_empty") {
                             ForumNotificationsEmptyState()
                         }
@@ -275,7 +266,7 @@ fun ForumScreen(
 
                     else -> {
                         items(
-                            items = notifications,
+                            items = notifications.items,
                             key = ForumNotification::id
                         ) { notification ->
                             ForumNotificationItem(notification = notification)
@@ -287,13 +278,22 @@ fun ForumScreen(
             ForumSection.FEED,
             ForumSection.MY_POSTS -> {
                 when {
-                    !visiblePostsLoaded -> {
+                    !visiblePosts.loaded && visiblePosts.problem != null -> {
+                        item(key = "forum_posts_problem") {
+                            ForumProblemState(
+                                problem = visiblePosts.problem,
+                                onRetry = viewModel::refresh
+                            )
+                        }
+                    }
+
+                    !visiblePosts.loaded -> {
                         item(key = "forum_posts_loading") {
                             ForumLoadingState()
                         }
                     }
 
-                    visiblePosts.isEmpty() -> {
+                    visiblePosts.items.isEmpty() -> {
                         item(key = "forum_empty") {
                             if (section == ForumSection.MY_POSTS) {
                                 ForumMyPostsEmptyState()
@@ -305,47 +305,172 @@ fun ForumScreen(
 
                     else -> {
                         items(
-                            items = visiblePosts,
+                            items = visiblePosts.items,
                             key = ForumPost::id
                         ) { post ->
+                            val currentUserId = state.currentUserId
                             ForumPostCard(
                                 post = post,
                                 profile = profile,
-                                onLoadComments = {
-                                    repository.loadComments(post.id)
+                                isOwnPost = post.authorId.isNotBlank() &&
+                                    post.authorId == currentUserId,
+                                canReport = state.shared,
+                                isOwnComment = { comment ->
+                                    // Comentários locais antigos não têm autor e são de quem usa o app.
+                                    comment.authorId == currentUserId ||
+                                        (!state.shared && comment.authorId.isBlank())
                                 },
-                                onToggleLike = {
-                                    scope.launch {
-                                        if (
-                                            repository.toggleLike(
-                                                postId = post.id,
-                                                actor = profile.toForumAuthor()
-                                            ) != null
-                                        ) {
-                                            refreshPostViews()
-                                        }
-                                    }
+                                onLoadComments = { viewModel.loadComments(post.id) },
+                                onToggleLike = { viewModel.toggleLike(post) },
+                                onAddComment = { body -> viewModel.addComment(post.id, body) },
+                                onDeleteComment = { comment ->
+                                    viewModel.deleteComment(post.id, comment)
                                 },
-                                onAddComment = { commentBody ->
-                                    val added = repository.addComment(
-                                        postId = post.id,
-                                        author = profile.toForumAuthor(),
-                                        body = commentBody
-                                    )
-                                    if (added != null) {
-                                        posts = repository.loadPosts(profile.userId)
-                                        if (myPostsLoaded || section == ForumSection.MY_POSTS) {
-                                            myPosts = repository.loadUserPosts(profile.userId)
-                                            myPostsLoaded = true
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
+                                onReportComment = { comment ->
+                                    viewModel.reportComment(post.id, comment)
+                                },
+                                onDeletePost = { postPendingDelete = post },
+                                onReportPost = { viewModel.reportPost(post) }
                             )
                         }
+
+                        if (section == ForumSection.FEED && state.feedCursor != null) {
+                            item(key = "forum_load_more") {
+                                ForumLoadMore(
+                                    loading = state.loadingMore,
+                                    onClick = viewModel::loadMore
+                                )
+                            }
+                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForumSignIn(
+    state: ForumUiState,
+    viewModel: ForumViewModel,
+    modifier: Modifier
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val webClientId = remember { ForumBackendConfig.fromBuildConfig().googleWebClientId }
+    val signingIn = state.access == ForumAccess.SIGNING_IN
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        item(key = "forum_sign_in") {
+            FocusCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, CardBorder)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Forum,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(34.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(R.string.forum_sign_in_title),
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.forum_sign_in_description),
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    state.signInProblem?.let { problem ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(forumProblemText(problem)),
+                            color = DangerRed,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.semantics {
+                                liveRegion = LiveRegionMode.Polite
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            val activity = context.findActivity()
+                            if (activity == null) {
+                                viewModel.onSignInFinished(ForumGoogleSignInResult.Failed)
+                            } else {
+                                viewModel.onSignInStarted()
+                                scope.launch {
+                                    var result: ForumGoogleSignInResult =
+                                        ForumGoogleSignInResult.Cancelled
+                                    try {
+                                        result = ForumGoogleSignIn.requestIdToken(
+                                            activity,
+                                            webClientId
+                                        )
+                                    } finally {
+                                        // Também roda se a aba for trocada no meio do login,
+                                        // para o botão não ficar preso em "Entrando…".
+                                        viewModel.onSignInFinished(result)
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !signingIn,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (signingIn) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = TextSecondary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = stringResource(
+                                if (signingIn) {
+                                    R.string.forum_signing_in
+                                } else {
+                                    R.string.forum_sign_in_button
+                                }
+                            ),
+                            color = if (signingIn) TextSecondary else DarkBg,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.forum_sign_in_terms),
+                        color = TextHint,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
@@ -357,9 +482,13 @@ private fun ForumSocialHeader(
     profile: UserProfile,
     section: ForumSection,
     unreadNotificationCount: Int,
+    shared: Boolean,
+    refreshing: Boolean,
     onFeedClick: () -> Unit,
     onNotificationsClick: () -> Unit,
-    onMyPostsClick: () -> Unit
+    onMyPostsClick: () -> Unit,
+    onRefresh: () -> Unit,
+    onSignOut: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val profileName = if (profile.displayName.isBlank()) {
@@ -400,6 +529,24 @@ private fun ForumSocialHeader(
                         fontSize = 11.sp
                     )
                 }
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !refreshing
+                ) {
+                    if (refreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = AccentCyan,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Refresh,
+                            contentDescription = stringResource(R.string.forum_refresh),
+                            tint = TextSecondary
+                        )
+                    }
+                }
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(
@@ -418,7 +565,7 @@ private fun ForumSocialHeader(
                             },
                             leadingIcon = {
                                 Icon(
-                                    imageVector = Icons.Outlined.Article,
+                                    imageVector = Icons.AutoMirrored.Outlined.Article,
                                     contentDescription = null
                                 )
                             },
@@ -427,6 +574,23 @@ private fun ForumSocialHeader(
                                 onMyPostsClick()
                             }
                         )
+                        if (shared) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(text = stringResource(R.string.forum_sign_out))
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.Logout,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSignOut()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -485,6 +649,228 @@ private fun ForumSocialHeader(
         }
     }
 }
+
+@Composable
+private fun ForumMessageBanner(
+    message: ForumMessage,
+    onDismiss: () -> Unit
+) {
+    LaunchedEffect(message.id) {
+        delay(MESSAGE_VISIBLE_MILLIS)
+        onDismiss()
+    }
+    val isProblem = message is ForumMessage.Failure
+    val text = when (message) {
+        is ForumMessage.Failure -> stringResource(forumProblemText(message.problem))
+        is ForumMessage.ReportSent -> stringResource(R.string.forum_report_sent)
+    }
+
+    FocusCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            1.dp,
+            if (isProblem) DangerRed.copy(alpha = 0.55f) else AccentCyan.copy(alpha = 0.45f)
+        ),
+        onClick = onDismiss
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isProblem) Icons.Outlined.CloudOff else Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = if (isProblem) DangerRed else AccentCyan,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = text,
+                color = TextPrimary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ForumProblemState(
+    problem: ForumProblem,
+    onRetry: () -> Unit
+) {
+    FocusCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CloudOff,
+                contentDescription = null,
+                tint = AccentCyan,
+                modifier = Modifier.size(30.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(forumProblemText(problem)),
+                color = TextSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = onRetry) {
+                Text(
+                    text = stringResource(R.string.forum_retry),
+                    color = AccentCyan,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForumLoadMore(
+    loading: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = AccentCyan,
+                strokeWidth = 2.dp
+            )
+        } else {
+            TextButton(onClick = onClick) {
+                Text(
+                    text = stringResource(R.string.forum_load_more),
+                    color = AccentCyan,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForumItemMenu(
+    canDelete: Boolean,
+    canReport: Boolean,
+    onDelete: () -> Unit,
+    onReport: () -> Unit
+) {
+    if (!canDelete && !canReport) return
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.MoreVert,
+                contentDescription = stringResource(R.string.forum_more_options),
+                tint = TextHint,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            if (canDelete) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.forum_delete)) },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Outlined.DeleteOutline, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onDelete()
+                    }
+                )
+            }
+            if (canReport) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.forum_report)) },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Outlined.Flag, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onReport()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForumDeleteDialog(
+    title: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, color = TextPrimary) },
+        text = {
+            Text(
+                text = stringResource(R.string.forum_delete_message),
+                color = TextSecondary,
+                fontSize = 14.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
+            ) {
+                Text(stringResource(R.string.forum_delete), color = TextPrimary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel), color = TextSecondary)
+            }
+        },
+        containerColor = DarkSurface,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@StringRes
+private fun forumProblemText(problem: ForumProblem): Int = when (problem) {
+    ForumProblem.NETWORK -> R.string.forum_error_network
+    ForumProblem.RATE_LIMITED -> R.string.forum_error_rate_limited
+    ForumProblem.BANNED -> R.string.forum_error_banned
+    ForumProblem.NOT_FOUND -> R.string.forum_error_not_found
+    ForumProblem.SESSION_EXPIRED -> R.string.forum_error_session_expired
+    ForumProblem.SIGN_IN_FAILED -> R.string.forum_error_sign_in
+    ForumProblem.NO_GOOGLE_ACCOUNT -> R.string.forum_error_no_google_account
+    ForumProblem.GENERIC -> R.string.forum_error_generic
+}
+
+private const val MESSAGE_VISIBLE_MILLIS = 4_000L
 
 @Composable
 private fun ForumLoadingState() {
@@ -581,7 +967,7 @@ private fun ForumMyPostsEmptyState() {
     ForumSectionEmptyState(
         title = stringResource(R.string.forum_empty_title),
         description = stringResource(R.string.forum_my_posts_empty_description),
-        icon = Icons.Outlined.Article
+        icon = Icons.AutoMirrored.Outlined.Article
     )
 }
 
@@ -631,6 +1017,7 @@ private fun ForumComposer(
     profile: UserProfile,
     expanded: Boolean,
     draft: String,
+    publishing: Boolean,
     onExpand: () -> Unit,
     onDraftChange: (String) -> Unit,
     onPublish: () -> Unit
@@ -738,7 +1125,8 @@ private fun ForumComposer(
                 Spacer(modifier = Modifier.weight(1f))
                 Button(
                     onClick = onPublish,
-                    enabled = ForumPostPolicy.normalizeForPublish(draft).isNotBlank(),
+                    enabled = !publishing &&
+                        ForumPostPolicy.normalizeForPublish(draft).isNotBlank(),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -757,9 +1145,16 @@ private fun ForumComposer(
 private fun ForumPostCard(
     post: ForumPost,
     profile: UserProfile,
-    onLoadComments: suspend () -> List<ForumComment>,
+    isOwnPost: Boolean,
+    canReport: Boolean,
+    isOwnComment: (ForumComment) -> Boolean,
+    onLoadComments: suspend () -> List<ForumComment>?,
     onToggleLike: () -> Unit,
-    onAddComment: suspend (String) -> Boolean
+    onAddComment: suspend (String) -> ForumComment?,
+    onDeleteComment: suspend (ForumComment) -> Boolean,
+    onReportComment: (ForumComment) -> Unit,
+    onDeletePost: () -> Unit,
+    onReportPost: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var commentsExpanded by rememberSaveable(post.id) { mutableStateOf(false) }
@@ -767,7 +1162,9 @@ private fun ForumPostCard(
     var comments by remember(post.id) { mutableStateOf(emptyList<ForumComment>()) }
     var commentsLoaded by remember(post.id) { mutableStateOf(false) }
     var commentsLoading by remember(post.id) { mutableStateOf(false) }
+    var commentsFailed by remember(post.id) { mutableStateOf(false) }
     var commentPublishing by remember(post.id) { mutableStateOf(false) }
+    var commentPendingDelete by remember(post.id) { mutableStateOf<ForumComment?>(null) }
 
     val authorLabel = if (post.authorName.isBlank()) {
         stringResource(R.string.forum_member)
@@ -779,14 +1176,35 @@ private fun ForumPostCard(
     fun loadComments() {
         if (commentsLoading) return
         commentsLoading = true
+        commentsFailed = false
         scope.launch {
             try {
-                comments = onLoadComments()
-                commentsLoaded = true
+                val loaded = onLoadComments()
+                if (loaded != null) {
+                    comments = loaded
+                    commentsLoaded = true
+                } else {
+                    commentsFailed = true
+                }
             } finally {
                 commentsLoading = false
             }
         }
+    }
+
+    commentPendingDelete?.let { comment ->
+        ForumDeleteDialog(
+            title = stringResource(R.string.forum_delete_comment_title),
+            onConfirm = {
+                commentPendingDelete = null
+                scope.launch {
+                    if (onDeleteComment(comment)) {
+                        comments = comments.filterNot { candidate -> candidate.id == comment.id }
+                    }
+                }
+            },
+            onDismiss = { commentPendingDelete = null }
+        )
     }
 
     FocusCard(
@@ -820,6 +1238,12 @@ private fun ForumPostCard(
                         fontSize = 11.sp
                     )
                 }
+                ForumItemMenu(
+                    canDelete = isOwnPost,
+                    canReport = canReport && !isOwnPost,
+                    onDelete = onDeletePost,
+                    onReport = onReportPost
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -924,6 +1348,17 @@ private fun ForumPostCard(
                         }
                     }
 
+                    commentsFailed && !commentsLoaded -> {
+                        TextButton(onClick = { loadComments() }) {
+                            Text(
+                                text = stringResource(R.string.forum_retry),
+                                color = AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
                     comments.isEmpty() -> {
                         Text(
                             text = stringResource(R.string.forum_no_comments),
@@ -934,7 +1369,14 @@ private fun ForumPostCard(
 
                     else -> {
                         comments.forEachIndexed { index, comment ->
-                            ForumCommentItem(comment = comment)
+                            val ownComment = isOwnComment(comment)
+                            ForumCommentItem(
+                                comment = comment,
+                                canDelete = ownComment,
+                                canReport = canReport && !ownComment,
+                                onDelete = { commentPendingDelete = comment },
+                                onReport = { onReportComment(comment) }
+                            )
                             if (index != comments.lastIndex) {
                                 Spacer(modifier = Modifier.height(10.dp))
                                 HorizontalDivider(color = CardBorder.copy(alpha = 0.45f))
@@ -953,6 +1395,7 @@ private fun ForumPostCard(
                 ForumCommentComposer(
                     profile = profile,
                     draft = commentDraft,
+                    publishing = commentPublishing,
                     onDraftChange = {
                         commentDraft = ForumPostPolicy.limitCommentInput(it)
                     },
@@ -961,10 +1404,14 @@ private fun ForumPostCard(
                             commentPublishing = true
                             scope.launch {
                                 try {
-                                    if (onAddComment(commentDraft)) {
+                                    val added = onAddComment(commentDraft)
+                                    if (added != null) {
                                         commentDraft = ""
-                                        comments = onLoadComments()
-                                        commentsLoaded = true
+                                        if (commentsLoaded) {
+                                            comments = comments + added
+                                        } else {
+                                            loadComments()
+                                        }
                                     }
                                 } finally {
                                     commentPublishing = false
@@ -979,7 +1426,13 @@ private fun ForumPostCard(
 }
 
 @Composable
-private fun ForumCommentItem(comment: ForumComment) {
+private fun ForumCommentItem(
+    comment: ForumComment,
+    canDelete: Boolean,
+    canReport: Boolean,
+    onDelete: () -> Unit,
+    onReport: () -> Unit
+) {
     val authorLabel = if (comment.authorName.isBlank()) {
         stringResource(R.string.forum_member)
     } else {
@@ -1020,6 +1473,12 @@ private fun ForumCommentItem(comment: ForumComment) {
                 lineHeight = 18.sp
             )
         }
+        ForumItemMenu(
+            canDelete = canDelete,
+            canReport = canReport,
+            onDelete = onDelete,
+            onReport = onReport
+        )
     }
 }
 
@@ -1027,6 +1486,7 @@ private fun ForumCommentItem(comment: ForumComment) {
 private fun ForumCommentComposer(
     profile: UserProfile,
     draft: String,
+    publishing: Boolean,
     onDraftChange: (String) -> Unit,
     onPublish: () -> Unit
 ) {
@@ -1077,7 +1537,8 @@ private fun ForumCommentComposer(
                 Spacer(modifier = Modifier.weight(1f))
                 Button(
                     onClick = onPublish,
-                    enabled = ForumPostPolicy.normalizeCommentForPublish(draft).isNotBlank(),
+                    enabled = !publishing &&
+                        ForumPostPolicy.normalizeCommentForPublish(draft).isNotBlank(),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)

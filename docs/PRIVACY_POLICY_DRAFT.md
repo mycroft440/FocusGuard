@@ -34,7 +34,15 @@ Senhas são armazenadas como verificadores criptográficos com salt. Sessões, l
 
 ### Internet
 
-A internet pode ser usada para carregar recursos públicos, como ícones de sites. O FocusGuard não possui conta em nuvem, publicidade ou envio de métricas para servidores de análise nesta versão.
+A internet pode ser usada para carregar recursos públicos, como ícones de sites, e para o fórum descrito abaixo. O FocusGuard não envia métricas para servidores de análise. A única conta em nuvem é a do fórum, e ela só existe quando o usuário decide entrar nele.
+
+### Fórum
+
+Quando a versão publicada tem o fórum compartilhado ativado, o usuário pode entrar com a conta Google para ler e publicar. O login é feito pelo Android (Credential Manager), e o FocusGuard recebe apenas um token de identificação. O servidor do fórum (um script do Google Apps Script mantido pelo responsável pelo FocusGuard) confere esse token com o Google e guarda somente um código derivado da conta. O e-mail e o nome da conta Google não são gravados.
+
+Ficam guardados, numa planilha do Google Sheets do responsável pelo FocusGuard: o código da conta, o nome e o avatar escolhidos no perfil do aplicativo, as publicações, comentários e curtidas, as notificações de interação e as denúncias feitas. Publicações, comentários, nomes e avatares ficam visíveis para todos os usuários do fórum. Conteúdo denunciado por três pessoas diferentes é ocultado automaticamente e pode ser removido pela moderação, assim como contas que desrespeitem as regras podem ser impedidas de publicar.
+
+Quando o fórum compartilhado não está ativado, publicações, curtidas e comentários ficam salvos apenas no aparelho.
 
 ## Compartilhamento
 
@@ -47,6 +55,7 @@ O usuário pode:
 - negar ou revogar permissões nas configurações do Android;
 - continuar usando recursos limitados sem Acessibilidade ou Acesso de uso;
 - apagar sessões, limites, senhas e fotos no aplicativo;
+- apagar as próprias publicações e comentários do fórum, sair do fórum e pedir a exclusão dos dados do fórum pelo contato abaixo;
 - desinstalar o aplicativo em instalações pessoais comuns.
 
 Em aparelhos corporativos provisionados deliberadamente como Device Owner, políticas de administração seguem o fluxo oficial do Android e precisam ser removidas pela manutenção administrativa antes da desinstalação.

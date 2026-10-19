@@ -114,3 +114,13 @@
     public static *** i(...);
 }
 # Mantém warnings (w) e errors (e) — úteis para diagnóstico de produção
+
+# ----------------------------------------------------------------------------
+# Credential Manager (login com Google do fórum)
+# ----------------------------------------------------------------------------
+# O provedor do Play Services é encontrado por reflexão; sem esta regra o R8 o
+# remove e o login falha só no release.
+-if class androidx.credentials.CredentialManager
+-keep class androidx.credentials.playservices.** {
+  *;
+}

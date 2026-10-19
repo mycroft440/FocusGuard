@@ -220,6 +220,66 @@ class ForumPostStore(context: Context) : ForumRepository {
         }
     }
 
+    override suspend fun deletePost(postId: String, actor: ForumAuthor): Boolean =
+        withContext(Dispatchers.IO) {
+            synchronized(lock) {
+                val actorId = UserProfilePolicy.normalizeUserId(actor.userId)
+                if (actorId.isBlank()) return@synchronized false
+
+                migrateLegacyInteractions(actorId)
+                val posts = loadPostsInternal(actorId)
+                val post = posts.firstOrNull { it.id == postId } ?: return@synchronized false
+                if (post.authorId != actorId) return@synchronized false
+
+                persistPosts(posts.filterNot { candidate -> candidate.id == postId })
+                preferences.edit()
+                    .remove(commentsKey(postId))
+                    .remove(likesKey(postId))
+                    .commit()
+                persistNotifications(
+                    actorId,
+                    readNotifications(actorId).filterNot { it.postId == postId }
+                )
+                true
+            }
+        }
+
+    override suspend fun deleteComment(
+        postId: String,
+        commentId: String,
+        actor: ForumAuthor
+    ): Boolean = withContext(Dispatchers.IO) {
+        synchronized(lock) {
+            val actorId = UserProfilePolicy.normalizeUserId(actor.userId)
+            if (actorId.isBlank()) return@synchronized false
+
+            migrateLegacyInteractions(actorId)
+            val posts = loadPostsInternal(actorId)
+            val post = posts.firstOrNull { it.id == postId } ?: return@synchronized false
+            val comments = loadCommentsInternal(postId)
+            val comment = comments.firstOrNull { it.id == commentId }
+                ?: return@synchronized false
+            // Comentários antigos não guardavam autor; neste aparelho eram de quem usa o app,
+            // assim como os posts antigos já são atribuídos a ele.
+            if (comment.authorId.ifBlank { actorId } != actorId) return@synchronized false
+
+            val remaining = comments.filterNot { candidate -> candidate.id == commentId }
+            persistComments(postId, remaining)
+            persistPosts(posts.map { candidate ->
+                if (candidate.id == postId) {
+                    post.copy(commentsCount = remaining.size)
+                } else {
+                    candidate
+                }
+            })
+            removeNotification(
+                userId = post.authorId,
+                notificationId = ForumStorageLayout.commentNotificationId(commentId)
+            )
+            true
+        }
+    }
+
     override suspend fun loadNotifications(userId: String): List<ForumNotification> =
         withContext(Dispatchers.IO) {
             synchronized(lock) {

@@ -25,8 +25,25 @@ data class ForumNotification(
     val isRead: Boolean = false
 )
 
+data class ForumPostPage(
+    val posts: List<ForumPost>,
+    val nextCursor: String? = null
+)
+
 interface ForumRepository {
+    /** True when every HardBlock user sees the same posts, not only this device. */
+    val isShared: Boolean
+        get() = false
+
     suspend fun loadPosts(currentUserId: String): List<ForumPost>
+
+    /** First page when [cursor] is null; then pass the previous page's `nextCursor`. */
+    suspend fun loadPostsPage(currentUserId: String, cursor: String?): ForumPostPage =
+        if (cursor == null) {
+            ForumPostPage(loadPosts(currentUserId))
+        } else {
+            ForumPostPage(emptyList())
+        }
 
     suspend fun loadUserPosts(userId: String): List<ForumPost>
 
@@ -50,6 +67,17 @@ interface ForumRepository {
         body: String,
         nowMillis: Long = System.currentTimeMillis()
     ): ForumComment?
+
+    /** Only the author can delete; returns false when the post is not theirs or is gone. */
+    suspend fun deletePost(postId: String, actor: ForumAuthor): Boolean
+
+    suspend fun deleteComment(postId: String, commentId: String, actor: ForumAuthor): Boolean
+
+    /** Reporting only makes sense on a shared forum; the local adapter has nobody to tell. */
+    suspend fun reportPost(postId: String, actor: ForumAuthor): Boolean = false
+
+    suspend fun reportComment(postId: String, commentId: String, actor: ForumAuthor): Boolean =
+        false
 
     suspend fun loadNotifications(userId: String): List<ForumNotification>
 

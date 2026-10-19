@@ -17,6 +17,22 @@ val admobTestRewardedId = "ca-app-pub-3940256099942544/5224354917"
 val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
 val admobTestNativeId = "ca-app-pub-3940256099942544/2247696110"
 
+// Shared forum (forum-backend/). Empty values keep the forum on this device only.
+// They are public by nature (both end up inside the APK), so gradle.properties is fine.
+fun forumBuildValue(property: String, environment: String): String {
+    val value = providers.gradleProperty(property)
+        .orElse(providers.environmentVariable(environment))
+        .getOrElse("")
+        .trim()
+    require(Regex("[A-Za-z0-9:/._-]*").matches(value)) {
+        "$property has characters that do not belong in a URL or OAuth client ID."
+    }
+    return value
+}
+val forumBackendUrl = forumBuildValue("focusguard.forumBackendUrl", "FORUM_BACKEND_URL")
+val forumGoogleWebClientId =
+    forumBuildValue("focusguard.forumGoogleWebClientId", "FORUM_GOOGLE_WEB_CLIENT_ID")
+
 android {
     namespace = "com.focusguard"
     compileSdk = 36
@@ -234,6 +250,14 @@ androidComponents {
             "ADMOB_NATIVE_AD_UNIT_ID",
             BuildConfigField("String", "\"$admobTestNativeId\"", "AdMob native test unit ID")
         )
+        buildConfigFields.put(
+            "FORUM_BACKEND_URL",
+            BuildConfigField("String", "\"$forumBackendUrl\"", "Forum Apps Script web app")
+        )
+        buildConfigFields.put(
+            "FORUM_GOOGLE_WEB_CLIENT_ID",
+            BuildConfigField("String", "\"$forumGoogleWebClientId\"", "Forum OAuth web client")
+        )
         variant.manifestPlaceholders.put("admobAppId", appId)
     }
 }
@@ -280,6 +304,9 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
 
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.google.identity.googleid)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

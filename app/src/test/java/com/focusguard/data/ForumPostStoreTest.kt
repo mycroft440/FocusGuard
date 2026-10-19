@@ -335,6 +335,43 @@ class ForumPostStoreTest {
             .isEqualTo(ForumPostPolicy.MAX_COMMENT_CODE_POINTS)
     }
 
+    @Test
+    fun `only the author deletes a post, taking its comments and notifications along`() =
+        runBlocking {
+            val store = ForumPostStore(context)
+            val alice = author("user-alice", "Alice", 0)
+            val bob = author("user-bob", "Bob", 1)
+            val post = requireNotNull(store.publish(alice, "Apagar depois", 1_000L))
+            store.publish(alice, "Fica", 2_000L)
+            store.addComment(post.id, bob, "Comentário", 3_000L)
+            store.toggleLike(post.id, bob, 4_000L)
+
+            assertThat(store.deletePost(post.id, bob)).isFalse()
+            assertThat(store.deletePost(post.id, alice)).isTrue()
+
+            assertThat(store.loadPosts("user-alice").map(ForumPost::body)).containsExactly("Fica")
+            assertThat(store.loadComments(post.id)).isEmpty()
+            assertThat(store.loadNotifications("user-alice")).isEmpty()
+            assertThat(store.deletePost(post.id, alice)).isFalse()
+        }
+
+    @Test
+    fun `only the author deletes a comment and the count follows`() = runBlocking {
+        val store = ForumPostStore(context)
+        val alice = author("user-alice", "Alice", 0)
+        val bob = author("user-bob", "Bob", 1)
+        val post = requireNotNull(store.publish(alice, "Post", 1_000L))
+        val bobComment = requireNotNull(store.addComment(post.id, bob, "Do Bob", 2_000L))
+        store.addComment(post.id, alice, "Da Alice", 3_000L)
+
+        assertThat(store.deleteComment(post.id, bobComment.id, alice)).isFalse()
+        assertThat(store.deleteComment(post.id, bobComment.id, bob)).isTrue()
+
+        assertThat(store.loadComments(post.id).map(ForumComment::body)).containsExactly("Da Alice")
+        assertThat(store.loadPosts("user-alice").single().commentsCount).isEqualTo(1)
+        assertThat(store.loadNotifications("user-alice")).isEmpty()
+    }
+
     private fun author(userId: String, name: String, avatarId: Int): ForumAuthor =
         ForumAuthor(
             userId = userId,

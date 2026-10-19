@@ -200,3 +200,15 @@ jobs:
             --archive "$ARCHIVE" \
             --expected-digest "$ARTIFACT_DIGEST" \
             --expect "performance-harness-gradle.log=performance-harness-gradle.log"
+
+  forum-backend:
+    name: Forum Backend (Apps Script)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run forum backend tests
+        run: node --test forum-backend/test/forum.test.js

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="forum_remote_storage_notice">Postagens, curtidas e comentários ficam visíveis para todos os usuários do HardBlock. Seja gentil: conteúdo denunciado pode ser removido.</string>
+    <string name="forum_sign_in_title">Participe do fórum</string>
+    <string name="forum_sign_in_description">Entre com sua conta Google para ler e publicar. Seu e-mail nunca aparece nem fica guardado: o fórum usa só o nome e o avatar do seu perfil.</string>
+    <string name="forum_sign_in_terms">Ao entrar, você concorda em manter o respeito. Conteúdo ofensivo, ilegal ou spam pode ser removido e a conta bloqueada.</string>
+    <string name="forum_sign_in_button">Entrar com Google</string>
+    <string name="forum_signing_in">Entrando…</string>
+    <string name="forum_sign_out">Sair do fórum</string>
+    <string name="forum_refresh">Atualizar</string>
+    <string name="forum_load_more">Carregar mais</string>
+    <string name="forum_retry">Tentar novamente</string>
+    <string name="forum_more_options">Mais opções</string>
+    <string name="forum_delete">Excluir</string>
+    <string name="forum_report">Denunciar</string>
+    <string name="forum_delete_post_title">Excluir esta publicação?</string>
+    <string name="forum_delete_comment_title">Excluir este comentário?</string>
+    <string name="forum_delete_message">Isso não pode ser desfeito.</string>
+    <string name="forum_report_sent">Denúncia enviada. Agradecemos a ajuda para manter o fórum seguro.</string>
+    <string name="forum_error_network">Não foi possível conectar ao fórum. Verifique a internet e tente de novo.</string>
+    <string name="forum_error_generic">Algo deu errado. Tente de novo em instantes.</string>
+    <string name="forum_error_rate_limited">Você está indo rápido demais. Espere um pouco e tente de novo.</string>
+    <string name="forum_error_banned">Esta conta não pode mais publicar no fórum.</string>
+    <string name="forum_error_not_found">Esta publicação não está mais disponível.</string>
+    <string name="forum_error_session_expired">Sua sessão no fórum terminou. Entre de novo.</string>
+    <string name="forum_error_sign_in">Não foi possível entrar com Google. Tente de novo.</string>
+    <string name="forum_error_no_google_account">Nenhuma conta Google neste aparelho. Adicione uma nas configurações do Android e tente de novo.</string>
+</resources>

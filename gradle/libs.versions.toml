@@ -48,6 +48,12 @@ coroutines = "1.9.0"
 # ─── Security ──────────────────────────────────────────────────────────────
 securityCrypto = "1.1.0-alpha06"
 
+# ─── Sign in with Google (fórum) ───────────────────────────────────────────
+# 1.5.0 is the last Credential Manager line built on the Kotlin 1.x stdlib; 1.6
+# pulls kotlin-stdlib 2.1, ahead of this project's Kotlin 2.0 compiler.
+androidxCredentials = "1.5.0"
+googleId = "1.1.1"
+
 # ─── CameraX ───────────────────────────────────────────────────────────────
 camerax = "1.4.0"
 
@@ -113,6 +119,11 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 
 # ─── Security ──────────────────────────────────────────────────────────────
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+
+# ─── Sign in with Google (fórum) ───────────────────────────────────────────
+androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "androidxCredentials" }
+androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "androidxCredentials" }
+google-identity-googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleId" }
 
 # ─── CameraX ───────────────────────────────────────────────────────────────
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }

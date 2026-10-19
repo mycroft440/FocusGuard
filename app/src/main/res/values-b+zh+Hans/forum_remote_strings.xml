@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="forum_remote_storage_notice">Posts, likes and comments are visible to every HardBlock user. Be kind: reported content may be removed.</string>
+    <string name="forum_sign_in_title">Join the forum</string>
+    <string name="forum_sign_in_description">Sign in with Google to read and post. Your e-mail is never shown or stored: the forum only uses your profile name and avatar.</string>
+    <string name="forum_sign_in_terms">By signing in you agree to keep it respectful. Offensive, illegal or spam content may be removed and the account blocked.</string>
+    <string name="forum_sign_in_button">Sign in with Google</string>
+    <string name="forum_signing_in">Signing in…</string>
+    <string name="forum_sign_out">Sign out of the forum</string>
+    <string name="forum_refresh">Refresh</string>
+    <string name="forum_load_more">Load more</string>
+    <string name="forum_retry">Try again</string>
+    <string name="forum_more_options">More options</string>
+    <string name="forum_delete">Delete</string>
+    <string name="forum_report">Report</string>
+    <string name="forum_delete_post_title">Delete this post?</string>
+    <string name="forum_delete_comment_title">Delete this comment?</string>
+    <string name="forum_delete_message">This can\'t be undone.</string>
+    <string name="forum_report_sent">Report sent. Thanks for helping keep the forum safe.</string>
+    <string name="forum_error_network">Couldn\'t reach the forum. Check your connection and try again.</string>
+    <string name="forum_error_generic">Something went wrong. Try again in a moment.</string>
+    <string name="forum_error_rate_limited">You\'re going too fast. Wait a moment and try again.</string>
+    <string name="forum_error_banned">This account can no longer post in the forum.</string>
+    <string name="forum_error_not_found">This post is no longer available.</string>
+    <string name="forum_error_session_expired">Your forum session has ended. Sign in again.</string>
+    <string name="forum_error_sign_in">Couldn\'t sign in with Google. Try again.</string>
+    <string name="forum_error_no_google_account">No Google account on this device. Add one in Android settings and try again.</string>
+</resources>
