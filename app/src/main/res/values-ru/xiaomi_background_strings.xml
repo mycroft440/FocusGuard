@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Фоновая работа на Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Автозапуск и контроль активности (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">На телефонах Xiaomi, Redmi и POCO (MIUI или HyperOS) у системы есть собственная экономия энергии, которая может задерживать или останавливать блокировки, когда приложение закрыто. Включите автозапуск и выберите \"Нет ограничений\" в настройках батареи приложения.</string>
+    <string name="xiaomi_background_autostart">Автозапуск</string>
+    <string name="xiaomi_background_battery">Экономия батареи</string>
+</resources>

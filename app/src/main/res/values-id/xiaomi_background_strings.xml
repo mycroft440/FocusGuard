@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Latar belakang di Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Mulai otomatis dan penghemat baterai (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Di ponsel Xiaomi, Redmi, dan POCO (MIUI atau HyperOS), sistem punya penghemat daya sendiri yang bisa menunda atau menghentikan pemblokiran saat aplikasi ditutup. Aktifkan Mulai otomatis dan pilih \"Tidak ada pembatasan\" di penghemat baterai aplikasi.</string>
+    <string name="xiaomi_background_autostart">Mulai otomatis</string>
+    <string name="xiaomi_background_battery">Penghemat baterai</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Xiaomi でのバックグラウンド</string>
+    <string name="xiaomi_background_subtitle">自動起動とバッテリーセーバー（MIUI/HyperOS）</string>
+    <string name="xiaomi_background_desc">Xiaomi、Redmi、POCO のスマートフォン（MIUI または HyperOS）では、システム独自の省電力機能により、アプリを閉じているときにブロックが遅れたり止まったりすることがあります。自動起動をオンにし、アプリのバッテリーセーバーで「制限なし」を選んでください。</string>
+    <string name="xiaomi_background_autostart">自動起動</string>
+    <string name="xiaomi_background_battery">バッテリーセーバー</string>
+</resources>

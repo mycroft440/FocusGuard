@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Xiaomiలో బ్యాక్‌గ్రౌండ్</string>
+    <string name="xiaomi_background_subtitle">ఆటోస్టార్ట్ మరియు బ్యాటరీ సేవర్ (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Xiaomi, Redmi మరియు POCO ఫోన్లలో (MIUI లేదా HyperOS) సిస్టమ్‌కు సొంత పవర్ సేవింగ్ ఉంటుంది, ఇది యాప్ మూసి ఉన్నప్పుడు బ్లాక్‌లను ఆలస్యం చేయవచ్చు లేదా ఆపివేయవచ్చు. ఆటోస్టార్ట్‌ను ఆన్ చేసి, యాప్ బ్యాటరీ సేవర్‌లో \"పరిమితులు లేవు\" ఎంచుకోండి.</string>
+    <string name="xiaomi_background_autostart">ఆటోస్టార్ట్</string>
+    <string name="xiaomi_background_battery">బ్యాటరీ సేవర్</string>
+</resources>

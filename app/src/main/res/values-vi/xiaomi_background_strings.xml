@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xiaomi_background_title">Chạy nền trên Xiaomi</string>
+    <string name="xiaomi_background_subtitle">Tự khởi động và tiết kiệm pin (MIUI/HyperOS)</string>
+    <string name="xiaomi_background_desc">Trên điện thoại Xiaomi, Redmi và POCO (MIUI hoặc HyperOS), hệ thống có chế độ tiết kiệm năng lượng riêng, có thể làm chậm hoặc dừng việc chặn khi ứng dụng đóng. Hãy bật Tự khởi động và chọn \"Không hạn chế\" trong mục tiết kiệm pin của ứng dụng.</string>
+    <string name="xiaomi_background_autostart">Tự khởi động</string>
+    <string name="xiaomi_background_battery">Tiết kiệm pin</string>
+</resources>
