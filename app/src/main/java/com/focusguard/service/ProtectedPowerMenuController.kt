@@ -865,16 +865,20 @@ class ProtectedPowerMenuController(
             var ancestor = runCatching { node.parent }.getOrNull()
             var depth = 0
             while (ancestor != null && depth++ < MAX_PARENT_DEPTH) {
+                val currentAncestor = ancestor
                 val candidateBounds = Rect()
-                val clickable = runCatching { ancestor.isClickable }.getOrDefault(false)
-                if (clickable) runCatching { ancestor.getBoundsInScreen(candidateBounds) }
-                val next = if (clickable && !candidateBounds.isEmpty) {
+                val clickable = runCatching { currentAncestor.isClickable }.getOrDefault(false)
+                if (clickable) runCatching { currentAncestor.getBoundsInScreen(candidateBounds) }
+                val safeTarget = clickable && !candidateBounds.isEmpty &&
+                    candidateBounds.contains(bounds.centerX(), bounds.centerY()) &&
+                    candidateBounds.height() <= service.resources.displayMetrics.heightPixels / 3
+                val next = if (safeTarget) {
                     null
                 } else {
-                    runCatching { ancestor.parent }.getOrNull()
+                    runCatching { currentAncestor.parent }.getOrNull()
                 }
-                recycleSafely(ancestor)
-                if (clickable && !candidateBounds.isEmpty) {
+                recycleSafely(currentAncestor)
+                if (safeTarget) {
                     bounds.set(candidateBounds)
                     ancestor = null
                     break
