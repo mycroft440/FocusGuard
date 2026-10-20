@@ -830,10 +830,17 @@ class ProtectedPowerMenuController(
         } ?: return false
 
         val node = findActionNode(root, action)
-        var clicked = node?.let(::clickNodeOrParent) == true
-        // Alguns menus nativos anunciam o clique de acessibilidade e o ignoram, ou
-        // nem o anunciam. Um toque curto sobre o botão nativo resolve nesses casos.
-        if (!clicked && node != null) clicked = tapNodeThroughOverlay(node)
+        // Alguns SystemUI aceitam ACTION_CLICK para "Desligar", mas não executam
+        // a ação. Nesse único botão, preferir um toque curto real no controle
+        // nativo e manter ACTION_CLICK como fallback caso o gesto não seja aceito.
+        // Os demais botões preservam a ordem de execução já existente.
+        val clicked = if (action == Action.POWER_OFF) {
+            node?.let { tapNodeThroughOverlay(it, preferClickableParent = true) } == true ||
+                node?.let(::clickNodeOrParent) == true
+        } else {
+            val accessibilityClick = node?.let(::clickNodeOrParent) == true
+            accessibilityClick || (node != null && tapNodeThroughOverlay(node))
+        }
         recycleSafely(node)
         recycleSafely(root)
         return clicked
@@ -843,15 +850,48 @@ class ProtectedPowerMenuController(
      * Toque curto (nunca longo, que em alguns fabricantes abre o Modo Seguro) no
      * centro do botão nativo. A proteção deixa de receber toques só durante o gesto.
      */
-    private fun tapNodeThroughOverlay(node: AccessibilityNodeInfo): Boolean {
+    private fun tapNodeThroughOverlay(
+        node: AccessibilityNodeInfo,
+        preferClickableParent: Boolean = false
+    ): Boolean {
         val bounds = Rect()
         runCatching { node.getBoundsInScreen(bounds) }
         if (bounds.isEmpty) return false
+
+        if (preferClickableParent && !runCatching { node.isClickable }.getOrDefault(false)) {
+            // O texto "Desligar" frequentemente é apenas um filho não clicável
+            // do cartão. Tocar o centro do ancestral clicável evita coordenadas
+            // de texto que alguns fabricantes não tratam como botão.
+            var ancestor = runCatching { node.parent }.getOrNull()
+            var depth = 0
+            while (ancestor != null && depth++ < MAX_PARENT_DEPTH) {
+                val candidateBounds = Rect()
+                val clickable = runCatching { ancestor.isClickable }.getOrDefault(false)
+                if (clickable) runCatching { ancestor.getBoundsInScreen(candidateBounds) }
+                val next = if (clickable && !candidateBounds.isEmpty) {
+                    null
+                } else {
+                    runCatching { ancestor.parent }.getOrNull()
+                }
+                recycleSafely(ancestor)
+                if (clickable && !candidateBounds.isEmpty) {
+                    bounds.set(candidateBounds)
+                    ancestor = null
+                    break
+                }
+                ancestor = next
+            }
+            recycleSafely(ancestor)
+        }
+
         val current = overlay ?: return false
         val params = overlayParams ?: return false
 
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        runCatching { windowManager.updateViewLayout(current, params) }
+        if (runCatching { windowManager.updateViewLayout(current, params) }.isFailure) {
+            params.flags = visibleFlags(params.flags)
+            return false
+        }
 
         fun restoreTouches() {
             if (!overlayVisible || overlay !== current) return
