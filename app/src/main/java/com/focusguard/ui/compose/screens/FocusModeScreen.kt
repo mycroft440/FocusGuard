@@ -13,7 +13,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -92,10 +91,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -119,7 +116,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
@@ -129,6 +125,7 @@ import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeSelectableApp
 import com.focusguard.focusmode.FocusModeSession
+import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
@@ -137,10 +134,8 @@ import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -1119,9 +1114,6 @@ private fun FocusModeActiveContent(
     manager: FocusModeManager
 ) {
     val context = LocalContext.current
-    var nowMillis by remember(session.endTimeMillis) {
-        mutableStateOf(System.currentTimeMillis())
-    }
     val allowedApps = remember(apps, session.allowedPackages, mandatoryPackages) {
         val visiblePackages = FocusModePolicy.visibleAllowedPackages(
             launchablePackages = apps.map { it.packageName },
@@ -1135,11 +1127,11 @@ private fun FocusModeActiveContent(
         // The root of an active kiosk must not be dismissed with the Back button.
     }
 
+    // Expiration must keep running even when the first LazyColumn item is
+    // recycled off-screen. The visible countdown owns its separate tick state.
     LaunchedEffect(session.endTimeMillis) {
-        while (nowMillis < session.endTimeMillis) {
-            delay(1_000L)
-            nowMillis = System.currentTimeMillis()
-        }
+        val remaining = (session.endTimeMillis - System.currentTimeMillis()).coerceAtLeast(0L)
+        delay(remaining)
         manager.finishExpiredSession()
     }
 
@@ -1149,7 +1141,7 @@ private fun FocusModeActiveContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            FocusActiveHero(session = session, nowMillis = nowMillis)
+            FocusActiveCountdownHero(session = session)
         }
 
         item {
@@ -1516,32 +1508,15 @@ private fun FocusAppTile(
 
 @Composable
 private fun InstalledAppIcon(packageName: String, appName: String) {
-    val context = LocalContext.current
-    var icon by remember(packageName) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(packageName) {
-        icon = withContext(Dispatchers.IO) {
-            runCatching {
-                context.packageManager.getApplicationIcon(packageName)
-                    .toBitmap(width = 96, height = 96)
-                    .asImageBitmap()
-            }.getOrNull()
-        }
-    }
-
-    if (icon != null) {
-        Image(
-            bitmap = requireNotNull(icon),
-            contentDescription = appName,
-            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
-        )
-    } else {
-        Icon(
-            Icons.Default.Apps,
-            contentDescription = appName,
-            tint = AccentCyan,
-            modifier = Modifier.size(36.dp)
-        )
-    }
+    // Share the LRU bitmap cache and off-main icon resolution with the rest
+    // of the app rather than decoding the same drawable on every grid entry.
+    FocusGuardAppIcon(
+        packageName = packageName,
+        appName = appName,
+        modifier = Modifier.size(40.dp),
+        cornerRadius = 10.dp,
+        allowRemoteFallback = false
+    )
 }
 
 @Composable
@@ -1669,6 +1644,20 @@ private fun FocusIconBadge(icon: ImageVector, accent: Color, size: Dp) {
  * Cabeçalho da sessão ativa: anel de progresso com o tempo restante no centro,
  * selo "ativo" pulsante e título. O anel esvazia conforme o tempo passa.
  */
+@Composable
+private fun FocusActiveCountdownHero(session: FocusModeSession) {
+    var nowMillis by remember(session.endTimeMillis) {
+        mutableStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(session.endTimeMillis) {
+        while (nowMillis < session.endTimeMillis) {
+            delay(1_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+    FocusActiveHero(session, nowMillis)
+}
+
 @Composable
 private fun FocusActiveHero(session: FocusModeSession, nowMillis: Long) {
     val remaining = session.remainingMillis(nowMillis)

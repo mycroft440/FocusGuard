@@ -70,6 +70,15 @@ internal fun PomodoroReferenceClock(
         val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
         formatter.format(Date(System.currentTimeMillis() + safeRemainingMillis))
     }
+    // A geometria angular dos 24 marcadores não depende do tamanho nem do
+    // progresso; não há motivo para recalcular 48 funções trigonométricas a
+    // cada atualização do relógio ou arraste.
+    val tickDirections = remember {
+        List(24) { index ->
+            val radians = (index * 15f - 90f) * PI / 180f
+            Offset(cos(radians).toFloat(), sin(radians).toFloat())
+        }
+    }
 
     // Cores amostradas do print de referência, pixel a pixel, e não escolhidas
     // no olho: o arco, a pílula "pronto para focar" e os controles + / - de lá
@@ -157,19 +166,12 @@ internal fun PomodoroReferenceClock(
             )
 
             // Minute/hour-like marks placed just inside the ring.
-            repeat(24) { index ->
-                val angle = (index * 15f - 90f) * PI / 180f
+            tickDirections.forEachIndexed { index, direction ->
                 val major = index % 3 == 0
                 val outerRadius = radius * 0.86f
                 val innerRadius = outerRadius - if (major) 13.dp.toPx() else 8.dp.toPx()
-                val start = Offset(
-                    center.x + cos(angle).toFloat() * innerRadius,
-                    center.y + sin(angle).toFloat() * innerRadius
-                )
-                val end = Offset(
-                    center.x + cos(angle).toFloat() * outerRadius,
-                    center.y + sin(angle).toFloat() * outerRadius
-                )
+                val start = center + direction * innerRadius
+                val end = center + direction * outerRadius
                 drawLine(
                     color = tick.copy(alpha = if (major) 0.72f else 0.38f),
                     start = start,
