@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
@@ -33,6 +34,7 @@ import com.focusguard.analytics.*
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.AppLabelCache
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.CancellationException
@@ -114,7 +116,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 // exato (meia-noite a meia-noite), com os dias encerrados gravados.
                 val rankings = analytics.getAppUsageRankings()
 
-                UsageInsightsData(
+                val data = UsageInsightsData(
                     phoneUsage = analytics.getPhoneUsageInsights(),
                     mostUsedApps = rankings.month,
                     mostUsedAverageApps = if (rankings.monthDaysWithData > 0) {
@@ -128,6 +130,16 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                     mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
                     neverUsedApps = analytics.getNeverUsedApps(rankings.usedLastSevenDays)
                 )
+                // PackageManager labels require resource loading. Resolve them
+                // before Compose renders the rankings, on the IO dispatcher.
+                AppLabelCache.prewarm(context.applicationContext, buildSet {
+                    data.mostUsedApps.forEach { add(it.packageName) }
+                    data.mostUsedAverageApps.forEach { add(it.packageName) }
+                    data.mostUsedTodayApps.forEach { add(it.packageName) }
+                    data.mostOpenedApps.forEach { add(it.packageName) }
+                    addAll(data.neverUsedApps)
+                })
+                data
             }
         }
             .onSuccess { data ->
@@ -832,10 +844,15 @@ fun MostUsedAppsSection(
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                displayList.forEach { stat ->
-                    val timeToDisplay = if (useAverage) stat.timeSpentMs / divisor else stat.timeSpentMs
-                    AppUsageRow(stat.packageName, timeToDisplay, pm)
-                    Spacer(Modifier.height(12.dp))
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    userScrollEnabled = expanded
+                ) {
+                    items(displayList, key = AppUsageStat::packageName) { stat ->
+                        val timeToDisplay = if (useAverage) stat.timeSpentMs / divisor else stat.timeSpentMs
+                        AppUsageRow(stat.packageName, timeToDisplay, pm)
+                        Spacer(Modifier.height(12.dp))
+                    }
                 }
             }
 
@@ -882,9 +899,14 @@ fun MostUsedTodayAppsSection(
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                displayList.forEach { stat ->
-                    AppUsageRow(stat.packageName, stat.timeSpentMs, pm)
-                    Spacer(Modifier.height(12.dp))
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    userScrollEnabled = expanded
+                ) {
+                    items(displayList, key = AppUsageStat::packageName) { stat ->
+                        AppUsageRow(stat.packageName, stat.timeSpentMs, pm)
+                        Spacer(Modifier.height(12.dp))
+                    }
                 }
             }
 
@@ -931,21 +953,26 @@ fun MostOpenedAppsSection(
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_accesses), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                displayList.forEach { app ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(app.packageName, pm, 32)
-                        Spacer(Modifier.width(12.dp))
-                        Text(getAppName(app.packageName, pm), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
-                        Text(
-                            pluralStringResource(
-                                R.plurals.dashboard_access_count,
-                                app.accessCount,
-                                app.accessCount
-                            ),
-                            color = AccentCyan,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    userScrollEnabled = expanded
+                ) {
+                    items(displayList, key = AppAccessStat::packageName) { app ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(app.packageName, pm, 32)
+                            Spacer(Modifier.width(12.dp))
+                            Text(getAppName(app.packageName, pm), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text(
+                                pluralStringResource(
+                                    R.plurals.dashboard_access_count,
+                                    app.accessCount,
+                                    app.accessCount
+                                ),
+                                color = AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -987,11 +1014,16 @@ fun NeverUsedAppsSection(
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_inactive), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                displayList.forEach { pkg ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(pkg, pm, 32)
-                        Spacer(Modifier.width(12.dp))
-                        Text(getAppName(pkg, pm), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    userScrollEnabled = expanded
+                ) {
+                    items(displayList, key = { it }) { pkg ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(pkg, pm, 32)
+                            Spacer(Modifier.width(12.dp))
+                            Text(getAppName(pkg, pm), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
+                        }
                     }
                 }
             }
@@ -1028,13 +1060,9 @@ fun AppIcon(pkg: String, pm: PackageManager, size: Int) {
     )
 }
 
-fun getAppName(pkg: String, pm: PackageManager): String {
-    return try {
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-    } catch (e: Throwable) {
-        pkg
-    }
-}
+@Suppress("UNUSED_PARAMETER") // Kept for callers; labels are prewarmed on Dispatchers.IO.
+fun getAppName(pkg: String, pm: PackageManager): String =
+    AppLabelCache.peek(pkg) ?: pkg
 
 private fun formatTime(millis: Long): String {
     if (millis <= 0L) return "0m"
