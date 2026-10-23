@@ -304,10 +304,20 @@ fun FocusGuardNavHost(
         modifier = Modifier.pointerInput(focusModeActive) {
             if (!focusModeActive) return@pointerInput
             awaitPointerEventScope {
+                // A drag generates pointer events every frame. Restarting the idle
+                // timer for each event recomposes the navigation host during scroll.
+                // A new touch still resets immediately; held gestures refresh at
+                // most once per second (well inside the 30-second idle window).
+                var lastRefreshAt = 0L
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     if (event.changes.any { it.pressed }) {
-                        focusModeInteractionNonce++
+                        val now = android.os.SystemClock.uptimeMillis()
+                        val newTouch = event.changes.any { it.pressed && !it.previousPressed }
+                        if (newTouch || now - lastRefreshAt >= 1_000L) {
+                            lastRefreshAt = now
+                            focusModeInteractionNonce++
+                        }
                     }
                 }
             }
