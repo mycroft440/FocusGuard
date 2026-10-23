@@ -61,7 +61,9 @@ fun SessionsListScreen(
     val viewModel: SessionsListViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
     val sessions by viewModel.sessions.collectAsState()
-    val filteredSessions = sessions.filter { it.sessionType == sessionType }
+    val filteredSessions = remember(sessions, sessionType) {
+        sessions.filter { it.sessionType == sessionType }
+    }
     
     var showPasswordPrompt by remember { mutableStateOf<Int?>(null) }
     var showDetailsSheet by remember { mutableStateOf<BlockSession?>(null) }
