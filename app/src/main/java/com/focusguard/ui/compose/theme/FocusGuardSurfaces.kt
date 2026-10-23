@@ -27,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -162,23 +161,40 @@ fun FocusCard(
     content: @Composable BoxScope.() -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (onClick != null && pressed) PRESSED_SCALE else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "FocusCardPress"
-    )
+    // Static cards need neither a press-state observer nor an animation/layer.
+    // Keep the same Box/content identity when onClick changes at runtime.
+    val pressed = if (onClick != null) {
+        interactionSource.collectIsPressedAsState().value
+    } else {
+        false
+    }
+    val scaleState = if (onClick != null) {
+        animateFloatAsState(
+            targetValue = if (pressed) PRESSED_SCALE else 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            ),
+            label = "FocusCardPress"
+        )
+    } else {
+        null
+    }
     val indication = LocalIndication.current
 
     Box(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            .then(
+                if (scaleState != null) {
+                    Modifier.graphicsLayer {
+                        // Read the animated value in Draw, not Composition.
+                        scaleX = scaleState.value
+                        scaleY = scaleState.value
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .clip(shape)
             .background(brush)
             .border(border, shape)

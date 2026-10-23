@@ -563,19 +563,33 @@ fun AppLimitsTab(
                 CircularProgressIndicator(color = AccentCyan)
             }
         } else {
-            val filtered = filteredApps(apps, searchQuery)
+            // Search text can change on every keystroke; cache list work by its
+            // actual inputs rather than re-filtering/re-sorting on unrelated UI state.
+            val filtered = remember(apps, searchQuery) {
+                filteredApps(apps, searchQuery)
+            }
+            val searchResults = remember(filtered, searchQuery.isNotBlank()) {
+                if (searchQuery.isNotBlank()) {
+                    filtered.sortedBy { it.appName.lowercase() }
+                } else {
+                    emptyList()
+                }
+            }
+            val sections = remember(apps, socialPackages) {
+                buildAppLimitSections(apps, socialPackages)
+            }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 if (searchQuery.isNotBlank()) {
-                    if (filtered.isNotEmpty()) {
+                    if (searchResults.isNotEmpty()) {
                         item {
                             UsageLimitSectionHeader(
                                 stringResource(R.string.limits_search_results_section)
                             )
                         }
-                        items(filtered.sortedBy { it.appName.lowercase() }, key = { "search_${it.packageName}" }) { app ->
+                        items(searchResults, key = { "search_${it.packageName}" }) { app ->
                             UsageLimitItem(
                                 app,
                                 isActive = app.currentLimitMinutes != null && app.isEnabled
@@ -583,7 +597,6 @@ fun AppLimitsTab(
                         }
                     }
                 } else {
-                    val sections = buildAppLimitSections(filtered, socialPackages)
                     if (sections.topUsed.isNotEmpty()) {
                         item {
                             UsageLimitSectionHeader(
@@ -1166,6 +1179,10 @@ fun WebsiteLimitsTab(
     val configuredByRule = remember(sites) {
         sites.associateBy { WebsiteBlocker.normalizeRule(it.domain) }
     }
+    // Editing a rule or typing into the site field must not re-sort every card.
+    val orderedConfiguredSites = remember(sites) {
+        sites.sortedBy { WebsiteBlocker.displayRule(it.domain).lowercase() }
+    }
 
     if (!keywordMode) {
         if (isLoading) {
@@ -1251,7 +1268,7 @@ fun WebsiteLimitsTab(
                     }
                 } else {
                     items(
-                        sites.sortedBy { WebsiteBlocker.displayRule(it.domain).lowercase() },
+                        orderedConfiguredSites,
                         key = { "configured_${WebsiteBlocker.normalizeRule(it.domain)}" }
                     ) { configured ->
                         WebsiteLimitItem(
