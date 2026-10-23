@@ -1116,9 +1116,6 @@ private fun FocusModeActiveContent(
     manager: FocusModeManager
 ) {
     val context = LocalContext.current
-    var nowMillis by remember(session.endTimeMillis) {
-        mutableStateOf(System.currentTimeMillis())
-    }
     val allowedApps = remember(apps, session.allowedPackages, mandatoryPackages) {
         val visiblePackages = FocusModePolicy.visibleAllowedPackages(
             launchablePackages = apps.map { it.packageName },
@@ -1132,11 +1129,11 @@ private fun FocusModeActiveContent(
         // The root of an active kiosk must not be dismissed with the Back button.
     }
 
+    // Expiration must keep running even when the first LazyColumn item is
+    // recycled off-screen. The visible countdown owns its separate tick state.
     LaunchedEffect(session.endTimeMillis) {
-        while (nowMillis < session.endTimeMillis) {
-            delay(1_000L)
-            nowMillis = System.currentTimeMillis()
-        }
+        val remaining = (session.endTimeMillis - System.currentTimeMillis()).coerceAtLeast(0L)
+        delay(remaining)
         manager.finishExpiredSession()
     }
 
@@ -1146,7 +1143,7 @@ private fun FocusModeActiveContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            FocusActiveHero(session = session, nowMillis = nowMillis)
+            FocusActiveCountdownHero(session = session)
         }
 
         item {
@@ -1649,6 +1646,20 @@ private fun FocusIconBadge(icon: ImageVector, accent: Color, size: Dp) {
  * Cabeçalho da sessão ativa: anel de progresso com o tempo restante no centro,
  * selo "ativo" pulsante e título. O anel esvazia conforme o tempo passa.
  */
+@Composable
+private fun FocusActiveCountdownHero(session: FocusModeSession) {
+    var nowMillis by remember(session.endTimeMillis) {
+        mutableStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(session.endTimeMillis) {
+        while (nowMillis < session.endTimeMillis) {
+            delay(1_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+    FocusActiveHero(session, nowMillis)
+}
+
 @Composable
 private fun FocusActiveHero(session: FocusModeSession, nowMillis: Long) {
     val remaining = session.remainingMillis(nowMillis)
