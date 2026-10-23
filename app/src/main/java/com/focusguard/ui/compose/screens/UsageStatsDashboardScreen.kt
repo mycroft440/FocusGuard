@@ -133,11 +133,13 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 // PackageManager labels require resource loading. Resolve them
                 // before Compose renders the rankings, on the IO dispatcher.
                 AppLabelCache.prewarm(context.applicationContext, buildSet {
-                    data.mostUsedApps.forEach { add(it.packageName) }
-                    data.mostUsedAverageApps.forEach { add(it.packageName) }
-                    data.mostUsedTodayApps.forEach { add(it.packageName) }
-                    data.mostOpenedApps.forEach { add(it.packageName) }
-                    addAll(data.neverUsedApps)
+                    // Prewarm only the rows initially visible: resolving labels
+                    // for hundreds of inactive apps would prolong the spinner.
+                    data.mostUsedApps.take(3).forEach { add(it.packageName) }
+                    data.mostUsedAverageApps.take(3).forEach { add(it.packageName) }
+                    data.mostUsedTodayApps.take(3).forEach { add(it.packageName) }
+                    data.mostOpenedApps.take(3).forEach { add(it.packageName) }
+                    addAll(data.neverUsedApps.take(3))
                 })
                 data
             }
@@ -959,9 +961,10 @@ fun MostOpenedAppsSection(
                 ) {
                     items(displayList, key = AppAccessStat::packageName) { app ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AppIcon(app.packageName, pm, 32)
+                            val appName = rememberAppName(app.packageName)
+                            AppIcon(app.packageName, pm, 32, appName)
                             Spacer(Modifier.width(12.dp))
-                            Text(getAppName(app.packageName, pm), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text(appName, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
                             Text(
                                 pluralStringResource(
                                     R.plurals.dashboard_access_count,
@@ -1020,9 +1023,10 @@ fun NeverUsedAppsSection(
                 ) {
                     items(displayList, key = { it }) { pkg ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AppIcon(pkg, pm, 32)
+                            val appName = rememberAppName(pkg)
+                            AppIcon(pkg, pm, 32, appName)
                             Spacer(Modifier.width(12.dp))
-                            Text(getAppName(pkg, pm), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text(appName, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
                         }
                     }
                 }
@@ -1039,30 +1043,51 @@ fun NeverUsedAppsSection(
 
 @Composable
 fun AppUsageRow(pkg: String, timeMs: Long, pm: PackageManager) {
+    val appName = rememberAppName(pkg)
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        AppIcon(pkg, pm, 40)
+        AppIcon(pkg, pm, 40, appName)
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(getAppName(pkg, pm), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(appName, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1)
         }
         Text(formatTime(timeMs), color = AccentCyan, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-fun AppIcon(pkg: String, pm: PackageManager, size: Int) {
+fun AppIcon(pkg: String, pm: PackageManager, size: Int, label: String? = null) {
+    val appName = label ?: rememberAppName(pkg)
     FocusGuardAppIcon(
         packageName = pkg,
-        appName = getAppName(pkg, pm),
+        appName = appName,
         modifier = Modifier.size(size.dp),
         cornerRadius = (size / 4).dp,
         allowRemoteFallback = true
     )
 }
 
-@Suppress("UNUSED_PARAMETER") // Kept for callers; labels are prewarmed on Dispatchers.IO.
-fun getAppName(pkg: String, pm: PackageManager): String =
-    AppLabelCache.peek(pkg) ?: pkg
+/** Never query PackageManager synchronously while composing a ranking row. */
+@Composable
+private fun rememberAppName(pkg: String): String {
+    val context = LocalContext.current.applicationContext
+    var appName by remember(pkg) { mutableStateOf(AppLabelCache.peek(pkg) ?: pkg) }
+    LaunchedEffect(pkg) {
+        val label = AppLabelCache.peek(pkg) ?: withContext(Dispatchers.IO) {
+            AppLabelCache.get(context, pkg)
+        }
+        if (label != null) appName = label
+    }
+    return appName
+}
+
+// Keep the original non-Composable utility available for existing callers.
+fun getAppName(pkg: String, pm: PackageManager): String {
+    return try {
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Throwable) {
+        pkg
+    }
+}
 
 private fun formatTime(millis: Long): String {
     if (millis <= 0L) return "0m"
