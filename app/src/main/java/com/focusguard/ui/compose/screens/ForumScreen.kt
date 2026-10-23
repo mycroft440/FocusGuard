@@ -168,7 +168,7 @@ private fun ForumContent(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item(key = "forum_social_header") {
+        item(key = "forum_social_header", contentType = "forum_social_header") {
             ForumSocialHeader(
                 profile = profile,
                 section = section,
@@ -184,7 +184,7 @@ private fun ForumContent(
         }
 
         state.message?.let { message ->
-            item(key = "forum_message") {
+            item(key = "forum_message", contentType = "forum_message") {
                 ForumMessageBanner(
                     message = message,
                     onDismiss = { viewModel.consumeMessage(message.id) }
@@ -193,7 +193,7 @@ private fun ForumContent(
         }
 
         if (section == ForumSection.FEED) {
-            item(key = "forum_composer") {
+            item(key = "forum_composer", contentType = "forum_composer") {
                 ForumComposer(
                     profile = profile,
                     expanded = composerExpanded,
@@ -210,7 +210,7 @@ private fun ForumContent(
                 )
             }
 
-            item(key = "forum_storage_notice") {
+            item(key = "forum_storage_notice", contentType = "forum_storage_notice") {
                 Text(
                     text = stringResource(
                         if (state.shared) {
@@ -228,7 +228,7 @@ private fun ForumContent(
         }
 
         if (section == ForumSection.MY_POSTS) {
-            item(key = "forum_my_posts_title") {
+            item(key = "forum_my_posts_title", contentType = "forum_my_posts_title") {
                 Text(
                     text = stringResource(R.string.forum_my_posts),
                     color = TextPrimary,
@@ -244,7 +244,7 @@ private fun ForumContent(
                 val notifications = state.notifications
                 when {
                     !notifications.loaded && notifications.problem != null -> {
-                        item(key = "forum_notifications_problem") {
+                        item(key = "forum_notifications_problem", contentType = "forum_notifications_problem") {
                             ForumProblemState(
                                 problem = notifications.problem,
                                 onRetry = viewModel::refresh
@@ -253,13 +253,13 @@ private fun ForumContent(
                     }
 
                     !notifications.loaded -> {
-                        item(key = "forum_notifications_loading") {
+                        item(key = "forum_notifications_loading", contentType = "forum_notifications_loading") {
                             ForumLoadingState()
                         }
                     }
 
                     notifications.items.isEmpty() -> {
-                        item(key = "forum_notifications_empty") {
+                        item(key = "forum_notifications_empty", contentType = "forum_notifications_empty") {
                             ForumNotificationsEmptyState()
                         }
                     }
@@ -267,7 +267,8 @@ private fun ForumContent(
                     else -> {
                         items(
                             items = notifications.items,
-                            key = ForumNotification::id
+                            key = ForumNotification::id,
+                            contentType = { "forum_notification" }
                         ) { notification ->
                             ForumNotificationItem(notification = notification)
                         }
@@ -279,7 +280,7 @@ private fun ForumContent(
             ForumSection.MY_POSTS -> {
                 when {
                     !visiblePosts.loaded && visiblePosts.problem != null -> {
-                        item(key = "forum_posts_problem") {
+                        item(key = "forum_posts_problem", contentType = "forum_posts_problem") {
                             ForumProblemState(
                                 problem = visiblePosts.problem,
                                 onRetry = viewModel::refresh
@@ -288,13 +289,13 @@ private fun ForumContent(
                     }
 
                     !visiblePosts.loaded -> {
-                        item(key = "forum_posts_loading") {
+                        item(key = "forum_posts_loading", contentType = "forum_posts_loading") {
                             ForumLoadingState()
                         }
                     }
 
                     visiblePosts.items.isEmpty() -> {
-                        item(key = "forum_empty") {
+                        item(key = "forum_empty", contentType = "forum_empty") {
                             if (section == ForumSection.MY_POSTS) {
                                 ForumMyPostsEmptyState()
                             } else {
@@ -306,7 +307,8 @@ private fun ForumContent(
                     else -> {
                         items(
                             items = visiblePosts.items,
-                            key = ForumPost::id
+                            key = ForumPost::id,
+                            contentType = { "forum_post" }
                         ) { post ->
                             val currentUserId = state.currentUserId
                             ForumPostCard(
@@ -335,7 +337,7 @@ private fun ForumContent(
                         }
 
                         if (section == ForumSection.FEED && state.feedCursor != null) {
-                            item(key = "forum_load_more") {
+                            item(key = "forum_load_more", contentType = "forum_load_more") {
                                 ForumLoadMore(
                                     loading = state.loadingMore,
                                     onClick = viewModel::loadMore
