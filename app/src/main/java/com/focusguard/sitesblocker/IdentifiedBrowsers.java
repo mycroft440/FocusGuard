@@ -15,11 +15,11 @@ import java.util.Map;
  * navegador pode mostrar um endereço que as páginas não mostram. A família que lê a URL da barra
  * sem falhar por 2 segundos (IdentificationConfirmation) passa a ser a família dele. O resultado
  * fica salvo para as próximas aberturas e para a tela do app. Se nenhuma família se encaixa, o
- * serviço bloqueia o navegador e o registra como rejeitado; ele é testado de novo a cada abertura.
+ * serviço bloqueia o navegador e o guarda na lista de recusados (RejectedBrowsers): nas próximas
+ * aberturas ele é fechado na hora, sem passar por aqui, até uma atualização dele ou do app.
  */
 final class IdentifiedBrowsers {
     private static final String PREFS_NAME = "identified_browsers";
-    private static final String REJECTED_PREFS_NAME = "rejected_browsers";
 
     private static final IdentificationConfirmation CONFIRMATION = new IdentificationConfirmation();
 
@@ -57,7 +57,6 @@ final class IdentifiedBrowsers {
 
             BrowserProfiles.registerIdentified(packageName, family);
             prefs(context).edit().putString(packageName, family.getFamily()).apply();
-            rejectedPrefs(context).edit().remove(packageName).apply();
             return family;
         }
 
@@ -70,18 +69,9 @@ final class IdentifiedBrowsers {
         return CONFIRMATION.isPending(packageName);
     }
 
-    /** Registra que o navegador não se encaixou em nenhuma família e foi bloqueado. */
-    static void markRejected(Context context, String packageName) {
+    /** O navegador não se encaixou em nenhuma família e foi recusado: a confirmação recomeça. */
+    static void cancelConfirmation(String packageName) {
         CONFIRMATION.reset(packageName);
-        rejectedPrefs(context).edit().putBoolean(packageName, true).apply();
-    }
-
-    static boolean isRejected(Context context, String packageName) {
-        return rejectedPrefs(context).getBoolean(packageName, false);
-    }
-
-    private static SharedPreferences rejectedPrefs(Context context) {
-        return context.getSharedPreferences(REJECTED_PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     private static SharedPreferences prefs(Context context) {

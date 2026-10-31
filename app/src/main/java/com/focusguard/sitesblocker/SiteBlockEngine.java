@@ -15,6 +15,8 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
+import java.util.function.Supplier;
+
 /**
  * Motor do Bloquear Sites, executado dentro do serviço de acessibilidade do FocusGuard
  * (BlockingAccessibilityService), que repassa os eventos e o ciclo de vida.
@@ -65,7 +67,9 @@ public final class SiteBlockEngine {
     private final AccessibilityService service;
     private final UrlExtractor urlExtractor = new UrlExtractor();
     private BrowserDetector browserDetector;
+    private BrowserVersions browserVersions;
     private VerifiedBrowsers verifiedBrowsers;
+    private RejectedBrowsers rejectedBrowsers;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private BlockRedirectController redirectController;
@@ -78,6 +82,7 @@ public final class SiteBlockEngine {
     private Runnable pendingReread;
     private Runnable pendingUnsupportedCheck;
     private String pendingUnsupportedPackage;
+    private Runnable pendingUnsupportedCloseRecheck;
     private Runnable pendingAddressBarCheck;
     private String pendingAddressBarPackage;
     private Runnable pendingPageScan;
@@ -138,6 +143,10 @@ public final class SiteBlockEngine {
     public void onLauncherShown() {
         lastPasswordKey = "";
         lastPasswordAt = 0L;
+        // O navegador fechado já saiu da tela: reaberto em seguida, ele é fechado de novo na hora,
+        // sem esperar o intervalo que junta a rajada de eventos do fechamento.
+        lastUnsupportedBrowser = "";
+        lastUnsupportedBrowserAt = 0L;
     }
 
     public SiteBlockEngine(AccessibilityService service, ExternalRules externalRules) {
@@ -158,7 +167,9 @@ public final class SiteBlockEngine {
     /** Chamado pelo serviço em onServiceConnected. */
     public void onServiceConnected() {
         browserDetector = new BrowserDetector(service);
-        verifiedBrowsers = new VerifiedBrowsers(service);
+        browserVersions = new BrowserVersions(service);
+        verifiedBrowsers = new VerifiedBrowsers(service, browserVersions);
+        rejectedBrowsers = new RejectedBrowsers(service, browserVersions);
         IdentifiedBrowsers.load(service);
         redirectController = new BlockRedirectController(
                 service, mainHandler, urlExtractor, this::scheduleReread, this::redirectUrl);
@@ -248,9 +259,15 @@ public final class SiteBlockEngine {
             return;
         }
 
-        AccessibilityNodeInfo source = event.getSource();
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
 
+        // Navegador sem suporte (Via, UC) ou já recusado antes (RejectedBrowsers) na janela ativa:
+        // fechado na hora, sem consultar a fonte do evento e sem testar as famílias de novo. Vale
+        // para qualquer tipo de evento, inclusive o TYPE_WINDOWS_CHANGED sem pacote da volta pelos
+        // Recentes, porque é a janela ativa que mostra o navegador na frente.
+        if (closeUnsupportedBrowserInFront(packageNameOf(root))) return;
+
+        AccessibilityNodeInfo source = event.getSource();
         String packageName = resolvePackageName(event, source, root);
         if (packageName == null || service.getPackageName().equals(packageName)) return;
 
@@ -281,9 +298,14 @@ public final class SiteBlockEngine {
             return;
         }
 
-        // Navegadores sabidamente sem leitura confiável (Via, UC) são fechados assim que aparecem.
-        if (profile == null && BrowserProfiles.isKnownUnsupported(packageName)) {
-            closeUnsupportedBrowser(packageName);
+        // O mesmo navegador sem suporte, com o evento chegando antes de a janela ativa ser a dele
+        // (raiz ainda nula ou de outra janela na abertura): fechado se uma janela de app ativa ou
+        // com foco é dele. Fora da frente, o evento é ignorado: ele nunca volta a ser testado.
+        if (profile == null && isUnsupportedBrowser(packageName)) {
+            if (applicationRootForPackage(packageName) != null) {
+                if (packageName.equals(pendingUnsupportedPackage)) cancelUnsupportedBrowserCheck();
+                closeUnsupportedBrowser(packageName);
+            }
             return;
         }
 
@@ -302,17 +324,10 @@ public final class SiteBlockEngine {
             AccessibilityNodeInfo browserRoot = packageName.equals(packageNameOf(root))
                     ? root
                     : applicationRootForPackage(packageName);
-            profile = IdentifiedBrowsers.identify(service, urlExtractor, packageName, browserRoot);
+            profile = identifyBrowser(packageName, browserRoot);
             if (profile == null) {
-                // Já recusado antes: é fechado assim que mostra uma página, sem o novo prazo. Só
-                // ganha o prazo se uma família acabou de ler a URL e aguarda a confirmação.
-                if (IdentifiedBrowsers.isRejected(service, packageName)
-                        && !IdentifiedBrowsers.isAwaitingConfirmation(packageName)
-                        && NodeSearch.containsWebContent(browserRoot)) {
-                    cancelUnsupportedBrowserCheck();
-                    closeUnsupportedBrowser(packageName);
-                    return;
-                }
+                // Primeira vez (ou primeira depois de uma atualização): a recusa só sai depois do
+                // prazo. Recusado, ele entra no cache e as próximas aberturas são fechadas acima.
                 scheduleUnsupportedBrowserCheck(packageName, browserRoot);
                 return;
             }
@@ -603,7 +618,7 @@ public final class SiteBlockEngine {
             AccessibilityNodeInfo root = applicationRootForPackage(packageName);
             if (root == null || !NodeSearch.containsWebContent(root)) return;
 
-            BrowserProfile family = IdentifiedBrowsers.identify(service, urlExtractor, packageName, root);
+            BrowserProfile family = identifyBrowser(packageName, root);
             if (family != null) {
                 String url = urlExtractor.extract(root, null, packageName);
                 if (url != null) handleVisibleUrl(packageName, url);
@@ -617,7 +632,8 @@ public final class SiteBlockEngine {
                 return;
             }
 
-            IdentifiedBrowsers.markRejected(service, packageName);
+            IdentifiedBrowsers.cancelConfirmation(packageName);
+            rejectedBrowsers().markRejected(packageName);
             closeUnsupportedBrowser(packageName);
         };
         mainHandler.postDelayed(pendingUnsupportedCheck, UNSUPPORTED_BROWSER_GRACE_MS);
@@ -644,7 +660,9 @@ public final class SiteBlockEngine {
             BrowserProfile profile,
             AccessibilityNodeInfo root
     ) {
-        if (verifiedBrowsers == null) verifiedBrowsers = new VerifiedBrowsers(service);
+        if (verifiedBrowsers == null) {
+            verifiedBrowsers = new VerifiedBrowsers(service, browserVersions());
+        }
         if (verifiedBrowsers.isVerified(packageName)) return;
 
         AccessibilityNodeInfo browserRoot = packageName.equals(packageNameOf(root))
@@ -693,7 +711,7 @@ public final class SiteBlockEngine {
             verifiedBrowsers.markFailed(packageName);
             closeBrowser(
                     packageName,
-                    labelOf(packageName)
+                    () -> labelOf(packageName)
                             + " foi fechado: o bloqueio de sites não conseguiu ler a barra de"
                             + " endereço desta versão."
             );
@@ -708,10 +726,77 @@ public final class SiteBlockEngine {
     }
 
     private void closeUnsupportedBrowser(String packageName) {
-        closeBrowser(
+        boolean closed = closeBrowser(
                 packageName,
-                labelOf(packageName) + " não é suportado pelo bloqueio de sites e foi fechado."
+                () -> labelOf(packageName) + " não é suportado pelo bloqueio de sites e foi fechado."
         );
+        // Dentro do intervalo que junta a rajada de eventos do fechamento, a frente é conferida
+        // de novo no fim do intervalo: uma reabertura rápida (pelos Recentes, por exemplo) que não
+        // gera outro evento não fica aberta.
+        if (!closed) scheduleUnsupportedCloseRecheck();
+    }
+
+    /**
+     * Fecha o navegador da janela ativa se ele não é suportado: um dos sabidamente sem leitura
+     * (Via, UC) ou um recusado antes (RejectedBrowsers), cuja recusa vale sem um novo teste.
+     */
+    private boolean closeUnsupportedBrowserInFront(String packageName) {
+        if (!isUnsupportedBrowser(packageName)) return false;
+
+        if (packageName.equals(pendingUnsupportedPackage)) cancelUnsupportedBrowserCheck();
+        closeUnsupportedBrowser(packageName);
+        return true;
+    }
+
+    private boolean isUnsupportedBrowser(String packageName) {
+        if (packageName == null) return false;
+        if (BrowserProfiles.isKnownUnsupported(packageName)) return true;
+        // A consulta ao cache vem antes da busca da família, que percorre a lista de pacotes.
+        return rejectedBrowsers().isRejected(packageName)
+                && BrowserProfiles.forPackage(packageName) == null;
+    }
+
+    private void scheduleUnsupportedCloseRecheck() {
+        if (pendingUnsupportedCloseRecheck != null) return;
+
+        long elapsed = SystemClock.elapsedRealtime() - lastUnsupportedBrowserAt;
+        pendingUnsupportedCloseRecheck = () -> {
+            pendingUnsupportedCloseRecheck = null;
+            if (!isBlockingActive()) return;
+            closeUnsupportedBrowserInFront(packageNameOf(service.getRootInActiveWindow()));
+        };
+        mainHandler.postDelayed(
+                pendingUnsupportedCloseRecheck,
+                Math.max(0L, UNSUPPORTED_BROWSER_DEBOUNCE_MS - elapsed)
+        );
+    }
+
+    private void cancelUnsupportedCloseRecheck() {
+        if (pendingUnsupportedCloseRecheck == null) return;
+        mainHandler.removeCallbacks(pendingUnsupportedCloseRecheck);
+        pendingUnsupportedCloseRecheck = null;
+    }
+
+    /**
+     * Testa as famílias no navegador desconhecido. Se uma se encaixa, ele sai da lista de
+     * recusados (só acontece depois de uma atualização, que tira a recusa antiga do cache).
+     */
+    private BrowserProfile identifyBrowser(String packageName, AccessibilityNodeInfo root) {
+        BrowserProfile family = IdentifiedBrowsers.identify(service, urlExtractor, packageName, root);
+        if (family != null) rejectedBrowsers().forget(packageName);
+        return family;
+    }
+
+    private BrowserVersions browserVersions() {
+        if (browserVersions == null) browserVersions = new BrowserVersions(service);
+        return browserVersions;
+    }
+
+    private RejectedBrowsers rejectedBrowsers() {
+        if (rejectedBrowsers == null) {
+            rejectedBrowsers = new RejectedBrowsers(service, browserVersions());
+        }
+        return rejectedBrowsers;
     }
 
     private String labelOf(String packageName) {
@@ -719,11 +804,15 @@ public final class SiteBlockEngine {
         return browserDetector.labelOf(packageName);
     }
 
-    private void closeBrowser(String packageName, String message) {
+    /**
+     * Retorna false se o mesmo navegador acabou de ser fechado (intervalo da rajada). O aviso só é
+     * montado se for usado, sem a consulta ao nome do app a cada evento da rajada.
+     */
+    private boolean closeBrowser(String packageName, Supplier<String> message) {
         long now = SystemClock.elapsedRealtime();
         if (packageName.equals(lastUnsupportedBrowser)
                 && now - lastUnsupportedBrowserAt < UNSUPPORTED_BROWSER_DEBOUNCE_MS) {
-            return;
+            return false;
         }
         lastUnsupportedBrowser = packageName;
         lastUnsupportedBrowserAt = now;
@@ -734,8 +823,9 @@ public final class SiteBlockEngine {
             service.startActivity(UnsupportedBrowserActivity.createIntent(service));
         } catch (RuntimeException e) {
             service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
-            Toast.makeText(service, message, Toast.LENGTH_LONG).show();
+            Toast.makeText(service, message.get(), Toast.LENGTH_LONG).show();
         }
+        return true;
     }
 
     private void scheduleFirefoxRetry(String expectedPackage) {
@@ -1120,6 +1210,7 @@ public final class SiteBlockEngine {
         cancelFirefoxRetry();
         cancelReread();
         cancelUnsupportedBrowserCheck();
+        cancelUnsupportedCloseRecheck();
         cancelAddressBarCheck();
         cancelPageScan();
         cancelMonitoring();
@@ -1129,6 +1220,7 @@ public final class SiteBlockEngine {
         cancelFirefoxRetry();
         cancelReread();
         cancelUnsupportedBrowserCheck();
+        cancelUnsupportedCloseRecheck();
         cancelAddressBarCheck();
         cancelPageScan();
         cancelMonitoring();
