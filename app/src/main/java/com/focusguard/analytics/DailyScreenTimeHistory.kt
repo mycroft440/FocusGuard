@@ -56,10 +56,11 @@ internal class DailyScreenTimeHistoryStore(context: Context) {
     private val preferences = SecurePrefsManager(context).prefs
 
     fun load(): Map<LocalDate, Long> {
-        // v1 contava também a tela ligada na tela de bloqueio. Os dias dela não
-        // podem se misturar com os de agora: são refeitos pelos eventos.
-        if (preferences.contains(KEY_DAILY_TOTALS_V1)) {
-            preferences.edit().remove(KEY_DAILY_TOTALS_V1).apply()
+        // v1 contava também a tela ligada na tela de bloqueio e v2, o tempo de aparelho
+        // desligado. Os dias delas não podem se misturar com os de agora: são refeitos
+        // pelos eventos.
+        OUTDATED_KEYS.filter { preferences.contains(it) }.forEach { key ->
+            preferences.edit().remove(key).apply()
         }
         return loadCurrent()
     }
@@ -91,7 +92,10 @@ internal class DailyScreenTimeHistoryStore(context: Context) {
     }
 
     private companion object {
-        const val KEY_DAILY_TOTALS_V1 = "analytics_daily_screen_time_v1"
-        const val KEY_DAILY_TOTALS = "analytics_daily_screen_time_v2"
+        val OUTDATED_KEYS = listOf(
+            "analytics_daily_screen_time_v1",
+            "analytics_daily_screen_time_v2"
+        )
+        const val KEY_DAILY_TOTALS = "analytics_daily_screen_time_v3"
     }
 }

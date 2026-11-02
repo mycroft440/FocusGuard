@@ -83,6 +83,75 @@ class ScreenInteractiveSessionAccumulatorTest {
     }
 
     @Test
+    fun `time with the device off is not usage`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+
+        // Desliga em uso: o Android não registra tela apagada ao desligar.
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onKeyguardHidden(1_000L)
+        accumulator.onDeviceShutdown(4_000L)
+        // Religa horas depois e desbloqueia.
+        accumulator.onDeviceStartup(100_000L)
+        accumulator.onKeyguardHidden(101_000L)
+        accumulator.onScreenNonInteractive(110_000L)
+
+        assertThat(accumulator.finish(120_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 4_000L),
+            ScreenInteractiveInterval(100_000L, 110_000L)
+        ).inOrder()
+    }
+
+    @Test
+    fun `first session after boot counts without screen or unlock events`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+
+        // Estava bloqueado e de tela apagada quando desligou (bateria, reinício automático).
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onKeyguardHidden(1_000L)
+        accumulator.onKeyguardShown(2_000L)
+        accumulator.onScreenNonInteractive(2_000L)
+        accumulator.onDeviceShutdown(3_000L)
+        accumulator.onDeviceStartup(50_000L)
+        accumulator.onScreenNonInteractive(60_000L)
+
+        assertThat(accumulator.finish(70_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 2_000L),
+            ScreenInteractiveInterval(50_000L, 60_000L)
+        ).inOrder()
+    }
+
+    @Test
+    fun `lock screen right after boot is still not usage`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onKeyguardHidden(1_000L)
+        accumulator.onDeviceShutdown(2_000L)
+        accumulator.onDeviceStartup(10_000L)
+        accumulator.onKeyguardShown(10_000L)
+        accumulator.onKeyguardHidden(15_000L)
+        accumulator.onScreenNonInteractive(20_000L)
+
+        assertThat(accumulator.finish(30_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 2_000L),
+            ScreenInteractiveInterval(15_000L, 20_000L)
+        ).inOrder()
+    }
+
+    @Test
+    fun `session still open at startup has no known end and is dropped`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onDeviceStartup(100_000L)
+        accumulator.onScreenNonInteractive(110_000L)
+
+        assertThat(accumulator.finish(120_000L)).containsExactly(
+            ScreenInteractiveInterval(100_000L, 110_000L)
+        )
+    }
+
+    @Test
     fun `non interactive event without a known start invents no usage`() {
         val accumulator = ScreenInteractiveSessionAccumulator()
 
@@ -213,6 +282,24 @@ class DailyScreenTimeResolutionTest {
         )
 
         assertThat(resolution.totalsByDate[date("2026-01-08")]).isEqualTo(90.minutes)
+    }
+
+    @Test
+    fun `a night with the device off adds nothing to either day`() {
+        val accumulator = ScreenInteractiveSessionAccumulator()
+        accumulator.onScreenInteractive(timestamp("2026-01-07T22:00"))
+        accumulator.onDeviceShutdown(timestamp("2026-01-07T23:00"))
+        accumulator.onDeviceStartup(timestamp("2026-01-08T07:00"))
+        accumulator.onScreenNonInteractive(timestamp("2026-01-08T07:30"))
+
+        val resolution = resolve(
+            now = "2026-01-08T12:00",
+            covered = listOf(date("2026-01-07")),
+            intervals = accumulator.finish(timestamp("2026-01-08T12:00"))
+        )
+
+        assertThat(resolution.totalsByDate[date("2026-01-07")]).isEqualTo(1.hours)
+        assertThat(resolution.totalsByDate[date("2026-01-08")]).isEqualTo(30.minutes)
     }
 
     @Test

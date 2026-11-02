@@ -62,6 +62,9 @@ internal data class ScreenInteractiveInterval(
  * Sem nenhum evento de bloqueio (aparelho sem tela de bloqueio), a tela ligada
  * conta inteira, como antes. O bloqueio só passa a valer depois do primeiro
  * desbloqueio visto: um aparelho que avisasse só "bloqueou" ficaria com uso zero.
+ *
+ * Aparelho desligado nunca é uso: desligar não gera evento de tela apagada, então o
+ * trecho é fechado pelo DEVICE_SHUTDOWN.
  */
 internal class ScreenInteractiveSessionAccumulator {
     private val completedIntervals = mutableListOf<ScreenInteractiveInterval>()
@@ -99,6 +102,31 @@ internal class ScreenInteractiveSessionAccumulator {
         observe(timestampMs)
         keyguardShowing = false
         keyguardHiddenObserved = true
+        openIfInUse(timestampMs)
+    }
+
+    /**
+     * O aparelho desligou (ou ficou sem bateria). Sem isto, o trecho aberto seguiria
+     * somando todo o tempo desligado até o próximo evento depois de religar.
+     */
+    fun onDeviceShutdown(timestampMs: Long) {
+        observe(timestampMs)
+        screenInteractive = false
+        close(timestampMs)
+    }
+
+    /**
+     * O aparelho voltou. O Android grava este evento no primeiro desbloqueio depois de
+     * ligar, e os eventos de tela e de bloqueio só avisam mudanças: o que se sabia de
+     * antes de desligar não vale mais e o estado recomeça ligado e desbloqueado. Se a
+     * tela de bloqueio estiver na frente, o aviso dela fecha o trecho.
+     * Um trecho ainda aberto aqui não tem fim conhecido e não conta.
+     */
+    fun onDeviceStartup(timestampMs: Long) {
+        observe(timestampMs)
+        inUseSinceMs = null
+        screenInteractive = true
+        keyguardShowing = false
         openIfInUse(timestampMs)
     }
 

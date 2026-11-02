@@ -120,6 +120,12 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
                         UsageEvents.Event.KEYGUARD_HIDDEN ->
                             accumulator.onKeyguardHidden(event.timeStamp)
+
+                        UsageEvents.Event.DEVICE_SHUTDOWN ->
+                            accumulator.onDeviceShutdown(event.timeStamp)
+
+                        UsageEvents.Event.DEVICE_STARTUP ->
+                            accumulator.onDeviceStartup(event.timeStamp)
                     }
                 }
             } catch (error: Throwable) {
