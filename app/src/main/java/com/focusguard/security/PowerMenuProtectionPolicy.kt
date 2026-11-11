@@ -70,6 +70,17 @@ object PowerMenuProtectionPolicy {
     }
 
     /**
+     * True when a label is the action name itself, not a sentence that merely
+     * mentions it (a hint such as "Para desligar, mantenha pressionado…").
+     */
+    fun isExactActionLabel(action: Action, values: Iterable<CharSequence?>): Boolean {
+        val normalizedTerms = normalizedTermsByAction.getValue(action)
+        return values.any { value ->
+            normalize(value?.toString().orEmpty()).trim() in normalizedTerms
+        }
+    }
+
+    /**
      * Uses only event fields. A known global-actions class is sufficient because
      * waiting for its node tree costs the first visible menu frames.
      */

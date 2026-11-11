@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -52,7 +53,8 @@ private object HardBlockPowerMenuColors {
  *
  * System UI stays underneath so OEM shutdown/restart/emergency behavior is kept.
  * The user never touches those native controls: this overlay consumes touch and
- * forwards only ACTION_CLICK, never ACTION_LONG_CLICK.
+ * forwards only a single short press (ACTION_CLICK or a short tap), never a long
+ * press.
  */
 class ProtectedPowerMenuController(
     private val service: AccessibilityService
@@ -65,7 +67,14 @@ class ProtectedPowerMenuController(
         SHIELD_AND_CONSUME,
         REQUEST_BACK_FALLBACK
     }
-    internal enum class PrimaryActionTapDecision { START, CONFIRM }
+    internal enum class NativePressMethod { TAP, CLICK }
+    internal enum class NativePressStep {
+        PRESS,
+        RETRY_LOOKUP,
+        DONE_SENT,
+        DONE_EXHAUSTED,
+        DONE_UNAVAILABLE
+    }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager =
@@ -89,6 +98,9 @@ class ProtectedPowerMenuController(
     private var statusText: TextView? = null
     private var pendingPrimaryAction: Action? = null
     private var pendingPrimaryActionAtElapsed = 0L
+    private var nativePressGeneration = 0
+    private val nativePressToken = Any()
+    private var activeNativeTap: NativeTap? = null
 
     fun isVisible(): Boolean = overlayVisible
 
@@ -349,7 +361,26 @@ class ProtectedPowerMenuController(
     private fun prepareOverlay() {
         if (overlay != null) return
 
-        val root = FrameLayout(service).apply {
+        val root = object : FrameLayout(service) {
+            private var swallowingGesture = false
+
+            // Enquanto um toque é encaminhado ao botão nativo, a janela já pediu para
+            // não receber toques. O que ainda chegar aqui nesse intervalo, inclusive o
+            // próprio toque injetado, não pode acionar um cartão deste menu.
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                val action = event.actionMasked
+                if (action == MotionEvent.ACTION_DOWN) {
+                    val tap = activeNativeTap
+                    swallowingGesture = tap != null
+                    tap?.missed = true
+                }
+                if (!swallowingGesture) return super.dispatchTouchEvent(event)
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    swallowingGesture = false
+                }
+                return true
+            }
+        }.apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
@@ -571,6 +602,7 @@ class ProtectedPowerMenuController(
         closeStageAtElapsed = 0L
         closeBackAttempts = 0
         clearPendingPrimaryAction()
+        cancelNativePress()
     }
 
     private fun addActionCard(
@@ -596,7 +628,7 @@ class ProtectedPowerMenuController(
             background = actionCardBackground(emergency)
             setOnClickListener { performNativeSinglePress(action) }
             // The overlay may visually resemble a power menu, but HardBlock still
-            // forwards only ACTION_CLICK. Never forward the native long-click that
+            // forwards only a short press. Never forward the native long-click that
             // some OEMs use to expose Safe Mode.
             setOnLongClickListener { true }
         }
@@ -751,192 +783,280 @@ class ProtectedPowerMenuController(
             showStatus(R.string.protected_power_menu_action_sent)
             return
         }
-        val primary = action == Action.POWER_OFF || action == Action.RESTART
-        val nowElapsed = SystemClock.elapsedRealtime()
-        val confirmationAttempt = primary && primaryActionTapDecision(
-  pendingAction = pendingPrimaryAction,
-  tappedAction = action,
-  pendingForMillis = if (pendingPrimaryActionAtElapsed > 0L) {
-      (nowElapsed - pendingPrimaryActionAtElapsed).coerceAtLeast(0L)
-  } else {
-      Long.MAX_VALUE
-  }
-        ) == PrimaryActionTapDecision.CONFIRM
-
-        if (primary && !confirmationAttempt) {
-  clearPendingPrimaryAction()
-        }
-        performNativeSinglePressWithRetry(action, confirmationAttempt)
-    }
-
-    private fun performNativeSinglePressWithRetry(
-        action: Action,
-        confirmationAttempt: Boolean
-    ) {
-        if (tryPerformNativeSinglePress(action)) {
-  onNativeActionClicked(action, confirmationAttempt)
-  return
-        }
-
-        // SystemUI can identify the window before its actionable children are
-        // attached. A single short retry uses a fresh accessibility root without
-        // adding any delay to the menu's initial appearance.
-        mainHandler.postDelayed({
-  if (!overlayVisible) return@postDelayed
-  if (tryPerformNativeSinglePress(action)) {
-      onNativeActionClicked(action, confirmationAttempt)
-  } else {
-      if (!confirmationAttempt) clearPendingPrimaryAction()
-      showStatus(R.string.protected_power_menu_action_unavailable)
-  }
-        }, NATIVE_ACTION_RETRY_DELAY_MILLIS)
-    }
-
-    private fun onNativeActionClicked(action: Action, confirmationAttempt: Boolean) {
-        val primary = action == Action.POWER_OFF || action == Action.RESTART
-        if (primary && !confirmationAttempt) {
-  pendingPrimaryAction = action
-  pendingPrimaryActionAtElapsed = SystemClock.elapsedRealtime()
-  // Vários fabricantes abrem uma confirmação ("Desligar?") depois do primeiro
-  // toque. O usuário já escolheu a ação no menu do HardBlock: ela é confirmada
-  // sozinha. O toque manual de confirmação continua valendo como reserva.
-  scheduleAutomaticConfirmation(action)
-  val actionLabel = service.getString(
-      if (action == Action.POWER_OFF) {
-          R.string.protected_power_menu_power_off
-      } else {
-          R.string.protected_power_menu_restart
-      }
-  )
-  statusText?.apply {
-      text = service.getString(
-          R.string.protected_power_menu_confirm_action,
-          actionLabel
-      )
-      visibility = View.VISIBLE
-  }
+        cancelNativePress()
+        if (isPrimaryAction(action)) {
+            // A proteção segue no lugar enquanto a sequência roda, mesmo que o menu
+            // nativo troque de tela (confirmação) no meio do caminho.
+            pendingPrimaryAction = action
+            pendingPrimaryActionAtElapsed = SystemClock.elapsedRealtime()
         } else {
-  clearPendingPrimaryAction()
-  showStatus(R.string.protected_power_menu_action_sent)
+            clearPendingPrimaryAction()
+        }
+        runNativePressAttempt(
+            NativePress(action, nativePressGeneration),
+            attempt = 0,
+            lookupRetried = false
+        )
+    }
+
+    /**
+     * Aciona o botão nativo e confere o resultado. "Enviado" não basta: há menus que
+     * aceitam o comando e não fazem nada, e há os que pedem um segundo toque para
+     * confirmar. Em Desligar e Reiniciar, enquanto o botão continuar na tela ele é
+     * acionado de novo, alternando entre toque real e clique de acessibilidade, até
+     * [MAX_PRIMARY_PRESS_ATTEMPTS]. O botão sumir é o sinal de que o Android assumiu.
+     */
+    private fun runNativePressAttempt(press: NativePress, attempt: Int, lookupRetried: Boolean) {
+        if (!isCurrentNativePress(press)) return
+        val node = findNativeActionNode(press.action)
+        // Depois do primeiro toque, um botão que segue na árvore mas já saiu da tela
+        // (o menu está fechando) conta como ausente.
+        val controlPresent = node != null &&
+            (attempt == 0 || runCatching { node.isVisibleToUser }.getOrDefault(false))
+        val step = nativePressStep(
+            attempt = attempt,
+            controlPresent = controlPresent,
+            lookupRetried = lookupRetried,
+            maxAttempts = if (isPrimaryAction(press.action)) MAX_PRIMARY_PRESS_ATTEMPTS else 1
+        )
+        if (step == NativePressStep.PRESS && node != null) {
+            pressNativeNode(press, node, nativePressMethod(press.action, attempt)) { pressed ->
+                recycleSafely(node)
+                onNativePressResult(press, attempt, pressed)
+            }
+            return
+        }
+        recycleSafely(node)
+        if (step == NativePressStep.RETRY_LOOKUP) {
+            // SystemUI can identify the window before its actionable children are
+            // attached. A single short retry uses a fresh accessibility root without
+            // adding any delay to the menu's initial appearance.
+            postNativePress(NATIVE_ACTION_RETRY_DELAY_MILLIS) {
+                runNativePressAttempt(press, attempt, lookupRetried = true)
+            }
+        } else {
+            finishNativePress(press, step)
+        }
+    }
+
+    private fun onNativePressResult(press: NativePress, attempt: Int, pressed: Boolean) {
+        if (!isCurrentNativePress(press)) return
+        if (pressed) press.delivered++
+        if (!isPrimaryAction(press.action)) {
+            finishNativePress(
+                press,
+                if (pressed) NativePressStep.DONE_SENT else NativePressStep.DONE_UNAVAILABLE
+            )
+            return
+        }
+        if (pressed) showStatus(R.string.protected_power_menu_action_sent)
+        scheduleRecheck()
+        postNativePress(PRIMARY_PRESS_VERIFY_DELAY_MILLIS) {
+            runNativePressAttempt(press, attempt + 1, lookupRetried = true)
+        }
+    }
+
+    private fun finishNativePress(press: NativePress, step: NativePressStep) {
+        clearPendingPrimaryAction()
+        if (step != NativePressStep.DONE_SENT) {
+            FocusGuardLogger.log(
+                "PowerMenu",
+                "Ação ${press.action} não concluída no menu nativo: $step, toques entregues=${press.delivered}"
+            )
+        }
+        when {
+            step == NativePressStep.DONE_SENT ->
+                showStatus(R.string.protected_power_menu_action_sent)
+            // O botão foi acionado e continua na tela: outro toque no cartão repete
+            // a sequência inteira.
+            step == NativePressStep.DONE_EXHAUSTED && press.delivered > 0 ->
+                showConfirmStatus(press.action)
+            else -> showStatus(R.string.protected_power_menu_action_unavailable)
         }
         scheduleRecheck()
     }
 
-    private fun tryPerformNativeSinglePress(action: Action): Boolean {
-        val root = if (action == Action.POWER_OFF || action == Action.RESTART) {
-  findTrackedPowerMenuRootForPrimaryAction() ?: findPowerMenuRoot()
-        } else {
-  findPowerMenuRoot()
-        } ?: return false
-
-        val node = findActionNode(root, action)
-        // Alguns SystemUI aceitam ACTION_CLICK para "Desligar", mas não executam
-        // a ação. Nesse único botão, preferir um toque curto real no controle
-        // nativo e manter ACTION_CLICK como fallback caso o gesto não seja aceito.
-        // Os demais botões preservam a ordem de execução já existente.
-        val clicked = if (action == Action.POWER_OFF) {
-            node?.let { tapNodeThroughOverlay(it, preferClickableParent = true) } == true ||
-                node?.let(::clickNodeOrParent) == true
-        } else {
-            val accessibilityClick = node?.let(::clickNodeOrParent) == true
-            accessibilityClick || (node != null && tapNodeThroughOverlay(node))
+    /** Aciona o botão nativo pelo método pedido; se ele não for aceito, tenta o outro. */
+    private fun pressNativeNode(
+        press: NativePress,
+        node: AccessibilityNodeInfo,
+        method: NativePressMethod,
+        onResult: (pressed: Boolean) -> Unit
+    ) {
+        when (method) {
+            NativePressMethod.CLICK -> if (clickNodeOrParent(node)) {
+                onResult(true)
+            } else {
+                NativeTap(node, onResult).start()
+            }
+            NativePressMethod.TAP -> NativeTap(node) { delivered ->
+                // Uma sequência cancelada (menu fechado, outro cartão tocado) não
+                // pode mais clicar em nada.
+                onResult(delivered || (isCurrentNativePress(press) && clickNodeOrParent(node)))
+            }.start()
         }
-        recycleSafely(node)
-        recycleSafely(root)
-        return clicked
+    }
+
+    private fun isPrimaryAction(action: Action): Boolean =
+        action == Action.POWER_OFF || action == Action.RESTART
+
+    private fun isCurrentNativePress(press: NativePress): Boolean =
+        overlayVisible && press.generation == nativePressGeneration
+
+    private fun postNativePress(delayMillis: Long, block: () -> Unit) {
+        mainHandler.postAtTime(
+            Runnable { block() },
+            nativePressToken,
+            SystemClock.uptimeMillis() + delayMillis
+        )
+    }
+
+    /** Abandona a sequência em andamento; os retornos pendentes dela não fazem mais nada. */
+    private fun cancelNativePress() {
+        nativePressGeneration++
+        mainHandler.removeCallbacksAndMessages(nativePressToken)
+        activeNativeTap?.abort()
+    }
+
+    private fun restoreOverlayTouches() {
+        if (!overlayAttached || !overlayVisible) return
+        val current = overlay ?: return
+        val params = overlayParams ?: return
+        val restored = visibleFlags(params.flags)
+        if (params.flags == restored) return
+        params.flags = restored
+        runCatching { windowManager.updateViewLayout(current, params) }
+    }
+
+    /** Uma sequência de toques no botão nativo, iniciada por um toque no cartão. */
+    private class NativePress(val action: Action, val generation: Int) {
+        var delivered = 0
     }
 
     /**
      * Toque curto (nunca longo, que em alguns fabricantes abre o Modo Seguro) no
-     * centro do botão nativo. A proteção deixa de receber toques só durante o gesto.
+     * centro do botão nativo que está sob a proteção.
+     *
+     * A proteção deixa de receber toques só durante o gesto, e essa troca da janela
+     * não vale na hora: ela passa pelo próximo quadro e pelo sistema de janelas antes
+     * de chegar à entrada de toques. Um toque enviado logo em seguida cai na própria
+     * proteção, no cartão que estiver naquele ponto. Por isso o gesto espera a troca
+     * valer, a proteção ignora qualquer toque que ainda chegue nela nesse intervalo e,
+     * se o toque injetado foi um deles, ele é repetido uma vez com mais folga.
      */
-    private fun tapNodeThroughOverlay(
-        node: AccessibilityNodeInfo,
-        preferClickableParent: Boolean = false
-    ): Boolean {
-        val bounds = Rect()
-        runCatching { node.getBoundsInScreen(bounds) }
-        if (bounds.isEmpty) return false
+    private inner class NativeTap(
+        private val node: AccessibilityNodeInfo,
+        private val onResult: (delivered: Boolean) -> Unit
+    ) {
+        /** O toque injetado caiu na proteção em vez de chegar ao botão nativo. */
+        var missed = false
+        private var retryOnMiss = true
+        private var finished = false
+        private val dispatchRunnable = Runnable { dispatch() }
+        private val timeoutRunnable = Runnable { finish(delivered = false) }
 
-        if (preferClickableParent && !runCatching { node.isClickable }.getOrDefault(false)) {
-            // O texto "Desligar" frequentemente é apenas um filho não clicável
-            // do cartão. Tocar o centro do ancestral clicável evita coordenadas
-            // de texto que alguns fabricantes não tratam como botão.
-            var ancestor = runCatching { node.parent }.getOrNull()
-            var depth = 0
-            while (ancestor != null && depth++ < MAX_PARENT_DEPTH) {
-                val currentAncestor = ancestor
-                val candidateBounds = Rect()
-                val clickable = runCatching { currentAncestor.isClickable }.getOrDefault(false)
-                if (clickable) runCatching { currentAncestor.getBoundsInScreen(candidateBounds) }
-                val safeTarget = clickable && !candidateBounds.isEmpty &&
-                    candidateBounds.contains(bounds.centerX(), bounds.centerY()) &&
-                    candidateBounds.height() <= service.resources.displayMetrics.heightPixels / 3
-                val next = if (safeTarget) {
-                    null
-                } else {
-                    runCatching { currentAncestor.parent }.getOrNull()
-                }
-                recycleSafely(currentAncestor)
-                if (safeTarget) {
-                    bounds.set(candidateBounds)
-                    ancestor = null
-                    break
-                }
-                ancestor = next
+        fun start() {
+            val current = overlay
+            val params = overlayParams
+            if (current == null || params == null || !overlayVisible ||
+                activeNativeTap != null || tapBounds(refresh = false) == null
+            ) {
+                finished = true
+                onResult(false)
+                return
             }
-            recycleSafely(ancestor)
+            activeNativeTap = this
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            if (runCatching { windowManager.updateViewLayout(current, params) }.isFailure) {
+                finish(delivered = false)
+                return
+            }
+            schedule(NATIVE_TAP_SETTLE_MILLIS)
         }
 
-        val current = overlay ?: return false
-        val params = overlayParams ?: return false
+        fun abort() = finish(delivered = false)
 
-        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        if (runCatching { windowManager.updateViewLayout(current, params) }.isFailure) {
-            params.flags = visibleFlags(params.flags)
-            return false
+        private fun schedule(settleMillis: Long) {
+            mainHandler.removeCallbacks(dispatchRunnable)
+            mainHandler.removeCallbacks(timeoutRunnable)
+            mainHandler.postDelayed(dispatchRunnable, settleMillis)
+            mainHandler.postDelayed(timeoutRunnable, settleMillis + NATIVE_TAP_TIMEOUT_MILLIS)
         }
 
-        fun restoreTouches() {
-            if (!overlayVisible || overlay !== current) return
-            params.flags = visibleFlags(params.flags)
-            runCatching { windowManager.updateViewLayout(current, params) }
+        /**
+         * Área do botão, ou null quando ele não pode ser tocado. Com [refresh], lê a
+         * posição de agora: a confirmação de alguns fabricantes anima o botão para
+         * outro lugar, e um toque na posição antiga cairia fora dele.
+         */
+        private fun tapBounds(refresh: Boolean): Rect? {
+            val bounds = Rect()
+            val readable = runCatching {
+                val onScreen = !refresh || (node.refresh() && node.isVisibleToUser)
+                if (onScreen) node.getBoundsInScreen(bounds)
+                onScreen
+            }.getOrDefault(false)
+            val metrics = service.resources.displayMetrics
+            val tappable = readable && !bounds.isEmpty &&
+                bounds.centerX() >= 0 && bounds.centerY() >= 0 &&
+                isPlausibleActionTarget(
+                    bounds.width(),
+                    bounds.height(),
+                    metrics.widthPixels,
+                    metrics.heightPixels
+                )
+            return if (tappable) bounds else null
         }
 
-        val path = Path().apply {
-            moveTo(bounds.exactCenterX(), bounds.exactCenterY())
+        private fun dispatch() {
+            if (finished) return
+            val bounds = tapBounds(refresh = true)
+            if (bounds == null) {
+                finish(delivered = false)
+                return
+            }
+            // Só conta como perdido o toque que chegar à proteção a partir daqui.
+            missed = false
+            val dispatched = runCatching {
+                val path = Path().apply { moveTo(bounds.exactCenterX(), bounds.exactCenterY()) }
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0L, TAP_DURATION_MILLIS))
+                    .build()
+                service.dispatchGesture(
+                    gesture,
+                    object : AccessibilityService.GestureResultCallback() {
+                        override fun onCompleted(gestureDescription: GestureDescription?) {
+                            onGestureCompleted()
+                        }
+
+                        override fun onCancelled(gestureDescription: GestureDescription?) {
+                            finish(delivered = false)
+                        }
+                    },
+                    mainHandler
+                )
+            }.getOrDefault(false)
+            if (!dispatched) finish(delivered = false)
         }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0L, TAP_DURATION_MILLIS))
-            .build()
-        val dispatched = runCatching {
-            service.dispatchGesture(
-                gesture,
-                object : AccessibilityService.GestureResultCallback() {
-                    override fun onCompleted(gestureDescription: GestureDescription?) {
-                        mainHandler.postDelayed(::restoreTouches, TAP_RESTORE_DELAY_MILLIS)
-                    }
 
-                    override fun onCancelled(gestureDescription: GestureDescription?) {
-                        restoreTouches()
-                    }
-                },
-                mainHandler
-            )
-        }.getOrDefault(false)
-        if (!dispatched) restoreTouches()
-        return dispatched
-    }
+        private fun onGestureCompleted() {
+            if (finished) return
+            if (missed && retryOnMiss) {
+                missed = false
+                retryOnMiss = false
+                schedule(NATIVE_TAP_RETRY_SETTLE_MILLIS)
+                return
+            }
+            finish(delivered = !missed)
+        }
 
-    private fun scheduleAutomaticConfirmation(action: Action) {
-        AUTO_CONFIRM_DELAYS_MILLIS.forEach { delay ->
-            mainHandler.postDelayed({
-                if (!overlayVisible || pendingPrimaryAction != action) return@postDelayed
-                if (tryPerformNativeSinglePress(action)) {
-                    clearPendingPrimaryAction()
-                    showStatus(R.string.protected_power_menu_action_sent)
-                }
-            }, delay)
+        private fun finish(delivered: Boolean) {
+            if (finished) return
+            finished = true
+            mainHandler.removeCallbacks(dispatchRunnable)
+            mainHandler.removeCallbacks(timeoutRunnable)
+            if (activeNativeTap === this) activeNativeTap = null
+            restoreOverlayTouches()
+            onResult(delivered)
         }
     }
 
@@ -992,25 +1112,60 @@ class ProtectedPowerMenuController(
         return root
     }
 
+    private fun findNativeActionNode(action: Action): AccessibilityNodeInfo? {
+        if (isPrimaryAction(action)) {
+            val tracked = findTrackedPowerMenuRootForPrimaryAction()
+            val node = tracked?.let { findActionNode(it, action) }
+            recycleSafely(tracked)
+            if (node != null) return node
+        }
+        val root = findPowerMenuRoot() ?: return null
+        val node = findActionNode(root, action)
+        recycleSafely(root)
+        return node
+    }
+
+    /**
+     * Picks the native control for [action]. A menu can mention an action in more
+     * than one place (a hint sentence, a label beside the real button, a control
+     * that is no longer on screen), so the candidates are ranked instead of
+     * taking the first match.
+     */
     private fun findActionNode(root: AccessibilityNodeInfo, action: Action): AccessibilityNodeInfo? {
+        var best: AccessibilityNodeInfo? = null
+        var bestScore = -1
         // Fast path for the common AOSP/OEM case where labels are searchable.
         PowerMenuProtectionPolicy.termsFor(action).forEach { term ->
             val nodes = runCatching { root.findAccessibilityNodeInfosByText(term) }
-                .getOrDefault(emptyList())
-            var selected: AccessibilityNodeInfo? = null
+                .getOrNull()
+                .orEmpty()
             nodes.forEach { node ->
-                if (selected == null && nodeMatchesAction(node, action)) {
-                    selected = node
+                val score = actionNodeScoreOf(node, action)
+                if (score > bestScore) {
+                    recycleSafely(best)
+                    best = node
+                    bestScore = score
                 } else {
                     recycleSafely(node)
                 }
             }
-            if (selected != null) return selected
         }
 
         // Samsung and other OEM menus may expose the actionable row primarily by
         // contentDescription/resource id rather than searchable visible text.
-        return findActionNodeInTree(root, action, depth = 0)
+        return best ?: findActionNodeInTree(root, action, depth = 0)
+    }
+
+    private fun actionNodeScoreOf(node: AccessibilityNodeInfo, action: Action): Int {
+        if (!nodeMatchesAction(node, action)) return -1
+        return actionNodeScore(
+            visibleToUser = runCatching { node.isVisibleToUser }.getOrDefault(false),
+            exactLabel = PowerMenuProtectionPolicy.isExactActionLabel(
+                action,
+                listOf(node.text, node.contentDescription)
+            ),
+            clickable = runCatching { node.isClickable }.getOrDefault(false)
+        )
     }
 
     private fun findActionNodeInTree(
@@ -1043,21 +1198,33 @@ class ProtectedPowerMenuController(
     }
 
     private fun clickNodeOrParent(start: AccessibilityNodeInfo): Boolean {
+        val metrics = service.resources.displayMetrics
+        val bounds = Rect()
         var current: AccessibilityNodeInfo? = start
         var ownsCurrent = false
         repeat(MAX_PARENT_DEPTH) {
             val node = current ?: return false
+            // Um nó que cobre boa parte da tela é o fundo do menu, e clicar nele
+            // costuma fechá-lo. O botão da ação nunca é desse tamanho, e os
+            // ancestrais seguintes são maiores ainda: a subida para aqui.
+            val plausible = runCatching { node.getBoundsInScreen(bounds) }.isSuccess &&
+                isPlausibleActionTarget(
+                    bounds.width(),
+                    bounds.height(),
+                    metrics.widthPixels,
+                    metrics.heightPixels
+                )
             // Some OEM accessibility nodes advertise ACTION_CLICK even when
             // isClickable is false. Asking for ACTION_CLICK is safe here because
             // this path never forwards ACTION_LONG_CLICK.
-            if (runCatching {
+            if (plausible && runCatching {
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 }.getOrDefault(false)
             ) {
                 if (ownsCurrent) recycleSafely(node)
                 return true
             }
-            val parent = runCatching { node.parent }.getOrNull()
+            val parent = if (plausible) runCatching { node.parent }.getOrNull() else null
             if (ownsCurrent) recycleSafely(node)
             current = parent
             ownsCurrent = true
@@ -1186,6 +1353,10 @@ class ProtectedPowerMenuController(
 
     private fun requestExplicitCancelClose() {
         if (!overlayVisible) return
+        // Cancelar também interrompe um Desligar/Reiniciar que ainda esteja sendo
+        // confirmado: nada mais é acionado no menu nativo depois deste toque.
+        cancelNativePress()
+        clearPendingPrimaryAction()
         requestNativeBackClose()
     }
 
@@ -1208,11 +1379,26 @@ class ProtectedPowerMenuController(
         closeBackAttempts = 0
         screenOff = false
         clearPendingPrimaryAction()
+        cancelNativePress()
     }
 
     private fun showStatus(resId: Int) {
         statusText?.apply {
             setText(resId)
+            visibility = View.VISIBLE
+        }
+    }
+
+    private fun showConfirmStatus(action: Action) {
+        val actionLabel = service.getString(
+            if (action == Action.POWER_OFF) {
+                R.string.protected_power_menu_power_off
+            } else {
+                R.string.protected_power_menu_restart
+            }
+        )
+        statusText?.apply {
+            text = service.getString(R.string.protected_power_menu_confirm_action, actionLabel)
             visibility = View.VISIBLE
         }
     }
@@ -1223,17 +1409,55 @@ class ProtectedPowerMenuController(
     }
 
     companion object {
-        internal fun primaryActionTapDecision(
-            pendingAction: Action?,
-            tappedAction: Action,
-            pendingForMillis: Long
-        ): PrimaryActionTapDecision = if (
-            pendingAction == tappedAction &&
-            pendingForMillis in 0..PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS
-        ) {
-            PrimaryActionTapDecision.CONFIRM
-        } else {
-            PrimaryActionTapDecision.START
+        /**
+         * Desligar começa pelo toque real: há menus que aceitam o clique de
+         * acessibilidade nesse botão e não desligam. As outras ações começam pelo
+         * clique, que não precisa abrir a proteção aos toques. A cada nova tentativa
+         * o método alterna.
+         */
+        internal fun nativePressMethod(action: Action, attempt: Int): NativePressMethod {
+            val tapFirst = action == Action.POWER_OFF
+            val firstMethodTurn = attempt % 2 == 0
+            return if (firstMethodTurn == tapFirst) NativePressMethod.TAP else NativePressMethod.CLICK
+        }
+
+        /**
+         * O botão nativo sumir depois de acionado é o sinal de que o Android assumiu.
+         * Se ele continua na tela, ou o comando foi ignorado ou o menu pede
+         * confirmação: nos dois casos o próximo passo é acioná-lo de novo.
+         */
+        internal fun nativePressStep(
+            attempt: Int,
+            controlPresent: Boolean,
+            lookupRetried: Boolean,
+            maxAttempts: Int
+        ): NativePressStep = when {
+            controlPresent && attempt < maxAttempts -> NativePressStep.PRESS
+            controlPresent -> NativePressStep.DONE_EXHAUSTED
+            attempt > 0 -> NativePressStep.DONE_SENT
+            !lookupRetried -> NativePressStep.RETRY_LOOKUP
+            else -> NativePressStep.DONE_UNAVAILABLE
+        }
+
+        /** Na tela vale mais que rótulo exato, que vale mais que ser clicável. */
+        internal fun actionNodeScore(
+            visibleToUser: Boolean,
+            exactLabel: Boolean,
+            clickable: Boolean
+        ): Int = (if (visibleToUser) SCORE_VISIBLE else 0) +
+            (if (exactLabel) SCORE_EXACT_LABEL else 0) +
+            (if (clickable) 1 else 0)
+
+        /** Um botão de ação ocupa uma parte pequena da tela; o fundo do menu, não. */
+        internal fun isPlausibleActionTarget(
+            width: Int,
+            height: Int,
+            screenWidth: Int,
+            screenHeight: Int
+        ): Boolean {
+            if (screenWidth <= 0 || screenHeight <= 0) return true
+            val area = width.coerceAtLeast(0).toLong() * height.coerceAtLeast(0)
+            return area * MAX_ACTION_TARGET_SCREEN_FRACTION <= screenWidth.toLong() * screenHeight
         }
 
         internal fun powerMatchOverlayDecision(
@@ -1333,8 +1557,14 @@ class ProtectedPowerMenuController(
         const val MAX_TEXT_VALUES = 300
         const val NATIVE_ACTION_RETRY_DELAY_MILLIS = 180L
         const val TAP_DURATION_MILLIS = 40L
-        const val TAP_RESTORE_DELAY_MILLIS = 80L
-        val AUTO_CONFIRM_DELAYS_MILLIS = longArrayOf(450L, 1_100L)
+        const val NATIVE_TAP_SETTLE_MILLIS = 120L
+        const val NATIVE_TAP_RETRY_SETTLE_MILLIS = 300L
+        const val NATIVE_TAP_TIMEOUT_MILLIS = 1_500L
+        const val PRIMARY_PRESS_VERIFY_DELAY_MILLIS = 450L
+        const val MAX_PRIMARY_PRESS_ATTEMPTS = 4
+        const val MAX_ACTION_TARGET_SCREEN_FRACTION = 3
+        private const val SCORE_VISIBLE = 4
+        private const val SCORE_EXACT_LABEL = 2
         const val PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS = 10_000L
         const val RECHECK_DELAY_MILLIS = 350L
         const val UNDEFINED_WINDOW_GRACE_MILLIS = 1_050L

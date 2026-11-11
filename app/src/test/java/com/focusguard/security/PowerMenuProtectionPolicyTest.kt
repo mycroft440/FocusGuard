@@ -221,4 +221,23 @@ class PowerMenuProtectionPolicyTest {
             )
         ).isTrue()
     }
+
+    @Test
+    fun `exact label is the action name and not a sentence that mentions it`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isExactActionLabel(Action.POWER_OFF, listOf(null, " Desligar "))
+        ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.isExactActionLabel(Action.POWER_OFF, listOf("POWER OFF"))
+        ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.isExactActionLabel(
+                Action.POWER_OFF,
+                listOf("Para desligar, mantenha as teclas pressionadas", "", null)
+            )
+        ).isFalse()
+        assertThat(
+            PowerMenuProtectionPolicy.isExactActionLabel(Action.RESTART, listOf("Desligar"))
+        ).isFalse()
+    }
 }
