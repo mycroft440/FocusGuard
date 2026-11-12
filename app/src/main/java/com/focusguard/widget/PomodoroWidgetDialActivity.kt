@@ -88,9 +88,13 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
         var error by remember { mutableStateOf<String?>(null) }
 
         fun persist(updated: PomodoroPlanConfig) {
-            config = store.saveConfig(updated.normalized())
+            val normalized = updated.normalized()
+            // O relógio repete o mesmo valor a cada movimento do dedo; a gravação
+            // interativa já redesenha o widget, uma vez, quando o valor para.
+            if (normalized != config) {
+                config = store.saveConfig(normalized, interactive = true)
+            }
             focusText = config.focusMinutes.toString()
-            PomodoroWidgetProvider.requestUpdate(context)
             error = null
         }
 

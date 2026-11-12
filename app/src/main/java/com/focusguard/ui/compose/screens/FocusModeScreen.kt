@@ -3,6 +3,7 @@ package com.focusguard.ui.compose.screens
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.util.LruCache
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -96,6 +97,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1517,15 +1519,20 @@ private fun FocusAppTile(
 @Composable
 private fun InstalledAppIcon(packageName: String, appName: String) {
     val context = LocalContext.current
-    var icon by remember(packageName) { mutableStateOf<ImageBitmap?>(null) }
+    // O ícone já carregado volta na hora. Sem isso, cada troca de aba mostrava o
+    // ícone genérico por um instante e lia o do app outra vez.
+    var icon by remember(packageName) {
+        mutableStateOf<ImageBitmap?>(installedAppIconCache.get(packageName))
+    }
     LaunchedEffect(packageName) {
+        if (icon != null) return@LaunchedEffect
         icon = withContext(Dispatchers.IO) {
             runCatching {
                 context.packageManager.getApplicationIcon(packageName)
                     .toBitmap(width = 96, height = 96)
                     .asImageBitmap()
             }.getOrNull()
-        }
+        }?.also { installedAppIconCache.put(packageName, it) }
     }
 
     if (icon != null) {
@@ -1727,11 +1734,15 @@ private fun FocusActiveHero(session: FocusModeSession, nowMillis: Long) {
                     .padding(horizontal = 12.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // O valor animado é lido só no desenho do ponto. Lido na composição
+                // (como cor de fundo), ele recompunha o cartão inteiro, com o anel e
+                // os textos, a cada quadro, o tempo todo em que o Modo Foco ficava aberto.
                 Box(
                     modifier = Modifier
                         .size(8.dp)
+                        .graphicsLayer { alpha = pulseAlpha }
                         .clip(CircleShape)
-                        .background(AccentCyan.copy(alpha = pulseAlpha))
+                        .background(AccentCyan)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -1871,3 +1882,6 @@ private fun launchFocusIntent(context: Context, intent: Intent) {
 }
 
 private const val FOCUS_DURATION_MAX_MINUTES = 8 * 60
+
+// Ícones de 96 px, cerca de 36 KiB cada: 64 cobrem a grade inteira com folga.
+private val installedAppIconCache = LruCache<String, ImageBitmap>(64)

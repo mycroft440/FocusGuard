@@ -85,6 +85,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AppLabelCache
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
@@ -338,9 +339,13 @@ fun AppSelectionStep(
                 }
                 .map { info ->
                     installedPackageNames.add(info.packageName)
+                    val appName = info.loadLabel(pm).toString()
+                    // A etapa seguinte mostra os nomes dos apps escolhidos: ficam no
+                    // cache aqui, para ela não ir ao PackageManager na thread principal.
+                    AppLabelCache.put(info.packageName, appName)
                     SelectableAppUi(
                         packageName = info.packageName,
-                        appName = info.loadLabel(pm).toString(),
+                        appName = appName,
                         isSelected = info.packageName in preselected &&
                             info.packageName !in blockedPackages,
                         isInstalled = true,

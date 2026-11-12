@@ -400,6 +400,9 @@ fun DrawerMenuButton(
     }
 }
 
+/** Vale enquanto o processo viver: abrir o app de novo do zero anima outra vez. */
+private var homeEntrancePlayed = false
+
 @Composable
 fun HomeContent(
     missingProtectionPermissions: List<ProtectionPermission>,
@@ -410,10 +413,15 @@ fun HomeContent(
     onBlockTypeClick: (BlockTypeUi) -> Unit,
     pagerHint: Boolean
 ) {
-    var visible by remember { mutableStateOf(false) }
+    // A entrada animada acontece só na primeira vez que a tela inicial aparece.
+    // Repetida a cada volta (troca de aba, Voltar, retorno ao app), ela deixava a
+    // tela vazia por 100 ms e os cartões só ficavam prontos uns 750 ms depois.
+    var visible by remember { mutableStateOf(homeEntrancePlayed) }
     LaunchedEffect(Unit) {
+        if (visible) return@LaunchedEffect
         delay(100)
         visible = true
+        homeEntrancePlayed = true
     }
 
     Box(

@@ -3,7 +3,6 @@ package com.focusguard.ui.compose.screens
 import kotlin.OptIn
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -33,10 +32,12 @@ import com.focusguard.analytics.*
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.AppLabelCache
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 private data class UsageInsightsData(
@@ -47,13 +48,39 @@ private data class UsageInsightsData(
     val mostUsedTodayApps: List<AppUsageStat>,
     val mostOpenedApps: List<AppAccessStat>,
     val neverUsedApps: List<String>
-)
+) {
+    /** Os apps das linhas que cada seção mostra antes de "mostrar todos". */
+    fun initiallyVisiblePackages(): Set<String> = buildSet {
+        listOf(mostUsedApps, mostUsedAverageApps, mostUsedTodayApps).forEach { apps ->
+            apps.sortedByDescending(AppUsageStat::timeSpentMs)
+                .take(COLLAPSED_ROWS)
+                .mapTo(this) { it.packageName }
+        }
+        mostOpenedApps.sortedWith(mostOpenedOrder)
+            .take(COLLAPSED_ROWS)
+            .mapTo(this) { it.packageName }
+        addAll(neverUsedApps.take(COLLAPSED_ROWS))
+    }
+
+    fun allPackages(): Set<String> = buildSet {
+        listOf(mostUsedApps, mostUsedAverageApps, mostUsedTodayApps).forEach { apps ->
+            apps.mapTo(this) { it.packageName }
+        }
+        mostOpenedApps.mapTo(this) { it.packageName }
+        addAll(neverUsedApps)
+    }
+}
+
+/** Quantas linhas cada seção mostra recolhida. */
+private const val COLLAPSED_ROWS = 3
+
+private val mostOpenedOrder = compareByDescending<AppAccessStat> { it.accessCount }
+    .thenBy { it.packageName }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     val context = LocalContext.current
-    val pm = context.packageManager
     val analytics = remember { AdvancedUsageAnalytics(context.applicationContext) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -105,7 +132,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
             return@LaunchedEffect
         }
 
-        runCancellableInsightsLoad {
+        val result = runCancellableInsightsLoad {
             withContext(Dispatchers.IO) {
                 val end = System.currentTimeMillis()
                 val monthPeriod = UsageInsightsPeriodPolicy.currentMonth(end)
@@ -127,9 +154,15 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                     mostUsedTodayApps = rankings.today,
                     mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
                     neverUsedApps = analytics.getNeverUsedApps(rankings.usedLastSevenDays)
-                )
+                ).also { data ->
+                    // Os nomes dos apps saem do PackageManager (2–20 ms cada). Os das
+                    // linhas que aparecem de início ficam prontos aqui, fora da thread
+                    // principal, antes de a lista ser desenhada.
+                    AppLabelCache.prewarm(context, data.initiallyVisiblePackages())
+                }
             }
         }
+        result
             .onSuccess { data ->
                 phoneUsage = data.phoneUsage
                 mostUsedApps = data.mostUsedApps
@@ -148,6 +181,17 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 loadFailed = true
             }
         isLoading = false
+
+        // Os nomes que só aparecem em "mostrar todos" ficam prontos em seguida, ainda
+        // fora da thread principal, para a lista inteira abrir sem engasgar.
+        result.getOrNull()?.let { data ->
+            withContext(Dispatchers.IO) {
+                data.allPackages().forEach { packageName ->
+                    ensureActive()
+                    AppLabelCache.get(context, packageName)
+                }
+            }
+        }
     }
 
     // Só pinta fundo quando é dona da tela — o que se reconhece por ela trazer a
@@ -233,7 +277,6 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                                 MostUsedAppsSection(
                                     apps = mostUsedApps,
                                     averageApps = mostUsedAverageApps,
-                                    pm = pm,
                                     averageDays = mostUsedAverageDays,
                                     showAverage = showAverageForMostUsed,
                                     onToggleAverage = { showAverageForMostUsed = it },
@@ -251,7 +294,6 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 MostUsedTodayAppsSection(
                                     apps = mostUsedTodayApps,
-                                    pm = pm,
                                     expanded = expandMostUsedToday,
                                     onToggleExpand = { expandMostUsedToday = it }
                                 )
@@ -266,7 +308,6 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 MostOpenedAppsSection(
                                     apps = mostOpenedApps,
-                                    pm = pm,
                                     expanded = expandMostOpened,
                                     onToggleExpand = { expandMostOpened = it }
                                 )
@@ -281,7 +322,6 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 NeverUsedAppsSection(
                                     apps = neverUsedApps,
-                                    pm = pm,
                                     expanded = expandNeverUsed,
                                     onToggleExpand = { expandNeverUsed = it }
                                 )
@@ -783,7 +823,6 @@ private fun UsagePatternStatement(
 fun MostUsedAppsSection(
     apps: List<AppUsageStat>,
     averageApps: List<AppUsageStat>,
-    pm: PackageManager,
     averageDays: Int = 0,
     showAverage: Boolean,
     onToggleAverage: (Boolean) -> Unit,
@@ -826,7 +865,7 @@ fun MostUsedAppsSection(
             val orderedApps = remember(sourceApps) {
                 sourceApps.sortedByDescending(AppUsageStat::timeSpentMs)
             }
-            val displayList = if (expanded) orderedApps else orderedApps.take(3)
+            val displayList = if (expanded) orderedApps else orderedApps.take(COLLAPSED_ROWS)
             val divisor = averageDays.coerceAtLeast(1).toLong()
 
             if (displayList.isEmpty()) {
@@ -834,12 +873,12 @@ fun MostUsedAppsSection(
             } else {
                 displayList.forEach { stat ->
                     val timeToDisplay = if (useAverage) stat.timeSpentMs / divisor else stat.timeSpentMs
-                    AppUsageRow(stat.packageName, timeToDisplay, pm)
+                    AppUsageRow(stat.packageName, timeToDisplay)
                     Spacer(Modifier.height(12.dp))
                 }
             }
 
-            if (orderedApps.size > 3) {
+            if (orderedApps.size > COLLAPSED_ROWS) {
                 TextButton(
                     onClick = { onToggleExpand(!expanded) },
                     modifier = Modifier.fillMaxWidth()
@@ -858,7 +897,6 @@ fun MostUsedAppsSection(
 @Composable
 fun MostUsedTodayAppsSection(
     apps: List<AppUsageStat>,
-    pm: PackageManager,
     expanded: Boolean,
     onToggleExpand: (Boolean) -> Unit
 ) {
@@ -877,18 +915,18 @@ fun MostUsedTodayAppsSection(
             Spacer(Modifier.height(16.dp))
 
             val orderedApps = remember(apps) { apps.sortedByDescending(AppUsageStat::timeSpentMs) }
-            val displayList = if (expanded) orderedApps else orderedApps.take(3)
+            val displayList = if (expanded) orderedApps else orderedApps.take(COLLAPSED_ROWS)
 
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 displayList.forEach { stat ->
-                    AppUsageRow(stat.packageName, stat.timeSpentMs, pm)
+                    AppUsageRow(stat.packageName, stat.timeSpentMs)
                     Spacer(Modifier.height(12.dp))
                 }
             }
 
-            if (orderedApps.size > 3) {
+            if (orderedApps.size > COLLAPSED_ROWS) {
                 TextButton(
                     onClick = { onToggleExpand(!expanded) },
                     modifier = Modifier.fillMaxWidth()
@@ -907,7 +945,6 @@ fun MostUsedTodayAppsSection(
 @Composable
 fun MostOpenedAppsSection(
     apps: List<AppAccessStat>,
-    pm: PackageManager,
     expanded: Boolean,
     onToggleExpand: (Boolean) -> Unit
 ) {
@@ -920,22 +957,17 @@ fun MostOpenedAppsSection(
             Text(stringResource(R.string.dashboard_most_opened_title), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
 
-            val orderedApps = remember(apps) {
-                apps.sortedWith(
-                    compareByDescending<AppAccessStat> { it.accessCount }
-                        .thenBy { it.packageName }
-                )
-            }
-            val displayList = if (expanded) orderedApps else orderedApps.take(3)
+            val orderedApps = remember(apps) { apps.sortedWith(mostOpenedOrder) }
+            val displayList = if (expanded) orderedApps else orderedApps.take(COLLAPSED_ROWS)
 
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_accesses), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 displayList.forEach { app ->
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(app.packageName, pm, 32)
+                        AppIcon(app.packageName, 32)
                         Spacer(Modifier.width(12.dp))
-                        Text(getAppName(app.packageName, pm), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
+                        Text(rememberAppName(app.packageName), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
                         Text(
                             pluralStringResource(
                                 R.plurals.dashboard_access_count,
@@ -950,7 +982,7 @@ fun MostOpenedAppsSection(
                 }
             }
 
-            if (orderedApps.size > 3) {
+            if (orderedApps.size > COLLAPSED_ROWS) {
                 TextButton(
                     onClick = { onToggleExpand(!expanded) },
                     modifier = Modifier.fillMaxWidth()
@@ -969,7 +1001,6 @@ fun MostOpenedAppsSection(
 @Composable
 fun NeverUsedAppsSection(
     apps: List<String>,
-    pm: PackageManager,
     expanded: Boolean,
     onToggleExpand: (Boolean) -> Unit
 ) {
@@ -982,21 +1013,21 @@ fun NeverUsedAppsSection(
             Text(stringResource(R.string.dashboard_never_used), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
 
-            val displayList = if (expanded) apps else apps.take(3)
+            val displayList = if (expanded) apps else apps.take(COLLAPSED_ROWS)
 
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_inactive), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 displayList.forEach { pkg ->
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(pkg, pm, 32)
+                        AppIcon(pkg, 32)
                         Spacer(Modifier.width(12.dp))
-                        Text(getAppName(pkg, pm), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
+                        Text(rememberAppName(pkg), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
                     }
                 }
             }
 
-            if (apps.size > 3) {
+            if (apps.size > COLLAPSED_ROWS) {
                 TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
                     Text(if (expanded) stringResource(R.string.dashboard_hide) else stringResource(R.string.dashboard_show_all, apps.size), color = AccentCyan)
                 }
@@ -1006,34 +1037,46 @@ fun NeverUsedAppsSection(
 }
 
 @Composable
-fun AppUsageRow(pkg: String, timeMs: Long, pm: PackageManager) {
+fun AppUsageRow(pkg: String, timeMs: Long) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        AppIcon(pkg, pm, 40)
+        AppIcon(pkg, 40)
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(getAppName(pkg, pm), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(rememberAppName(pkg), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1)
         }
         Text(formatTime(timeMs), color = AccentCyan, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-fun AppIcon(pkg: String, pm: PackageManager, size: Int) {
+fun AppIcon(pkg: String, size: Int) {
     FocusGuardAppIcon(
         packageName = pkg,
-        appName = getAppName(pkg, pm),
+        appName = rememberAppName(pkg),
         modifier = Modifier.size(size.dp),
         cornerRadius = (size / 4).dp,
         allowRemoteFallback = true
     )
 }
 
-fun getAppName(pkg: String, pm: PackageManager): String {
-    return try {
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-    } catch (e: Throwable) {
-        pkg
+/**
+ * Nome do app sem ir ao PackageManager na thread principal.
+ *
+ * Resolver o nome durante a composição custa 2–20 ms por linha, a cada recomposição:
+ * com "mostrar todos" e dezenas de apps, a tela congela. O nome vem do cache, que a
+ * carga da tela já preencheu; o que faltar é buscado fora da thread principal, e até
+ * lá a linha mostra o pacote, como um app sem nome.
+ */
+@Composable
+private fun rememberAppName(pkg: String): String {
+    val appContext = LocalContext.current.applicationContext
+    var label by remember(pkg) { mutableStateOf(AppLabelCache.peek(pkg)) }
+    LaunchedEffect(pkg) {
+        if (label == null) {
+            label = withContext(Dispatchers.IO) { AppLabelCache.get(appContext, pkg) }
+        }
     }
+    return label ?: pkg
 }
 
 private fun formatTime(millis: Long): String {

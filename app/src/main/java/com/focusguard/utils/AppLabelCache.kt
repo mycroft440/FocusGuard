@@ -36,6 +36,13 @@ object AppLabelCache {
     fun peek(packageName: String?): String? =
         packageName?.takeIf(String::isNotBlank)?.let(labels::get)
 
+    /** Guarda um nome que outra tela já leu do PackageManager fora da thread principal. */
+    fun put(packageName: String, label: String) {
+        if (packageName.isBlank() || label.isBlank()) return
+        labels[packageName] = label
+        misses.remove(packageName)
+    }
+
     fun prewarm(context: Context, packageNames: Collection<String>) {
         packageNames.forEach { packageName ->
             if (packageName.isNotBlank() &&

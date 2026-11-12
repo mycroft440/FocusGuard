@@ -166,7 +166,10 @@ fun PomodoroScreen(
     }
 
     fun saveConfig(updated: PomodoroPlanConfig) {
-        config = planStore.saveConfig(updated.normalized())
+        val normalized = updated.normalized()
+        // O relógio repete o mesmo valor a cada movimento do dedo.
+        if (normalized == config) return
+        config = planStore.saveConfig(normalized, interactive = true)
         setMessage(null)
     }
 

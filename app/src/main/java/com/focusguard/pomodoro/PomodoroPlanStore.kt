@@ -1,6 +1,9 @@
 package com.focusguard.pomodoro
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import com.focusguard.R
 import com.focusguard.utils.SecurePrefsManager
 import com.focusguard.widget.PomodoroWidgetProvider
@@ -70,10 +73,24 @@ class PomodoroPlanStore(context: Context) {
             .normalized()
     }
 
-    fun saveConfig(config: PomodoroPlanConfig): PomodoroPlanConfig {
+    /**
+     * [interactive] é para a edição feita na tela (arrastar o relógio, tocar em + e -).
+     * Arrastar o relógio chama isto a cada movimento do dedo; gravar o arquivo cifrado
+     * com commit() e redesenhar o widget a cada chamada, na thread principal, travava o
+     * arrasto. Nesse modo um valor igual ao já salvo não faz nada, a gravação vai ao
+     * disco fora da thread principal (o valor já vale na memória, de onde o widget e o
+     * início do ciclo leem) e o widget é redesenhado uma vez só, quando o valor para.
+     */
+    fun saveConfig(config: PomodoroPlanConfig, interactive: Boolean = false): PomodoroPlanConfig {
         val normalized = config.normalized()
-        prefs.edit().putString(KEY_CONFIG, configToJson(normalized).toString()).commit()
-        refreshWidgets()
+        val json = configToJson(normalized).toString()
+        if (!interactive) {
+            prefs.edit().putString(KEY_CONFIG, json).commit()
+            refreshWidgets()
+        } else if (prefs.getString(KEY_CONFIG, null) != json) {
+            prefs.edit().putString(KEY_CONFIG, json).apply()
+            scheduleWidgetRefresh(appContext)
+        }
         return normalized
     }
 
@@ -245,6 +262,20 @@ class PomodoroPlanStore(context: Context) {
         private const val KEY_CONFIG = "pomodoro.plan.config.v2"
         private const val KEY_RUNTIME = "pomodoro.plan.runtime.v2"
         private const val KEY_PROFILES = "pomodoro.plan.profiles.v2"
+
+        private const val WIDGET_REFRESH_DELAY_MILLIS = 150L
+        private val widgetRefreshToken = Any()
+        private val widgetRefreshHandler by lazy { Handler(Looper.getMainLooper()) }
+
+        /** Uma sequência de edições na tela redesenha o widget uma vez, ao terminar. */
+        private fun scheduleWidgetRefresh(appContext: Context) {
+            widgetRefreshHandler.removeCallbacksAndMessages(widgetRefreshToken)
+            widgetRefreshHandler.postAtTime(
+                { runCatching { PomodoroWidgetProvider.requestUpdate(appContext) } },
+                widgetRefreshToken,
+                SystemClock.uptimeMillis() + WIDGET_REFRESH_DELAY_MILLIS
+            )
+        }
 
         private fun configToJson(config: PomodoroPlanConfig): JSONObject = JSONObject()
             .put("focusMinutes", config.focusMinutes)
