@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">مهلة الإلغاء خلصت. الحظر مكمل.</string>
     <string name="limit_cancel_window_desc">لحد كده تقدر تعدّل الحد أو تشيله. اقفل الاختيار عشان يتقفل من دلوقتي.</string>
     <string name="block_type_limit_editable_until">ممكن يتغير لحد %1$s</string>
+    <string name="block_type_remove_limit_action">شيل الحد</string>
+    <string name="block_type_remove_limit_confirm_title">تشيل الحد ده؟</string>
+    <string name="block_type_remove_limit_confirm_message">التطبيق أو الموقع ده مش هيبقى عليه حد يومي من دلوقتي.</string>
+    <string name="block_type_remove_limit_keep">خلي الحد</string>
+    <string name="block_type_remove_limit_done">الحد اتشال.</string>
+    <string name="block_type_remove_limit_locked">وقت تغيير الحد ده خلص. هيفضل شغال.</string>
+    <string name="block_type_remove_limit_failed">مقدرناش نشيل الحد. جرّب تاني.</string>
+    <string name="block_type_limit_paused_until">واقف مؤقتًا لحد %1$s. بعد كده تقدر تشيل الحد.</string>
+    <string name="limits_pause_active_alert_title">البريك شغال</string>
+    <string name="limits_pause_active_alert_desc">بريك الـ 30 دقيقة شغال. تقدر تغيّر الحد ده أو تشيله لما يخلص.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

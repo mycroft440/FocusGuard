@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Le délai d’annulation est passé. Le blocage continue.</string>
     <string name="limit_cancel_window_desc">D’ici là, vous pouvez modifier ou supprimer la limite. Désactivez pour la verrouiller dès maintenant.</string>
     <string name="block_type_limit_editable_until">Modifiable jusqu’au %1$s</string>
+    <string name="block_type_remove_limit_action">Supprimer la limite</string>
+    <string name="block_type_remove_limit_confirm_title">Supprimer cette limite ?</string>
+    <string name="block_type_remove_limit_confirm_message">Cette appli ou ce site n’aura plus de limite quotidienne à partir de maintenant.</string>
+    <string name="block_type_remove_limit_keep">Garder la limite</string>
+    <string name="block_type_remove_limit_done">Limite supprimée.</string>
+    <string name="block_type_remove_limit_locked">Le délai pour modifier cette limite est passé. Elle reste active.</string>
+    <string name="block_type_remove_limit_failed">Impossible de supprimer la limite. Réessayez.</string>
+    <string name="block_type_limit_paused_until">En pause jusqu’à %1$s. Ensuite, la limite pourra être supprimée.</string>
+    <string name="limits_pause_active_alert_title">Pause en cours</string>
+    <string name="limits_pause_active_alert_desc">La pause de 30 minutes est en cours. Vous pourrez modifier ou supprimer cette limite quand elle sera terminée.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -3,6 +3,7 @@ package com.focusguard.security
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 
 /**
  * Central policy for irreversible protection and the master credential boundary.
@@ -89,13 +90,19 @@ object MasterCredentialPolicy {
         MASTER_CREDENTIAL_REQUIRED,
         MASTER_CREDENTIAL_NOT_CONFIGURED,
         BLOCKED_BY_TIME_HARDENING,
-        BLOCKED_BY_SAFETY_MODE
+        BLOCKED_BY_SAFETY_MODE,
+        /** Limite de "pausa de 30 min" com a pausa em curso: só depois que ela acabar. */
+        BLOCKED_BY_ACTIVE_PAUSE
     }
 
     /**
      * Altering a usage limit is governed by the limit's own hardening and Safety
      * Mode. The master credential is deliberately ignored: it must not become a
      * generic password for creating, editing or removing individual limits.
+     *
+     * Um limite de "pausa de 30 min" não trava pelas 48 h: pode ser alterado ou
+     * apagado a qualquer momento, menos enquanto a pausa estiver em curso
+     * ([pauseActive]), para não servir de saída da própria pausa.
      */
     @Suppress("UNUSED_PARAMETER")
     fun evaluateLimitMutation(
@@ -106,12 +113,18 @@ object MasterCredentialPolicy {
         masterCredentialVerified: Boolean,
         nowMillis: Long = System.currentTimeMillis(),
         /** Ver [isLimitLockedAfterCancelWindow]. */
-        lockAfter: Long? = null
+        lockAfter: Long? = null,
+        /** A pausa de 30 min deste limite está segurando o alvo agora. */
+        pauseActive: Boolean = false
     ): MutationGate {
+        val pauseMode = UsageLimitBehaviorPolicy.isPauseMode(lockMode)
         if (isTimeHardened(lockMode, lockUntilTimestamp, nowMillis) ||
-            isLimitLockedAfterCancelWindow(lockAfter, lockUntilTimestamp, nowMillis)
+            (!pauseMode && isLimitLockedAfterCancelWindow(lockAfter, lockUntilTimestamp, nowMillis))
         ) {
             return MutationGate.BLOCKED_BY_TIME_HARDENING
+        }
+        if (pauseMode && pauseActive) {
+            return MutationGate.BLOCKED_BY_ACTIVE_PAUSE
         }
         if (safetyModeEnabled) {
             return MutationGate.BLOCKED_BY_SAFETY_MODE
@@ -124,7 +137,8 @@ object MasterCredentialPolicy {
         safetyModeEnabled: Boolean,
         hasMasterCredential: Boolean,
         masterCredentialVerified: Boolean,
-        nowMillis: Long = System.currentTimeMillis()
+        nowMillis: Long = System.currentTimeMillis(),
+        pauseActive: Boolean = false
     ): MutationGate = evaluateLimitMutation(
         lockMode = limit.lockMode,
         lockUntilTimestamp = limit.lockUntilTimestamp,
@@ -132,7 +146,8 @@ object MasterCredentialPolicy {
         hasMasterCredential = hasMasterCredential,
         masterCredentialVerified = masterCredentialVerified,
         nowMillis = nowMillis,
-        lockAfter = limit.lockAfter
+        lockAfter = limit.lockAfter,
+        pauseActive = pauseActive
     )
 
     /**
@@ -161,7 +176,9 @@ object MasterCredentialPolicy {
      * atuais, travado entre o fim da janela das 48 h (ou a criação, com ela desligada)
      * e o fim da regra. Como o jejum, arma a autoproteção e impede desinstalar: sem
      * isso, desligar a acessibilidade, revogar o Acesso de uso ou desinstalar o app
-     * desfazia um limite que não podia mais ser removido.
+     * desfazia um limite que não podia mais ser removido. Um limite de "pausa de
+     * 30 min" pode ser apagado a qualquer momento (menos durante a pausa) e por isso
+     * nunca vira compromisso pela janela das 48 h.
      */
     fun isLimitCommitmentActive(
         isEnabled: Boolean,
@@ -173,6 +190,7 @@ object MasterCredentialPolicy {
         isTimeHardened(lockMode, lockUntilTimestamp, nowMillis) ||
             // Sem fim de regra não há "até": um limite assim nunca vira compromisso.
             (lockUntilTimestamp != null &&
+                !UsageLimitBehaviorPolicy.isPauseMode(lockMode) &&
                 isLimitLockedAfterCancelWindow(lockAfter, lockUntilTimestamp, nowMillis))
         )
 

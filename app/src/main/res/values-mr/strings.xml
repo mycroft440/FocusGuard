@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">रद्द करण्याची मुदत संपली. ब्लॉक सुरू राहील.</string>
     <string name="limit_cancel_window_desc">तोपर्यंत तुम्ही मर्यादा बदलू किंवा काढू शकता. आत्ताच लॉक करण्यासाठी बंद करा.</string>
     <string name="block_type_limit_editable_until">%1$s पर्यंत बदलता येईल</string>
+    <string name="block_type_remove_limit_action">मर्यादा काढा</string>
+    <string name="block_type_remove_limit_confirm_title">ही मर्यादा काढायची?</string>
+    <string name="block_type_remove_limit_confirm_message">आतापासून या ॲप किंवा साइटला दैनिक मर्यादा राहणार नाही.</string>
+    <string name="block_type_remove_limit_keep">मर्यादा ठेवा</string>
+    <string name="block_type_remove_limit_done">मर्यादा काढली.</string>
+    <string name="block_type_remove_limit_locked">ही मर्यादा बदलण्याची मुदत संपली आहे. ती चालू राहील.</string>
+    <string name="block_type_remove_limit_failed">मर्यादा काढता आली नाही. पुन्हा प्रयत्न करा.</string>
+    <string name="block_type_limit_paused_until">%1$s पर्यंत विराम. त्यानंतर मर्यादा काढता येईल.</string>
+    <string name="limits_pause_active_alert_title">विराम सुरू आहे</string>
+    <string name="limits_pause_active_alert_desc">३० मिनिटांचा विराम सुरू आहे. तो संपल्यावर तुम्ही ही मर्यादा बदलू किंवा काढू शकता.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

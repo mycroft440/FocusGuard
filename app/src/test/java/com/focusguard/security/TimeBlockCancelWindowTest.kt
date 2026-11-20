@@ -3,6 +3,7 @@ package com.focusguard.security
 import com.focusguard.manager.BlockingSessionManager.BlockOverview
 import com.focusguard.ui.compose.screens.BlockTypeUi
 import com.focusguard.ui.compose.screens.canCancelTimeBlock
+import com.focusguard.ui.compose.screens.canRemoveDailyLimit
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -79,5 +80,74 @@ class TimeBlockCancelWindowTest {
                 nowMillis = start
             )
         ).isFalse()
+    }
+
+    @Test
+    fun `pause limit can always be changed, except while the pause is running`() {
+        val ruleEnd = start + 30L * 24 * 3_600_000L
+        // Mesmo criado sem as 48 h (travado desde a criação no outro modo).
+        val lockAfter = MasterCredentialPolicy.limitLockAfter(start, cancelWindowEnabled = false)
+        fun gate(lockMode: String, now: Long, paused: Boolean) =
+            MasterCredentialPolicy.evaluateLimitMutation(
+                lockMode = lockMode,
+                lockUntilTimestamp = ruleEnd,
+                safetyModeEnabled = false,
+                hasMasterCredential = false,
+                masterCredentialVerified = false,
+                nowMillis = now,
+                lockAfter = lockAfter,
+                pauseActive = paused
+            )
+        val pause = "PAUSE_30:com.example.app"
+        val tomorrow = "BLOCK_UNTIL_TOMORROW:com.example.app"
+
+        assertThat(gate(pause, until + 1, paused = false))
+            .isEqualTo(MasterCredentialPolicy.MutationGate.ALLOWED)
+        assertThat(gate(pause, start, paused = true))
+            .isEqualTo(MasterCredentialPolicy.MutationGate.BLOCKED_BY_ACTIVE_PAUSE)
+        assertThat(gate(tomorrow, until + 1, paused = false))
+            .isEqualTo(MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING)
+        // Sempre removível, a pausa nunca vira compromisso que impede desinstalar.
+        assertThat(
+            MasterCredentialPolicy.isLimitCommitmentActive(
+                isEnabled = true,
+                lockMode = pause,
+                lockUntilTimestamp = ruleEnd,
+                lockAfter = lockAfter,
+                nowMillis = until + 1
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `daily limit list offers removal within 48 h, or for pause limits outside the pause`() {
+        val untilTomorrow = BlockOverview.Entry(
+            identifier = "com.example.app",
+            isWebsite = false,
+            dailyLimitMinutes = 30,
+            cancelableUntilMillis = until
+        )
+        assertThat(canRemoveDailyLimit(BlockTypeUi.DAILY_LIMIT, untilTomorrow, start)).isTrue()
+        assertThat(canRemoveDailyLimit(BlockTypeUi.DAILY_LIMIT, untilTomorrow, until)).isFalse()
+        assertThat(canRemoveDailyLimit(BlockTypeUi.DOPAMINE_FAST, untilTomorrow, start)).isFalse()
+        assertThat(
+            canRemoveDailyLimit(
+                BlockTypeUi.DAILY_LIMIT,
+                untilTomorrow.copy(cancelableUntilMillis = null),
+                start
+            )
+        ).isFalse()
+
+        val pauseEnd = start + 30L * 60_000L
+        val pause = BlockOverview.Entry(
+            identifier = "com.example.app",
+            isWebsite = false,
+            dailyLimitMinutes = 30,
+            isPauseLimit = true
+        )
+        assertThat(canRemoveDailyLimit(BlockTypeUi.DAILY_LIMIT, pause, until * 10)).isTrue()
+        val paused = pause.copy(pauseUntilMillis = pauseEnd)
+        assertThat(canRemoveDailyLimit(BlockTypeUi.DAILY_LIMIT, paused, start)).isFalse()
+        assertThat(canRemoveDailyLimit(BlockTypeUi.DAILY_LIMIT, paused, pauseEnd)).isTrue()
     }
 }

@@ -349,6 +349,7 @@ fun AppLimitsTab(
     var showDialog by remember { mutableStateOf(false) }
     var showMasterCredentialConfirm by remember { mutableStateOf(false) }
     var showTimeLockedAlert by remember { mutableStateOf(false) }
+    var showPauseActiveAlert by remember { mutableStateOf(false) }
     var showSafetyModeAlert by remember { mutableStateOf(false) }
     var showCredentialMissingAlert by remember { mutableStateOf(false) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
@@ -370,6 +371,8 @@ fun AppLimitsTab(
         when (gate) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
                 showTimeLockedAlert = true
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_ACTIVE_PAUSE ->
+                showPauseActiveAlert = true
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
                 showSafetyModeAlert = true
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
@@ -796,6 +799,8 @@ fun AppLimitsTab(
     LimitMutationAlerts(
         showTimeLocked = showTimeLockedAlert,
         onTimeLockedDismiss = { showTimeLockedAlert = false },
+        showPauseActive = showPauseActiveAlert,
+        onPauseActiveDismiss = { showPauseActiveAlert = false },
         showSafetyMode = showSafetyModeAlert,
         onSafetyModeDismiss = { showSafetyModeAlert = false },
         showCredentialMissing = showCredentialMissingAlert,
@@ -867,14 +872,20 @@ private fun limitMutationGate(
     lockMode: String,
     lockUntilTimestamp: Long?,
     lockAfter: Long?
-): MasterCredentialPolicy.MutationGate = MasterCredentialPolicy.evaluateLimitMutation(
-    lockMode = lockMode,
-    lockUntilTimestamp = lockUntilTimestamp,
-    safetyModeEnabled = authManager.isSafetyModeEnabled(),
-    hasMasterCredential = hasMasterCredential,
-    masterCredentialVerified = false,
-    lockAfter = lockAfter
-)
+): MasterCredentialPolicy.MutationGate {
+    val now = System.currentTimeMillis()
+    return MasterCredentialPolicy.evaluateLimitMutation(
+        lockMode = lockMode,
+        lockUntilTimestamp = lockUntilTimestamp,
+        safetyModeEnabled = authManager.isSafetyModeEnabled(),
+        hasMasterCredential = hasMasterCredential,
+        masterCredentialVerified = false,
+        nowMillis = now,
+        lockAfter = lockAfter,
+        // "Pausa de 30 min": alterável sempre, menos com a pausa em curso.
+        pauseActive = UsageLimitPauseStateStore.isPauseActive(lockMode, lockUntilTimestamp, now)
+    )
+}
 
 /** Recusa salvar ou remover; o pedido antigo de senha mestra já foi confirmado antes. */
 private fun MasterCredentialPolicy.MutationGate.refusesMutation(): Boolean =
@@ -993,6 +1004,7 @@ fun WebsiteLimitsTab(
         mutableIntStateOf(R.string.master_credential_required_to_change_limit)
     }
     var showTimeLockedAlert by remember { mutableStateOf(false) }
+    var showPauseActiveAlert by remember { mutableStateOf(false) }
     var showSafetyModeAlert by remember { mutableStateOf(false) }
     var showCredentialMissingAlert by remember { mutableStateOf(false) }
     var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
@@ -1017,6 +1029,8 @@ fun WebsiteLimitsTab(
         when (gate) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
                 showTimeLockedAlert = true
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_ACTIVE_PAUSE ->
+                showPauseActiveAlert = true
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
                 showSafetyModeAlert = true
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
@@ -1524,6 +1538,8 @@ fun WebsiteLimitsTab(
     LimitMutationAlerts(
         showTimeLocked = showTimeLockedAlert,
         onTimeLockedDismiss = { showTimeLockedAlert = false },
+        showPauseActive = showPauseActiveAlert,
+        onPauseActiveDismiss = { showPauseActiveAlert = false },
         showSafetyMode = showSafetyModeAlert,
         onSafetyModeDismiss = { showSafetyModeAlert = false },
         showCredentialMissing = showCredentialMissingAlert,
@@ -1583,6 +1599,8 @@ private fun UsageLimitPresetRow(
 private fun LimitMutationAlerts(
     showTimeLocked: Boolean,
     onTimeLockedDismiss: () -> Unit,
+    showPauseActive: Boolean,
+    onPauseActiveDismiss: () -> Unit,
     showSafetyMode: Boolean,
     onSafetyModeDismiss: () -> Unit,
     showCredentialMissing: Boolean,
@@ -1601,6 +1619,26 @@ private fun LimitMutationAlerts(
             },
             confirmButton = {
                 TextButton(onClick = onTimeLockedDismiss) {
+                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+    if (showPauseActive) {
+        AlertDialog(
+            onDismissRequest = onPauseActiveDismiss,
+            title = {
+                Text(stringResource(R.string.limits_pause_active_alert_title), color = DangerRed)
+            },
+            text = {
+                Text(
+                    stringResource(R.string.limits_pause_active_alert_desc),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onPauseActiveDismiss) {
                     Text(stringResource(R.string.action_ok), color = AccentCyan)
                 }
             },

@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Die Frist zum Aufheben ist abgelaufen. Die Sperre bleibt bestehen.</string>
     <string name="limit_cancel_window_desc">Bis dahin kannst du das Limit ändern oder entfernen. Ausschalten, um es sofort zu sperren.</string>
     <string name="block_type_limit_editable_until">Kann bis %1$s geändert werden</string>
+    <string name="block_type_remove_limit_action">Limit entfernen</string>
+    <string name="block_type_remove_limit_confirm_title">Dieses Limit entfernen?</string>
+    <string name="block_type_remove_limit_confirm_message">Diese App oder Website hat ab jetzt kein Tageslimit mehr.</string>
+    <string name="block_type_remove_limit_keep">Limit behalten</string>
+    <string name="block_type_remove_limit_done">Limit entfernt.</string>
+    <string name="block_type_remove_limit_locked">Die Frist zum Ändern dieses Limits ist abgelaufen. Es bleibt bestehen.</string>
+    <string name="block_type_remove_limit_failed">Das Limit konnte nicht entfernt werden. Versuche es erneut.</string>
+    <string name="block_type_limit_paused_until">Pausiert bis %1$s. Danach kann das Limit entfernt werden.</string>
+    <string name="limits_pause_active_alert_title">Pause läuft</string>
+    <string name="limits_pause_active_alert_desc">Die 30-minütige Pause läuft. Du kannst dieses Limit ändern oder entfernen, sobald sie endet.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

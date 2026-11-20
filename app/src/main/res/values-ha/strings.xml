@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Lokacin soke ya wuce. Toshewar tana ci gaba.</string>
     <string name="limit_cancel_window_desc">Kafin nan, za ka iya gyara ko cire iyakar. Kashe don a kulle ta yanzu.</string>
     <string name="block_type_limit_editable_until">Za a iya canza shi har zuwa %1$s</string>
+    <string name="block_type_remove_limit_action">Cire iyaka</string>
+    <string name="block_type_remove_limit_confirm_title">Cire wannan iyakar?</string>
+    <string name="block_type_remove_limit_confirm_message">Daga yanzu wannan manhaja ko shafin ba zai sake samun iyakar yau da kullum ba.</string>
+    <string name="block_type_remove_limit_keep">Ci gaba da iyaka</string>
+    <string name="block_type_remove_limit_done">An cire iyaka.</string>
+    <string name="block_type_remove_limit_locked">Lokacin canza wannan iyakar ya wuce. Za ta ci gaba da aiki.</string>
+    <string name="block_type_remove_limit_failed">Ba a iya cire iyakar ba. Sake gwadawa.</string>
+    <string name="block_type_limit_paused_until">Hutu har zuwa %1$s. Bayan haka, za a iya cire iyakar.</string>
+    <string name="limits_pause_active_alert_title">Hutu na gudana</string>
+    <string name="limits_pause_active_alert_desc">Hutun minti 30 na gudana. Za ka iya canza ko cire wannan iyakar idan ya ƙare.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

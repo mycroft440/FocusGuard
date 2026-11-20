@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">取り消し期限が過ぎました。ブロックは続きます。</string>
     <string name="limit_cancel_window_desc">それまでは制限を編集・削除できます。オフにすると今すぐロックされます。</string>
     <string name="block_type_limit_editable_until">%1$s まで変更できます</string>
+    <string name="block_type_remove_limit_action">制限を削除</string>
+    <string name="block_type_remove_limit_confirm_title">この制限を削除しますか？</string>
+    <string name="block_type_remove_limit_confirm_message">このアプリまたはサイトの1日の制限は今から解除されます。</string>
+    <string name="block_type_remove_limit_keep">制限を続ける</string>
+    <string name="block_type_remove_limit_done">制限を削除しました。</string>
+    <string name="block_type_remove_limit_locked">この制限を変更できる期間は終了しました。制限は続きます。</string>
+    <string name="block_type_remove_limit_failed">制限を削除できませんでした。もう一度お試しください。</string>
+    <string name="block_type_limit_paused_until">%1$s まで休憩中です。その後、制限を削除できます。</string>
+    <string name="limits_pause_active_alert_title">休憩中</string>
+    <string name="limits_pause_active_alert_desc">30分間の休憩中です。終了後にこの制限を変更または削除できます。</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

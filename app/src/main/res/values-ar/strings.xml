@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">انتهت مهلة الإلغاء. يستمر الحظر.</string>
     <string name="limit_cancel_window_desc">حتى ذلك الحين يمكنك تعديل الحد أو إزالته. أوقف الخيار لقفله فورًا.</string>
     <string name="block_type_limit_editable_until">يمكن تغييره حتى %1$s</string>
+    <string name="block_type_remove_limit_action">إزالة الحد</string>
+    <string name="block_type_remove_limit_confirm_title">هل تريد إزالة هذا الحد؟</string>
+    <string name="block_type_remove_limit_confirm_message">لن يكون لهذا التطبيق أو الموقع حد يومي بدءًا من الآن.</string>
+    <string name="block_type_remove_limit_keep">الإبقاء على الحد</string>
+    <string name="block_type_remove_limit_done">تمت إزالة الحد.</string>
+    <string name="block_type_remove_limit_locked">انتهت مهلة تغيير هذا الحد. سيظل مفعّلًا.</string>
+    <string name="block_type_remove_limit_failed">تعذّرت إزالة الحد. حاول مرة أخرى.</string>
+    <string name="block_type_limit_paused_until">متوقف مؤقتًا حتى %1$s. بعد ذلك يمكن إزالة الحد.</string>
+    <string name="limits_pause_active_alert_title">استراحة جارية</string>
+    <string name="limits_pause_active_alert_desc">استراحة الـ 30 دقيقة جارية. يمكنك تغيير هذا الحد أو إزالته عند انتهائها.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

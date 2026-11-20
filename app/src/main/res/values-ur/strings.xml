@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">منسوخی کا وقت ختم ہو گیا۔ بلاک جاری رہے گا۔</string>
     <string name="limit_cancel_window_desc">تب تک آپ حد میں ترمیم یا اسے ہٹا سکتے ہیں۔ ابھی سے لاک کرنے کے لیے بند کریں۔</string>
     <string name="block_type_limit_editable_until">%1$s تک تبدیل کیا جا سکتا ہے</string>
+    <string name="block_type_remove_limit_action">حد ہٹائیں</string>
+    <string name="block_type_remove_limit_confirm_title">یہ حد ہٹائیں؟</string>
+    <string name="block_type_remove_limit_confirm_message">اب سے اس ایپ یا سائٹ کی کوئی روزانہ حد نہیں رہے گی۔</string>
+    <string name="block_type_remove_limit_keep">حد برقرار رکھیں</string>
+    <string name="block_type_remove_limit_done">حد ہٹا دی گئی۔</string>
+    <string name="block_type_remove_limit_locked">اس حد کو بدلنے کی مہلت ختم ہو گئی ہے۔ یہ برقرار رہے گی۔</string>
+    <string name="block_type_remove_limit_failed">حد نہیں ہٹائی جا سکی۔ دوبارہ کوشش کریں۔</string>
+    <string name="block_type_limit_paused_until">%1$s تک وقفے میں ہے۔ اس کے بعد حد ہٹائی جا سکتی ہے۔</string>
+    <string name="limits_pause_active_alert_title">وقفہ جاری ہے</string>
+    <string name="limits_pause_active_alert_desc">30 منٹ کا وقفہ جاری ہے۔ اس کے ختم ہونے پر آپ یہ حد بدل یا ہٹا سکتے ہیں۔</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

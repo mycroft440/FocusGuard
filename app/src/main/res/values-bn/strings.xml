@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">বাতিলের সময় শেষ। ব্লক চলবে।</string>
     <string name="limit_cancel_window_desc">ততক্ষণ আপনি সীমা সম্পাদনা বা সরাতে পারবেন। এখনই লক করতে বন্ধ করুন।</string>
     <string name="block_type_limit_editable_until">%1$s পর্যন্ত পরিবর্তন করা যাবে</string>
+    <string name="block_type_remove_limit_action">সীমা সরান</string>
+    <string name="block_type_remove_limit_confirm_title">এই সীমা সরাবেন?</string>
+    <string name="block_type_remove_limit_confirm_message">এখন থেকে এই অ্যাপ বা সাইটের আর দৈনিক সীমা থাকবে না।</string>
+    <string name="block_type_remove_limit_keep">সীমা রাখুন</string>
+    <string name="block_type_remove_limit_done">সীমা সরানো হয়েছে।</string>
+    <string name="block_type_remove_limit_locked">এই সীমা পরিবর্তনের সময় শেষ। এটি চালু থাকবে।</string>
+    <string name="block_type_remove_limit_failed">সীমা সরানো যায়নি। আবার চেষ্টা করুন।</string>
+    <string name="block_type_limit_paused_until">%1$s পর্যন্ত বিরতিতে। এরপর সীমা সরানো যাবে।</string>
+    <string name="limits_pause_active_alert_title">বিরতি চলছে</string>
+    <string name="limits_pause_active_alert_desc">৩০ মিনিটের বিরতি চলছে। এটি শেষ হলে আপনি এই সীমা পরিবর্তন বা সরাতে পারবেন।</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

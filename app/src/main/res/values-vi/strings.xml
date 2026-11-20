@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Đã hết thời hạn hủy. Lệnh chặn vẫn tiếp tục.</string>
     <string name="limit_cancel_window_desc">Trước đó, bạn có thể sửa hoặc xóa giới hạn. Tắt để khóa ngay bây giờ.</string>
     <string name="block_type_limit_editable_until">Có thể thay đổi đến %1$s</string>
+    <string name="block_type_remove_limit_action">Xóa giới hạn</string>
+    <string name="block_type_remove_limit_confirm_title">Xóa giới hạn này?</string>
+    <string name="block_type_remove_limit_confirm_message">Ứng dụng hoặc trang web này sẽ không còn giới hạn hằng ngày kể từ bây giờ.</string>
+    <string name="block_type_remove_limit_keep">Giữ giới hạn</string>
+    <string name="block_type_remove_limit_done">Đã xóa giới hạn.</string>
+    <string name="block_type_remove_limit_locked">Đã hết thời hạn thay đổi giới hạn này. Giới hạn vẫn tiếp tục áp dụng.</string>
+    <string name="block_type_remove_limit_failed">Không thể xóa giới hạn. Hãy thử lại.</string>
+    <string name="block_type_limit_paused_until">Đang tạm nghỉ đến %1$s. Sau đó có thể xóa giới hạn.</string>
+    <string name="limits_pause_active_alert_title">Đang tạm nghỉ</string>
+    <string name="limits_pause_active_alert_desc">Khoảng tạm nghỉ 30 phút đang diễn ra. Bạn có thể thay đổi hoặc xóa giới hạn này khi nó kết thúc.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

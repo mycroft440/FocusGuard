@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Se acabó el plazo para cancelar. El bloqueo continúa.</string>
     <string name="limit_cancel_window_desc">Hasta entonces, puedes editar o quitar el límite. Desactívalo para bloquearlo desde ya.</string>
     <string name="block_type_limit_editable_until">Se puede cambiar hasta %1$s</string>
+    <string name="block_type_remove_limit_action">Eliminar límite</string>
+    <string name="block_type_remove_limit_confirm_title">¿Eliminar este límite?</string>
+    <string name="block_type_remove_limit_confirm_message">Esta app o sitio dejará de tener límite diario a partir de ahora.</string>
+    <string name="block_type_remove_limit_keep">Mantener límite</string>
+    <string name="block_type_remove_limit_done">Límite eliminado.</string>
+    <string name="block_type_remove_limit_locked">El plazo para cambiar este límite ya terminó. Sigue activo.</string>
+    <string name="block_type_remove_limit_failed">No se pudo eliminar el límite. Inténtalo de nuevo.</string>
+    <string name="block_type_limit_paused_until">En pausa hasta las %1$s. Después, el límite se puede eliminar.</string>
+    <string name="limits_pause_active_alert_title">Pausa en curso</string>
+    <string name="limits_pause_active_alert_desc">La pausa de 30 minutos está en curso. Podrás cambiar o eliminar este límite cuando termine.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

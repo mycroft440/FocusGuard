@@ -358,6 +358,14 @@ object UsageLimitPauseStateStore {
     }
 
     /**
+     * Se a pausa de 30 minutos de um limite em "pausa de 30 min" está em curso agora.
+     * Enquanto ela dura o limite não pode ser apagado nem alterado.
+     */
+    fun isPauseActive(lockMode: String, ruleEndMillis: Long?, nowMillis: Long): Boolean =
+        UsageLimitBehaviorPolicy.isPauseMode(lockMode) &&
+            heldUntil(lockMode, ruleEndMillis, nowMillis) != null
+
+    /**
      * Revokes the once-per-day PAUSE_30 release for one configured rule without
      * touching the rule deadline. This is deliberately synchronous when backed by
      * SharedPreferences because package replacement must finish clearing releases

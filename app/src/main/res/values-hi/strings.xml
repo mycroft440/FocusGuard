@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">रद्द करने का समय खत्म हो गया। ब्लॉक जारी रहेगा।</string>
     <string name="limit_cancel_window_desc">तब तक आप सीमा बदल या हटा सकते हैं। अभी से लॉक करने के लिए बंद करें।</string>
     <string name="block_type_limit_editable_until">%1$s तक बदला जा सकता है</string>
+    <string name="block_type_remove_limit_action">सीमा हटाएं</string>
+    <string name="block_type_remove_limit_confirm_title">यह सीमा हटाएं?</string>
+    <string name="block_type_remove_limit_confirm_message">अब से इस ऐप या साइट की कोई दैनिक सीमा नहीं रहेगी।</string>
+    <string name="block_type_remove_limit_keep">सीमा रखें</string>
+    <string name="block_type_remove_limit_done">सीमा हटा दी गई।</string>
+    <string name="block_type_remove_limit_locked">इस सीमा को बदलने का समय खत्म हो गया है। यह चालू रहेगी।</string>
+    <string name="block_type_remove_limit_failed">सीमा नहीं हटाई जा सकी। फिर से कोशिश करें।</string>
+    <string name="block_type_limit_paused_until">%1$s तक ब्रेक पर। उसके बाद सीमा हटाई जा सकती है।</string>
+    <string name="limits_pause_active_alert_title">ब्रेक चल रहा है</string>
+    <string name="limits_pause_active_alert_desc">30 मिनट का ब्रेक चल रहा है। इसके खत्म होने पर आप यह सीमा बदल या हटा सकते हैं।</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

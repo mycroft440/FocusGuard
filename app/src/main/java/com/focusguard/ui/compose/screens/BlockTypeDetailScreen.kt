@@ -76,6 +76,7 @@ import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.utils.AppLabelCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
@@ -207,6 +208,10 @@ fun BlockTypeDetailScreen(
     var removalTarget by remember(type) {
         mutableStateOf<BlockingSessionManager.BlockOverview.Entry?>(null)
     }
+    // Limite diário que ainda pode ser removido (ver canRemoveDailyLimit).
+    var limitRemovalTarget by remember(type) {
+        mutableStateOf<BlockingSessionManager.BlockOverview.Entry?>(null)
+    }
 
     // O assistente de criação roda em outra Activity, então esta composição
     // sobrevive à ida e à volta e um LaunchedEffect(type) sozinho nunca
@@ -245,6 +250,18 @@ fun BlockTypeDetailScreen(
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    // A pausa de 30 min acaba sozinha: ao fim dela a lista é relida para o botão de
+    // remover o limite voltar sem precisar sair e entrar na tela.
+    LaunchedEffect(entries) {
+        val now = System.currentTimeMillis()
+        val nextPauseEnd = entries.orEmpty()
+            .filter { isDailyLimitPaused(it, now) }
+            .mapNotNull { it.pauseUntilMillis }
+            .minOrNull() ?: return@LaunchedEffect
+        delay(nextPauseEnd - now + 1_000L)
+        reloadTrigger++
     }
 
     // O halo do topo usa a cor do próprio tipo de bloqueio: entrar na tela da
@@ -370,6 +387,11 @@ fun BlockTypeDetailScreen(
                                     } else {
                                         null
                                     },
+                                    onRemoveLimit = if (canRemoveDailyLimit(type, entry)) {
+                                        { limitRemovalTarget = entry }
+                                    } else {
+                                        null
+                                    },
                                     onRemove = if (type == BlockTypeUi.PASSWORD) {
                                         { removalTarget = entry }
                                     } else {
@@ -395,6 +417,11 @@ fun BlockTypeDetailScreen(
                                     showSchedule = type != BlockTypeUi.PASSWORD,
                                     onCancelBlock = if (canCancelTimeBlock(type, entry)) {
                                         { cancelTarget = entry }
+                                    } else {
+                                        null
+                                    },
+                                    onRemoveLimit = if (canRemoveDailyLimit(type, entry)) {
+                                        { limitRemovalTarget = entry }
                                     } else {
                                         null
                                     },
@@ -443,6 +470,50 @@ fun BlockTypeDetailScreen(
                 dismissButton = {
                     TextButton(onClick = { cancelTarget = null }) {
                         Text(stringResource(R.string.block_type_cancel_keep))
+                    }
+                }
+            )
+        }
+
+        limitRemovalTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { limitRemovalTarget = null },
+                title = { Text(stringResource(R.string.block_type_remove_limit_confirm_title)) },
+                text = { Text(stringResource(R.string.block_type_remove_limit_confirm_message)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            limitRemovalTarget = null
+                            scope.launch {
+                                val result = sessionManager.removeUsageLimit(
+                                    identifier = target.identifier,
+                                    isWebsite = target.isWebsite,
+                                    safetyModeEnabled = AuthManager(context).isSafetyModeEnabled()
+                                )
+                                val message = when (result) {
+                                    BlockingSessionManager.RemoveLimitResult.REMOVED,
+                                    BlockingSessionManager.RemoveLimitResult.NOT_FOUND ->
+                                        R.string.block_type_remove_limit_done
+                                    BlockingSessionManager.RemoveLimitResult.LOCKED ->
+                                        R.string.block_type_remove_limit_locked
+                                    BlockingSessionManager.RemoveLimitResult.PAUSE_ACTIVE ->
+                                        R.string.limits_pause_active_alert_desc
+                                    BlockingSessionManager.RemoveLimitResult.SAFETY_MODE ->
+                                        R.string.master_credential_blocked_by_safety_mode
+                                    BlockingSessionManager.RemoveLimitResult.FAILED ->
+                                        R.string.block_type_remove_limit_failed
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                reloadTrigger++
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.block_type_remove_limit_action), color = DangerRed)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { limitRemovalTarget = null }) {
+                        Text(stringResource(R.string.block_type_remove_limit_keep))
                     }
                 }
             )
@@ -810,6 +881,11 @@ private fun BlockedEntryRow(
     accent: Color,
     showSchedule: Boolean = false,
     onCancelBlock: (() -> Unit)? = null,
+    /**
+     * Limite diário que ainda pode ser removido ("até amanhã" dentro das 48 h, cujo
+     * prazo já aparece nas linhas do horário, ou "pausa de 30 min" fora da pausa).
+     */
+    onRemoveLimit: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -900,6 +976,37 @@ private fun BlockedEntryRow(
                         )
                     }
                 }
+                entry.pauseUntilMillis
+                    ?.takeIf { isDailyLimitPaused(entry) }
+                    ?.let { pauseEnd ->
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.block_type_limit_paused_until,
+                                DateFormat.getTimeInstance(
+                                    DateFormat.SHORT,
+                                    LocalConfiguration.current.locales[0]
+                                ).format(Date(pauseEnd))
+                            ),
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                onRemoveLimit?.let { removeLimit ->
+                    Spacer(Modifier.height(2.dp))
+                    TextButton(
+                        onClick = removeLimit,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.block_type_remove_limit_action),
+                            color = DangerRed,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
             onRemove?.let { remove ->
                 Spacer(Modifier.width(8.dp))
@@ -937,6 +1044,28 @@ internal fun canCancelTimeBlock(
 ): Boolean = (type == BlockTypeUi.DOPAMINE_FAST || type == BlockTypeUi.DAILY_PERIODS) &&
     entry.sessionId != null &&
     MasterCredentialPolicy.isWithinCancelWindow(entry.cancelableUntilMillis, nowMillis)
+
+/**
+ * Quando um limite diário pode ser removido pela lista:
+ *  - "bloqueia até amanhã" criado com a opção das 48 h: enquanto esse prazo não
+ *    passou, mesmo com o bloqueio do dia já ativo; depois é sem volta até o fim da regra;
+ *  - "pausa de 30 min": a qualquer momento, menos enquanto a pausa estiver em curso.
+ */
+internal fun canRemoveDailyLimit(
+    type: BlockTypeUi,
+    entry: BlockingSessionManager.BlockOverview.Entry,
+    nowMillis: Long = System.currentTimeMillis()
+): Boolean {
+    if (type != BlockTypeUi.DAILY_LIMIT || entry.dailyLimitMinutes == null) return false
+    if (entry.isPauseLimit) return !isDailyLimitPaused(entry, nowMillis)
+    return MasterCredentialPolicy.isWithinCancelWindow(entry.cancelableUntilMillis, nowMillis)
+}
+
+/** A pausa de 30 min desse limite está segurando o alvo agora. */
+internal fun isDailyLimitPaused(
+    entry: BlockingSessionManager.BlockOverview.Entry,
+    nowMillis: Long = System.currentTimeMillis()
+): Boolean = entry.isPauseLimit && (entry.pauseUntilMillis ?: Long.MIN_VALUE) > nowMillis
 
 /**
  * The "how long is left" line.

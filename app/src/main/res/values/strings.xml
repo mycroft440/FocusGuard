@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">The time to cancel is over. The block stays on.</string>
     <string name="limit_cancel_window_desc">Until then, you can edit or remove the limit. Turn off to lock it right away.</string>
     <string name="block_type_limit_editable_until">Can be changed until %1$s</string>
+    <string name="block_type_remove_limit_action">Remove limit</string>
+    <string name="block_type_remove_limit_confirm_title">Remove this limit?</string>
+    <string name="block_type_remove_limit_confirm_message">This app or site will no longer have a daily limit, starting now.</string>
+    <string name="block_type_remove_limit_keep">Keep limit</string>
+    <string name="block_type_remove_limit_done">Limit removed.</string>
+    <string name="block_type_remove_limit_locked">The time to change this limit is over. It stays on.</string>
+    <string name="block_type_remove_limit_failed">Could not remove the limit. Try again.</string>
+    <string name="block_type_limit_paused_until">On a break until %1$s. After that, the limit can be removed.</string>
+    <string name="limits_pause_active_alert_title">Break in progress</string>
+    <string name="limits_pause_active_alert_desc">The 30-minute break is running. You can change or remove this limit once it ends.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

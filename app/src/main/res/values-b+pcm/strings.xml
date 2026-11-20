@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Time to cancel don finish. The block still dey.</string>
     <string name="limit_cancel_window_desc">Before then, you fit change or remove the limit. Off am make e lock now now.</string>
     <string name="block_type_limit_editable_until">You fit change am until %1$s</string>
+    <string name="block_type_remove_limit_action">Remove limit</string>
+    <string name="block_type_remove_limit_confirm_title">You wan remove this limit?</string>
+    <string name="block_type_remove_limit_confirm_message">This app or site no go get daily limit again from now.</string>
+    <string name="block_type_remove_limit_keep">Keep limit</string>
+    <string name="block_type_remove_limit_done">Limit don comot.</string>
+    <string name="block_type_remove_limit_locked">Time to change this limit don pass. E go still dey work.</string>
+    <string name="block_type_remove_limit_failed">We no fit remove the limit. Try again.</string>
+    <string name="block_type_limit_paused_until">E dey break until %1$s. After that, you fit remove the limit.</string>
+    <string name="limits_pause_active_alert_title">Break dey run</string>
+    <string name="limits_pause_active_alert_desc">The 30-minute break still dey run. You fit change or remove this limit when e finish.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

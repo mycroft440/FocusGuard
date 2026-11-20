@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Срок отмены истёк. Блокировка продолжается.</string>
     <string name="limit_cancel_window_desc">До этого лимит можно изменить или удалить. Выключите, чтобы сразу его заблокировать.</string>
     <string name="block_type_limit_editable_until">Можно изменить до %1$s</string>
+    <string name="block_type_remove_limit_action">Удалить лимит</string>
+    <string name="block_type_remove_limit_confirm_title">Удалить этот лимит?</string>
+    <string name="block_type_remove_limit_confirm_message">У этого приложения или сайта больше не будет дневного лимита.</string>
+    <string name="block_type_remove_limit_keep">Оставить лимит</string>
+    <string name="block_type_remove_limit_done">Лимит удалён.</string>
+    <string name="block_type_remove_limit_locked">Срок для изменения этого лимита истёк. Он продолжает действовать.</string>
+    <string name="block_type_remove_limit_failed">Не удалось удалить лимит. Попробуйте ещё раз.</string>
+    <string name="block_type_limit_paused_until">Пауза до %1$s. После этого лимит можно будет удалить.</string>
+    <string name="limits_pause_active_alert_title">Идёт пауза</string>
+    <string name="limits_pause_active_alert_desc">Идёт 30-минутная пауза. Вы сможете изменить или удалить этот лимит, когда она закончится.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">రద్దు చేసే గడువు ముగిసింది. బ్లాక్ కొనసాగుతుంది.</string>
     <string name="limit_cancel_window_desc">అప్పటివరకు మీరు పరిమితిని మార్చవచ్చు లేదా తీసివేయవచ్చు. ఇప్పుడే లాక్ చేయడానికి ఆఫ్ చేయండి.</string>
     <string name="block_type_limit_editable_until">%1$s వరకు మార్చవచ్చు</string>
+    <string name="block_type_remove_limit_action">పరిమితిని తీసివేయండి</string>
+    <string name="block_type_remove_limit_confirm_title">ఈ పరిమితిని తీసివేయాలా?</string>
+    <string name="block_type_remove_limit_confirm_message">ఇప్పటి నుంచి ఈ యాప్ లేదా సైట్‌కు రోజువారీ పరిమితి ఉండదు.</string>
+    <string name="block_type_remove_limit_keep">పరిమితిని ఉంచండి</string>
+    <string name="block_type_remove_limit_done">పరిమితి తీసివేయబడింది.</string>
+    <string name="block_type_remove_limit_locked">ఈ పరిమితిని మార్చే గడువు ముగిసింది. ఇది కొనసాగుతుంది.</string>
+    <string name="block_type_remove_limit_failed">పరిమితిని తీసివేయలేకపోయాం. మళ్లీ ప్రయత్నించండి.</string>
+    <string name="block_type_limit_paused_until">%1$s వరకు విరామంలో ఉంది. ఆ తర్వాత పరిమితిని తీసివేయవచ్చు.</string>
+    <string name="limits_pause_active_alert_title">విరామం కొనసాగుతోంది</string>
+    <string name="limits_pause_active_alert_desc">30 నిమిషాల విరామం కొనసాగుతోంది. అది ముగిశాక మీరు ఈ పరిమితిని మార్చవచ్చు లేదా తీసివేయవచ్చు.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

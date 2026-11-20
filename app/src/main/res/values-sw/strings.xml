@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Muda wa kughairi umeisha. Kizuizi kinaendelea.</string>
     <string name="limit_cancel_window_desc">Hadi wakati huo, unaweza kuhariri au kuondoa kikomo. Zima ili kikifungwe sasa hivi.</string>
     <string name="block_type_limit_editable_until">Kinaweza kubadilishwa hadi %1$s</string>
+    <string name="block_type_remove_limit_action">Ondoa kikomo</string>
+    <string name="block_type_remove_limit_confirm_title">Ungependa kuondoa kikomo hiki?</string>
+    <string name="block_type_remove_limit_confirm_message">Programu au tovuti hii haitakuwa na kikomo cha kila siku kuanzia sasa.</string>
+    <string name="block_type_remove_limit_keep">Endelea na kikomo</string>
+    <string name="block_type_remove_limit_done">Kikomo kimeondolewa.</string>
+    <string name="block_type_remove_limit_locked">Muda wa kubadilisha kikomo hiki umekwisha. Kinaendelea kutumika.</string>
+    <string name="block_type_remove_limit_failed">Imeshindikana kuondoa kikomo. Jaribu tena.</string>
+    <string name="block_type_limit_paused_until">Mapumziko hadi %1$s. Baada ya hapo, kikomo kinaweza kuondolewa.</string>
+    <string name="limits_pause_active_alert_title">Mapumziko yanaendelea</string>
+    <string name="limits_pause_active_alert_desc">Mapumziko ya dakika 30 yanaendelea. Utaweza kubadilisha au kuondoa kikomo hiki yakiisha.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

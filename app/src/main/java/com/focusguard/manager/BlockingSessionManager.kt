@@ -147,7 +147,11 @@ class BlockingSessionManager @Inject constructor(
             /** Sessão de origem (bloqueios por tempo), para cancelar dentro do prazo. */
             val sessionId: Int? = null,
             /** Até quando o bloqueio por tempo ainda pode ser cancelado; null: sem volta. */
-            val cancelableUntilMillis: Long? = null
+            val cancelableUntilMillis: Long? = null,
+            /** Limite diário em "pausa de 30 min": pode ser apagado a qualquer momento. */
+            val isPauseLimit: Boolean = false,
+            /** Fim da pausa de 30 min em curso desse limite; até lá não pode ser apagado. */
+            val pauseUntilMillis: Long? = null
         )
 
         /** Blocked hours of the day, in minutes since midnight; may cross midnight. */
@@ -258,7 +262,15 @@ class BlockingSessionManager @Inject constructor(
                 unlockAtMillis = limit.lockUntilTimestamp,
                 startAtMillis = limit.createdAt,
                 // Nos limites, até quando ainda dá para alterar (opção das 48 h).
+                // A "pausa de 30 min" não trava pelas 48 h: pode ser apagada sempre.
                 cancelableUntilMillis = limit.lockAfter
+                    .takeUnless { UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode) },
+                isPauseLimit = UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode),
+                pauseUntilMillis = UsageLimitPauseStateStore.heldUntil(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )?.takeIf { UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode) }
             )
         } + websiteLimits.map { limit ->
             // Domínios antigos gravados sem normalizar podem cair na mesma regra.
@@ -270,6 +282,13 @@ class BlockingSessionManager @Inject constructor(
                 startAtMillis = limit.createdAt,
                 // Nos limites, até quando ainda dá para alterar (opção das 48 h).
                 cancelableUntilMillis = limit.lockAfter
+                    .takeUnless { UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode) },
+                isPauseLimit = UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode),
+                pauseUntilMillis = UsageLimitPauseStateStore.heldUntil(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )?.takeIf { UsageLimitBehaviorPolicy.isPauseMode(limit.lockMode) }
             )
         }.distinctBy { it.identifier }
 
@@ -350,6 +369,17 @@ class BlockingSessionManager @Inject constructor(
         NOT_FOUND,
         POMODORO_NOT_REVOCABLE,
         TIME_NOT_REVOCABLE,
+        FAILED
+    }
+
+    enum class RemoveLimitResult {
+        REMOVED,
+        NOT_FOUND,
+        /** Prazo das 48 h já passou (ou a opção estava desligada): o limite é sem volta. */
+        LOCKED,
+        /** Limite de "pausa de 30 min" com a pausa em curso: só depois que ela acabar. */
+        PAUSE_ACTIVE,
+        SAFETY_MODE,
         FAILED
     }
 
@@ -1132,6 +1162,89 @@ class BlockingSessionManager @Inject constructor(
             EndSessionResult.FAILED
         }
     }
+
+    /**
+     * Remove um limite diário (de app ou de site) pela lista de bloqueios enquanto ele
+     * ainda pode ser alterado: "bloqueia até amanhã" dentro das 48 h, mesmo com o
+     * bloqueio do dia ativo; "pausa de 30 min" sempre, menos durante a pausa.
+     *
+     * Decide pela trava gravada agora, depois de compensar um relógio mudado à mão, e
+     * não pela lista lida ao abrir a tela: ela pode ter ficado aberta até o fim das
+     * 48 h ou até a pausa começar.
+     */
+    suspend fun removeUsageLimit(
+        identifier: String,
+        isWebsite: Boolean,
+        safetyModeEnabled: Boolean
+    ): RemoveLimitResult = withContext(Dispatchers.IO) {
+        try {
+            syncManualClockCompensation()
+            val now = System.currentTimeMillis()
+            fun gateOf(lockMode: String, lockUntil: Long?, lockAfter: Long?) =
+                MasterCredentialPolicy.evaluateLimitMutation(
+                    lockMode = lockMode,
+                    lockUntilTimestamp = lockUntil,
+                    safetyModeEnabled = safetyModeEnabled,
+                    hasMasterCredential = false,
+                    masterCredentialVerified = false,
+                    nowMillis = now,
+                    lockAfter = lockAfter,
+                    pauseActive = UsageLimitPauseStateStore.isPauseActive(lockMode, lockUntil, now)
+                )
+
+            val gates: List<MasterCredentialPolicy.MutationGate>
+            val stateKey: String
+            if (isWebsite) {
+                val normalized = WebsiteBlocker.normalizeRule(identifier)
+                if (normalized.isEmpty()) return@withContext RemoveLimitResult.NOT_FOUND
+                val dao = database.websiteUsageLimitDao()
+                // Domínios antigos gravados sem normalizar podem cair na mesma regra.
+                val matches = dao.getAllStatic()
+                    .filter { WebsiteBlocker.normalizeRule(it.domain) == normalized }
+                if (matches.isEmpty()) return@withContext RemoveLimitResult.NOT_FOUND
+                gates = matches.map { gateOf(it.lockMode, it.lockUntilTimestamp, it.lockAfter) }
+                if (gates.all { it.allowsLimitRemoval() }) {
+                    database.withTransaction { matches.forEach { dao.delete(it) } }
+                }
+                stateKey = normalized
+            } else {
+                val dao = database.appUsageLimitDao()
+                val limit = dao.getLimitForPackage(identifier)
+                    ?: return@withContext RemoveLimitResult.NOT_FOUND
+                gates = listOf(gateOf(limit.lockMode, limit.lockUntilTimestamp, limit.lockAfter))
+                if (gates.single().allowsLimitRemoval()) dao.delete(limit)
+                stateKey = limit.packageName
+            }
+
+            when {
+                gates.any { it == MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING } ->
+                    RemoveLimitResult.LOCKED
+                gates.any { it == MasterCredentialPolicy.MutationGate.BLOCKED_BY_ACTIVE_PAUSE } ->
+                    RemoveLimitResult.PAUSE_ACTIVE
+                gates.any { it == MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE } ->
+                    RemoveLimitResult.SAFETY_MODE
+                else -> {
+                    // Sem limite não sobra o "esgotado" nem a pausa de hoje.
+                    UsageLimitPauseStateStore.clearDailyStateFor(stateKey)
+                    checkAndEnforce()
+                    RemoveLimitResult.REMOVED
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Erro ao remover limite diário",
+                error
+            )
+            RemoveLimitResult.FAILED
+        }
+    }
+
+    private fun MasterCredentialPolicy.MutationGate.allowsLimitRemoval(): Boolean =
+        this == MasterCredentialPolicy.MutationGate.ALLOWED ||
+            this == MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED
 
     suspend fun findResponsibleSessionId(
         blockedPackage: String?,

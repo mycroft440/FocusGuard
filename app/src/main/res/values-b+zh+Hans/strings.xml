@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">取消期限已过，拦截将继续。</string>
     <string name="limit_cancel_window_desc">在此之前，你可以编辑或删除该限制。关闭后将立即锁定。</string>
     <string name="block_type_limit_editable_until">可在 %1$s 前更改</string>
+    <string name="block_type_remove_limit_action">移除限制</string>
+    <string name="block_type_remove_limit_confirm_title">要移除此限制吗？</string>
+    <string name="block_type_remove_limit_confirm_message">从现在起，此应用或网站将不再有每日限制。</string>
+    <string name="block_type_remove_limit_keep">保留限制</string>
+    <string name="block_type_remove_limit_done">限制已移除。</string>
+    <string name="block_type_remove_limit_locked">更改此限制的期限已过，限制将继续生效。</string>
+    <string name="block_type_remove_limit_failed">无法移除限制，请重试。</string>
+    <string name="block_type_limit_paused_until">暂停至 %1$s。之后即可移除此限制。</string>
+    <string name="limits_pause_active_alert_title">正在暂停</string>
+    <string name="limits_pause_active_alert_desc">30 分钟暂停正在进行。暂停结束后，你可以更改或移除此限制。</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>

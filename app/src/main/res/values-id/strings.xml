@@ -72,6 +72,16 @@
     <string name="block_type_cancel_failed">Batas waktu pembatalan sudah lewat. Blokir tetap berjalan.</string>
     <string name="limit_cancel_window_desc">Sampai saat itu, Anda bisa mengubah atau menghapus batas. Matikan untuk langsung menguncinya.</string>
     <string name="block_type_limit_editable_until">Bisa diubah sampai %1$s</string>
+    <string name="block_type_remove_limit_action">Hapus batas</string>
+    <string name="block_type_remove_limit_confirm_title">Hapus batas ini?</string>
+    <string name="block_type_remove_limit_confirm_message">Aplikasi atau situs ini tidak lagi memiliki batas harian mulai sekarang.</string>
+    <string name="block_type_remove_limit_keep">Pertahankan batas</string>
+    <string name="block_type_remove_limit_done">Batas dihapus.</string>
+    <string name="block_type_remove_limit_locked">Waktu untuk mengubah batas ini sudah habis. Batas tetap berlaku.</string>
+    <string name="block_type_remove_limit_failed">Tidak dapat menghapus batas. Coba lagi.</string>
+    <string name="block_type_limit_paused_until">Sedang jeda sampai %1$s. Setelah itu, batas bisa dihapus.</string>
+    <string name="limits_pause_active_alert_title">Jeda sedang berlangsung</string>
+    <string name="limits_pause_active_alert_desc">Jeda 30 menit sedang berlangsung. Anda bisa mengubah atau menghapus batas ini setelah jeda selesai.</string>
 
     <!-- Duration picker -->
     <string name="duration_unit_hours">hours</string>
