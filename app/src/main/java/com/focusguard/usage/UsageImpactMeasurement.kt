@@ -6,6 +6,7 @@ import com.focusguard.analytics.ForegroundEventScanner
 import com.focusguard.analytics.estimateAppUsageFromClosedBuckets
 import com.focusguard.analytics.foregroundTotalsInRange
 import com.focusguard.analytics.queryAggregatedAppBuckets
+import com.focusguard.utils.LegacyBootClock
 
 /**
  * Uso do app antes e depois do bloqueio, em dois períodos de mesmo tamanho.
@@ -102,7 +103,8 @@ internal object UsageImpactMeasurement {
             endMs = afterEndMs,
             // Com o fim no passado, um app aberto nesse instante seguia aberto até ele.
             isDeviceInteractive = afterEndMs < nowMs || isDeviceInteractive,
-            ownPackage = ownPackage
+            ownPackage = ownPackage,
+            legacyBootMillis = LegacyBootClock.bootMillisWithoutShutdownEvents()
         )
         scan?.let {
             fromIntervals(

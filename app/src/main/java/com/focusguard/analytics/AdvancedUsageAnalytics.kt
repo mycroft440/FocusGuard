@@ -5,6 +5,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Build
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.LegacyBootClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -34,19 +35,11 @@ class AdvancedUsageAnalytics(private val context: Context) {
     private val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
     private val pm = context.packageManager
 
+    // Nada aqui é guardado em cache: uso, rankings e acessos precisam avançar e são
+    // refeitos toda vez que o painel volta ao primeiro plano.
     companion object {
-        // Cache somente da lista de acessos. O uso de tela e os rankings não são
-        // armazenados aqui: precisam avançar enquanto a tela permanece ativa e
-        // são refeitos toda vez que o Dashboard volta ao primeiro plano.
-        @Volatile
-        private var cachedMostOpened: Pair<String, List<AppAccessStat>>? = null
-        @Volatile
-        private var lastMostOpenedTime: Long = 0
-
-        private const val CACHE_TTL = 5 * 60 * 1000L // 5 minutos
         private const val NEVER_USED_DAYS = 7L
         private const val MAX_NEVER_USED_APPS = 50
-        private val cacheLock = Any()
     }
 
     suspend fun getPhoneUsageInsights(
@@ -98,7 +91,9 @@ class AdvancedUsageAnalytics(private val context: Context) {
             null
         }
 
-        val accumulator = ScreenInteractiveSessionAccumulator()
+        val accumulator = ScreenInteractiveSessionAccumulator(
+            legacyBootTimeMs = LegacyBootClock.bootMillisWithoutShutdownEvents()
+        )
         val event = UsageEvents.Event()
         var eventLoopCompleted = events != null
         var lastEventTimestamp = queryStart
@@ -108,6 +103,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
                 while (events.hasNextEvent()) {
                     events.getNextEvent(event)
                     lastEventTimestamp = maxOf(lastEventTimestamp, event.timeStamp)
+                    accumulator.onAnyEvent(event.timeStamp)
                     when (event.eventType) {
                         UsageEvents.Event.SCREEN_INTERACTIVE ->
                             accumulator.onScreenInteractive(event.timeStamp)
@@ -337,14 +333,6 @@ class AdvancedUsageAnalytics(private val context: Context) {
      * diretamente porque um único acesso pode abrir várias Activities.
      */
     suspend fun getMostOpenedApps(startTime: Long, endTime: Long): List<AppAccessStat> = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val key = "$startTime-$endTime"
-        synchronized(cacheLock) {
-            if (cachedMostOpened?.first == key && (now - lastMostOpenedTime) < CACHE_TTL) {
-                return@withContext cachedMostOpened!!.second
-            }
-        }
-
         if (usageStatsManager == null) return@withContext emptyList()
         val events = try {
             usageStatsManager.queryEvents(startTime, endTime)
@@ -405,7 +393,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
             FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha no loop de eventos", error)
         }
 
-        val result = accessAccumulator.finish()
+        accessAccumulator.finish()
             .map { (packageName, accessCount) ->
                 AppAccessStat(packageName, accessCount)
             }
@@ -413,12 +401,6 @@ class AdvancedUsageAnalytics(private val context: Context) {
                 compareByDescending<AppAccessStat> { it.accessCount }
                     .thenBy { it.packageName }
             )
-
-        synchronized(cacheLock) {
-            cachedMostOpened = key to result
-            lastMostOpenedTime = now
-        }
-        result
     }
 
     /** Apps que podem ser abertos e não aparecem em [usedPackages], em ordem de nome. */

@@ -155,7 +155,8 @@ internal object AppForegroundIntervalReader {
             dayStartMillis = dayStartMillis,
             nowMillis = nowMillis,
             isDeviceInteractive = isDeviceInteractive,
-            bootWallClockMillis = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+            bootWallClockMillis = System.currentTimeMillis() - SystemClock.elapsedRealtime(),
+            legacyBootMillis = LegacyBootClock.bootMillisWithoutShutdownEvents()
         ) { collector, fromMillis, untilMillis ->
             feed(collector, usageStatsManager, fromMillis, untilMillis)
         }
@@ -203,6 +204,8 @@ internal class IncrementalForegroundReader {
     /**
      * @param bootWallClockMillis hora de parede menos o tempo desde o boot; só muda
      *   quando a hora do aparelho é trocada.
+     * @param legacyBootMillis a hora do boot nas versões sem DEVICE_SHUTDOWN (Android 9),
+     *   para o tempo desligado não contar como uso do último app; null nas demais.
      * @param feed entrega ao coletor os eventos em `[from, until)`.
      */
     fun intervals(
@@ -211,6 +214,7 @@ internal class IncrementalForegroundReader {
         nowMillis: Long,
         isDeviceInteractive: Boolean,
         bootWallClockMillis: Long,
+        legacyBootMillis: Long? = null,
         feed: (ForegroundIntervalCollector, Long, Long) -> Unit
     ): Map<String, List<LongRange>> {
         val origin = (dayStartMillis - LOOKBACK_MILLIS).coerceAtLeast(0L)
@@ -220,14 +224,14 @@ internal class IncrementalForegroundReader {
         if (origin != originMillis || clockChanged) {
             originMillis = origin
             committedUntilMillis = origin
-            committed = ForegroundIntervalCollector()
+            committed = ForegroundIntervalCollector(legacyBootMillis)
         }
         committedBootWallClockMillis = bootWallClockMillis
 
         val view = if (nowMillis < committedUntilMillis) {
             // Chamador com um "agora" mais antigo que o estado confirmado: lê avulso,
             // sem descartar o cache dos demais.
-            ForegroundIntervalCollector().also { feed(it, origin, nowMillis) }
+            ForegroundIntervalCollector(legacyBootMillis).also { feed(it, origin, nowMillis) }
         } else {
             val commitTarget = nowMillis - SETTLE_MILLIS
             if (commitTarget > committedUntilMillis) {

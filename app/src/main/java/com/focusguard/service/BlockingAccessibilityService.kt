@@ -77,6 +77,7 @@ import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
+import com.focusguard.utils.WebsiteUsageRetention
 import com.focusguard.data.PredefinedWebsites
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
@@ -263,6 +264,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var trackedDomain: String? = null
     @Volatile private var trackedPackageName: String? = null
     @Volatile private var trackedSinceMillis = 0L
+    @Volatile private var websiteUsagePrunedForDate: String? = null
     private var websiteTrackingJob: Job? = null
     private var appLimitMonitoringJob: Job? = null
     private var hierarchyBoundaryJob: Job? = null
@@ -2942,6 +2944,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 today,
                 usage.deltaMillis
             )
+            pruneOldWebsiteUsage(today)
             val limits = database.websiteUsageLimitDao().getAllStatic()
                 .filter { it.isEnabled }
             val matchingRules = WebsiteBlocker.findMatchingRulesIgnoringGrants(
@@ -2982,6 +2985,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                 error
             )
         }
+    }
+
+    /** Uma vez por dia, os dias de uso de sites além da retenção saem do banco. */
+    private suspend fun pruneOldWebsiteUsage(today: String) {
+        if (websiteUsagePrunedForDate == today) return
+        val oldestDateToKeep = WebsiteUsageRetention.oldestDateToKeep(today) ?: return
+        websiteUsagePrunedForDate = today
+        database.dailyUsageStatDao().deleteOlderThan(oldestDateToKeep)
     }
 
     private fun enforceExceededWebsiteImmediately(

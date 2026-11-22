@@ -139,6 +139,54 @@ class ScreenInteractiveSessionAccumulatorTest {
     }
 
     @Test
+    fun `Android 9 reboot ends the open session at the last event before the boot`() {
+        // Android 9 não grava DEVICE_SHUTDOWN/STARTUP: só a hora do boot é conhecida.
+        val accumulator = ScreenInteractiveSessionAccumulator(legacyBootTimeMs = 100_000L)
+
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onKeyguardHidden(1_000L)
+        accumulator.onAnyEvent(4_000L) // um app pausado: o aparelho ainda estava ligado
+        // Desligou sem evento; religou em 100 s e, depois do boot, a tela de bloqueio.
+        accumulator.onKeyguardShown(100_500L)
+        accumulator.onKeyguardHidden(101_000L)
+        accumulator.onScreenNonInteractive(110_000L)
+
+        assertThat(accumulator.finish(120_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 4_000L),
+            ScreenInteractiveInterval(101_000L, 110_000L)
+        ).inOrder()
+    }
+
+    @Test
+    fun `Android 9 boot starts behind the lock screen even without a lock event`() {
+        val accumulator = ScreenInteractiveSessionAccumulator(legacyBootTimeMs = 50_000L)
+
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onKeyguardHidden(1_000L)
+        accumulator.onKeyguardShown(2_000L)
+        accumulator.onKeyguardHidden(3_000L)
+        // Religou; o primeiro evento já é o desbloqueio.
+        accumulator.onKeyguardHidden(60_000L)
+        accumulator.onScreenNonInteractive(70_000L)
+
+        assertThat(accumulator.finish(80_000L)).containsExactly(
+            ScreenInteractiveInterval(1_000L, 2_000L),
+            ScreenInteractiveInterval(60_000L, 70_000L)
+        ).inOrder()
+    }
+
+    @Test
+    fun `boot before every event changes nothing`() {
+        val accumulator = ScreenInteractiveSessionAccumulator(legacyBootTimeMs = 500L)
+
+        accumulator.onScreenInteractive(1_000L)
+        accumulator.onScreenNonInteractive(4_000L)
+
+        assertThat(accumulator.finish(10_000L))
+            .containsExactly(ScreenInteractiveInterval(1_000L, 4_000L))
+    }
+
+    @Test
     fun `session still open at startup has no known end and is dropped`() {
         val accumulator = ScreenInteractiveSessionAccumulator()
 
@@ -404,6 +452,32 @@ class DailyScreenTimeResolutionTest {
 
         assertThat(before).isEqualTo(3.hours)
         assertThat(after).isEqualTo(before)
+    }
+
+    @Test
+    fun `today without readable events has no data instead of a partial estimate`() {
+        val resolution = resolve(
+            now = "2026-01-08T20:00",
+            buckets = listOf(
+                // Fechado: 03:00 de ontem às 03:00 de hoje; só 3 h dele caem em hoje.
+                AggregatedScreenBucket(
+                    beginTimeMs = timestamp("2026-01-07T03:00"),
+                    endTimeMs = timestamp("2026-01-08T03:00"),
+                    interactiveTimeMs = 8.hours
+                ),
+                // Aberto: o uso de hoje de verdade, que a estimativa não usa.
+                AggregatedScreenBucket(
+                    beginTimeMs = timestamp("2026-01-08T03:00"),
+                    endTimeMs = timestamp("2026-01-08T20:00"),
+                    interactiveTimeMs = 6.hours
+                )
+            ),
+            eventsAvailable = false
+        )
+
+        assertThat(resolution.totalsByDate).doesNotContainKey(date("2026-01-08"))
+        // Os dias passados continuam estimados.
+        assertThat(resolution.totalsByDate[date("2026-01-07")]).isEqualTo(7.hours)
     }
 
     @Test

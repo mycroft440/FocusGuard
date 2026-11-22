@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.PowerManager
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.ForegroundIntervalCollector
+import com.focusguard.utils.LegacyBootClock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -32,7 +33,9 @@ internal object ForegroundEventScanner {
         endMs: Long,
         isDeviceInteractive: Boolean,
         /** Pacote do HardBlock: as telas de bloqueio dele não contam como uso do app. */
-        ownPackage: String? = null
+        ownPackage: String? = null,
+        /** Hora do boot no Android 9, que não grava DEVICE_SHUTDOWN (ver [LegacyBootClock]). */
+        legacyBootMillis: Long? = null
     ): ForegroundEventScan? {
         if (endMs <= startMs) return null
         val events = try {
@@ -42,7 +45,7 @@ internal object ForegroundEventScanner {
             null
         } ?: return null
 
-        val collector = ForegroundIntervalCollector()
+        val collector = ForegroundIntervalCollector(legacyBootMillis)
         val event = UsageEvents.Event()
         var firstEventTimeMs: Long? = null
         var lastEventTimeMs = startMs
@@ -383,7 +386,8 @@ internal object AppUsageHistoryLoader {
             startMs = scanStartMs,
             endMs = nowMs,
             isDeviceInteractive = interactive,
-            ownPackage = context.packageName
+            ownPackage = context.packageName,
+            legacyBootMillis = LegacyBootClock.bootMillisWithoutShutdownEvents()
         )
 
         val resolution = resolveDailyAppUsage(

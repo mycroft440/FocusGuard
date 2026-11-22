@@ -64,14 +64,20 @@ internal data class ScreenInteractiveInterval(
  * desbloqueio visto: um aparelho que avisasse só "bloqueou" ficaria com uso zero.
  *
  * Aparelho desligado nunca é uso: desligar não gera evento de tela apagada, então o
- * trecho é fechado pelo DEVICE_SHUTDOWN.
+ * trecho é fechado pelo DEVICE_SHUTDOWN. O Android 9 não grava esse evento; para ele
+ * vem [legacyBootTimeMs], a hora do último boot (ver
+ * [com.focusguard.utils.LegacyBootClock]), e o trecho aberto termina no último evento
+ * antes dela.
  */
-internal class ScreenInteractiveSessionAccumulator {
+internal class ScreenInteractiveSessionAccumulator(
+    private val legacyBootTimeMs: Long? = null
+) {
     private val completedIntervals = mutableListOf<ScreenInteractiveInterval>()
     private var screenInteractive = false
     private var keyguardShowing = false
     private var keyguardHiddenObserved = false
     private var inUseSinceMs: Long? = null
+    private var lastEventTimeMs: Long? = null
 
     var firstObservedEventTimeMs: Long? = null
         private set
@@ -130,9 +136,36 @@ internal class ScreenInteractiveSessionAccumulator {
         openIfInUse(timestampMs)
     }
 
+    /**
+     * Qualquer evento lido, de qualquer tipo: diz até quando o aparelho estava ligado.
+     * Só serve para o Android 9 reconhecer o boot; não muda a cobertura dos dias.
+     */
+    fun onAnyEvent(timestampMs: Long) {
+        crossLegacyBoot(timestampMs)
+        lastEventTimeMs = lastEventTimeMs?.coerceAtLeast(timestampMs) ?: timestampMs
+    }
+
     fun finish(endTimeMs: Long): List<ScreenInteractiveInterval> {
+        crossLegacyBoot(endTimeMs)
         close(endTimeMs)
         return completedIntervals.toList()
+    }
+
+    /**
+     * Android 9: um evento depois do boot com o anterior antes dele quer dizer que o
+     * aparelho desligou nesse meio. O trecho aberto termina no último evento antes do
+     * boot (o que se sabe dele, como no DEVICE_SHUTDOWN do Android 10) e o aparelho
+     * volta ligado com a tela de bloqueio na frente, se ele tiver uma.
+     */
+    private fun crossLegacyBoot(timestampMs: Long) {
+        val bootMs = legacyBootTimeMs ?: return
+        val previousMs = lastEventTimeMs ?: return
+        if (previousMs >= bootMs || timestampMs < bootMs) return
+        close(previousMs)
+        lastEventTimeMs = bootMs
+        screenInteractive = true
+        keyguardShowing = true
+        openIfInUse(bootMs)
     }
 
     private fun openIfInUse(timestampMs: Long) {
@@ -154,6 +187,7 @@ internal class ScreenInteractiveSessionAccumulator {
     }
 
     private fun observe(timestampMs: Long) {
+        onAnyEvent(timestampMs)
         firstObservedEventTimeMs = firstObservedEventTimeMs
             ?.coerceAtMost(timestampMs)
             ?: timestampMs
@@ -270,7 +304,8 @@ internal data class DailyScreenTimeResolution(
  *    meia-noite e a meia-noite seguinte (hoje, até agora, com a sessão em andamento).
  *    Um dia encerrado medido assim é devolvido para ser gravado.
  * 3. Sem eventos: estimativa estável pelos baldes fechados do histórico agregado,
- *    gravada a partir de anteontem.
+ *    gravada a partir de anteontem. Só para dias passados: hoje sem eventos fica sem
+ *    dados.
  */
 internal fun resolveDailyScreenTimes(
     dates: List<LocalDate>,
@@ -314,6 +349,10 @@ internal fun resolveDailyScreenTimes(
             // Hoje vem sempre dos eventos quando eles puderam ser lidos: os
             // intervalos já incluem a sessão de tela ainda aberta.
             date == today && detailedEventsAvailable -> exactMs()
+
+            // Sem eles, hoje fica sem dados, como nos apps: os baldes fechados só
+            // alcançam o começo do dia e mostrariam uma fração do uso como se fosse ele.
+            date == today -> null
 
             else -> estimateScreenTimeFromClosedBuckets(
                 buckets = aggregatedBuckets,

@@ -65,16 +65,38 @@ class IncrementalForegroundReaderTest {
         assertThat(history.reads.drop(firstReads.size).none { it.first < t0 }).isTrue()
     }
 
+    @Test
+    fun `Android 9 reboot today does not spend the limit with the phone off`() {
+        val history = History()
+        val reader = IncrementalForegroundReader()
+        history.add(RESUMED, "feed", t0)
+        history.add(STANDBY_BUCKET_CHANGED, "other", t0 + 20L * minute)
+        // Desligou sem evento; religou 3 h depois e abriu o launcher.
+        val boot = t0 + 3L * hour
+        history.add(RESUMED, "launcher", boot + minute)
+
+        val used = reader.usage(
+            history,
+            now = boot + 10L * minute,
+            bootWall = boot,
+            legacyBoot = boot
+        )
+
+        assertThat(used).isEqualTo(20L * minute)
+    }
+
     private fun IncrementalForegroundReader.usage(
         history: History,
         now: Long,
-        bootWall: Long
+        bootWall: Long,
+        legacyBoot: Long? = null
     ): Long = intervals(
         packages = setOf("feed"),
         dayStartMillis = dayStart,
         nowMillis = now,
         isDeviceInteractive = true,
         bootWallClockMillis = bootWall,
+        legacyBootMillis = legacyBoot,
         feed = history::feed
     ).getValue("feed").sumOf { it.last + 1 - it.first }
 
@@ -103,5 +125,6 @@ class IncrementalForegroundReaderTest {
     private companion object {
         const val RESUMED = 1
         const val PAUSED = 2
+        const val STANDBY_BUCKET_CHANGED = 11
     }
 }

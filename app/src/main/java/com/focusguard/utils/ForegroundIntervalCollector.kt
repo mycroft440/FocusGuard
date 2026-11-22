@@ -12,21 +12,29 @@ package com.focusguard.utils
  *
  * O coletor é incremental: eventos podem ser entregues em lotes consecutivos, e
  * [copy] permite projetar o trecho ainda aberto sem alterar o estado confirmado.
+ *
+ * O Android 9 não grava DEVICE_SHUTDOWN. Com [legacyBootMillis] (a hora do último
+ * boot, ver [LegacyBootClock]) o aparelho desligado nesse meio fecha o trecho aberto no
+ * último evento antes do boot, em vez de dar ao último app todo o tempo desligado.
  */
 internal class ForegroundIntervalCollector private constructor(
+    private val legacyBootMillis: Long?,
     private var currentPackage: String?,
     private var currentActivity: String?,
     private var currentStartMillis: Long,
     private var pendingExitMillis: Long?,
     private var lastEventMillis: Long,
+    private var lastAnyEventMillis: Long,
     private val closed: MutableMap<String, MutableList<LongRange>>
 ) {
-    constructor() : this(
+    constructor(legacyBootMillis: Long? = null) : this(
+        legacyBootMillis = legacyBootMillis,
         currentPackage = null,
         currentActivity = null,
         currentStartMillis = 0L,
         pendingExitMillis = null,
         lastEventMillis = Long.MIN_VALUE,
+        lastAnyEventMillis = Long.MIN_VALUE,
         closed = hashMapOf()
     )
 
@@ -40,6 +48,7 @@ internal class ForegroundIntervalCollector private constructor(
         activityClassName: String?,
         atMillis: Long
     ) {
+        crossLegacyBoot(atMillis)
         when (eventType) {
             EVENT_ACTIVITY_RESUMED -> onActivityResumed(packageName, activityClassName, atMillis)
             EVENT_ACTIVITY_PAUSED,
@@ -99,7 +108,14 @@ internal class ForegroundIntervalCollector private constructor(
     ): List<LongRange> {
         val result = closed[packageName].orEmpty().toMutableList()
         if (currentPackage == packageName) {
+            // Ainda sem evento depois do boot: o trecho parou quando o aparelho desligou.
+            val bootCut = legacyBootMillis?.takeIf { bootMillis ->
+                lastAnyEventMillis != Long.MIN_VALUE &&
+                    lastAnyEventMillis < bootMillis &&
+                    untilMillis >= bootMillis
+            }?.let { lastAnyEventMillis }
             val openEnd = pendingExitMillis
+                ?: bootCut
                 ?: if (deviceInteractive) untilMillis else lastEventMillis
             val end = minOf(openEnd, untilMillis)
             if (end > currentStartMillis) result += currentStartMillis until end
@@ -108,16 +124,31 @@ internal class ForegroundIntervalCollector private constructor(
     }
 
     fun copy(): ForegroundIntervalCollector = ForegroundIntervalCollector(
+        legacyBootMillis = legacyBootMillis,
         currentPackage = currentPackage,
         currentActivity = currentActivity,
         currentStartMillis = currentStartMillis,
         pendingExitMillis = pendingExitMillis,
         lastEventMillis = lastEventMillis,
+        lastAnyEventMillis = lastAnyEventMillis,
         closed = closed.mapValuesTo(hashMapOf()) { (_, value) -> value.toMutableList() }
     )
 
     private fun touch(atMillis: Long) {
         if (atMillis > lastEventMillis) lastEventMillis = atMillis
+    }
+
+    /**
+     * Um evento depois do boot com o anterior (de qualquer tipo) antes dele: o aparelho
+     * desligou nesse meio. Como no DEVICE_SHUTDOWN do Android 10, o trecho aberto
+     * termina no último instante em que se sabe que o aparelho estava ligado.
+     */
+    private fun crossLegacyBoot(atMillis: Long) {
+        val previous = lastAnyEventMillis
+        if (atMillis > lastAnyEventMillis) lastAnyEventMillis = atMillis
+        val bootMillis = legacyBootMillis ?: return
+        if (previous == Long.MIN_VALUE || previous >= bootMillis || atMillis < bootMillis) return
+        onDeviceInactive(previous)
     }
 
     private companion object {

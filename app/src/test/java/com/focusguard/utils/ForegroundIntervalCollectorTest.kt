@@ -59,6 +59,45 @@ class ForegroundIntervalCollectorTest {
     }
 
     @Test
+    fun `Android 9 reboot does not credit the time off to the last app`() {
+        // Sem DEVICE_SHUTDOWN: o app segue aberto até o primeiro evento depois do boot.
+        val collector = ForegroundIntervalCollector(legacyBootMillis = 100_000L)
+        collector.onUsageEvent(RESUMED, video, "Main", 1_000L)
+        collector.onUsageEvent(STANDBY_BUCKET_CHANGED, music, null, 9_000L)
+        collector.onUsageEvent(RESUMED, "com.launcher", "Home", 101_000L)
+        collector.onUsageEvent(PAUSED, "com.launcher", "Home", 105_000L)
+
+        assertThat(collector.intervalsFor(video, 200_000L, deviceInteractive = true))
+            .containsExactly(1_000L until 9_000L)
+        assertThat(collector.intervalsFor("com.launcher", 200_000L, deviceInteractive = true))
+            .containsExactly(101_000L until 105_000L)
+    }
+
+    @Test
+    fun `Android 9 open app stops at the boot even before any later event`() {
+        val collector = ForegroundIntervalCollector(legacyBootMillis = 100_000L)
+        collector.onUsageEvent(RESUMED, video, "Main", 1_000L)
+        collector.onUsageEvent(STANDBY_BUCKET_CHANGED, music, null, 9_000L)
+
+        // Antes do boot o app ainda estava aberto; depois dele, só até o último evento.
+        assertThat(collector.intervalsFor(video, 50_000L, deviceInteractive = true))
+            .containsExactly(1_000L until 50_000L)
+        assertThat(collector.intervalsFor(video, 200_000L, deviceInteractive = true))
+            .containsExactly(1_000L until 9_000L)
+    }
+
+    @Test
+    fun `without a legacy boot nothing changes on Android 10 and later`() {
+        val collector = ForegroundIntervalCollector()
+        collector.onUsageEvent(RESUMED, video, "Main", 1_000L)
+        collector.onUsageEvent(SHUTDOWN, null, null, 9_000L)
+        collector.onUsageEvent(RESUMED, "com.launcher", "Home", 101_000L)
+
+        assertThat(collector.intervalsFor(video, 200_000L, deviceInteractive = true))
+            .containsExactly(1_000L until 9_000L)
+    }
+
+    @Test
     fun `projection on a copy does not change committed state`() {
         val committed = ForegroundIntervalCollector()
         committed.onActivityResumed(video, "Main", 0L)
@@ -71,5 +110,13 @@ class ForegroundIntervalCollectorTest {
             .containsExactly(0L until 2_000L)
         assertThat(committed.intervalsFor(video, 5_000L, deviceInteractive = true))
             .containsExactly(0L until 5_000L)
+    }
+
+    private companion object {
+        // Valores de android.app.usage.UsageEvents.Event.
+        const val RESUMED = 1
+        const val PAUSED = 2
+        const val STANDBY_BUCKET_CHANGED = 11
+        const val SHUTDOWN = 26
     }
 }

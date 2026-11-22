@@ -335,6 +335,12 @@ internal class SleepPatternHistoryStore(context: Context) {
         recentObservations: List<NightlySleepObservation>,
         today: LocalDate
     ): List<NightlySleepObservation> {
+        // v1 foi gravada quando o uso do telefone ainda contava a tela de bloqueio e o
+        // aparelho desligado: uma olhada no relógio partia a noite. Essas noites não
+        // podem entrar na média de agora; as que ainda têm eventos são refeitas.
+        if (preferences.contains(OUTDATED_KEY)) {
+            preferences.edit().remove(OUTDATED_KEY).apply()
+        }
         val cutoffDate = today.minusDays(MAX_HISTORY_DAYS)
         val merged = preferences
             .getStringSet(KEY_OBSERVATIONS, emptySet())
@@ -388,7 +394,8 @@ internal class SleepPatternHistoryStore(context: Context) {
     }.getOrNull()
 
     private companion object {
-        const val KEY_OBSERVATIONS = "analytics_nightly_sleep_observations_v1"
+        const val OUTDATED_KEY = "analytics_nightly_sleep_observations_v1"
+        const val KEY_OBSERVATIONS = "analytics_nightly_sleep_observations_v2"
         const val SEPARATOR = "|"
         const val MAX_HISTORY_DAYS = 60L
     }
