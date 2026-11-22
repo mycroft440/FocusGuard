@@ -808,25 +808,25 @@ class ProtectedPowerMenuController(
      */
     private fun runNativePressAttempt(press: NativePress, attempt: Int, lookupRetried: Boolean) {
         if (!isCurrentNativePress(press)) return
-        val node = findNativeActionNode(press.action)
+        val target = findNativeActionTarget(press.action)
         // Depois do primeiro toque, um botão que segue na árvore mas já saiu da tela
         // (o menu está fechando) conta como ausente.
-        val controlPresent = node != null &&
-            (attempt == 0 || runCatching { node.isVisibleToUser }.getOrDefault(false))
+        val controlPresent = target != null &&
+            (attempt == 0 || runCatching { target.label.isVisibleToUser }.getOrDefault(false))
         val step = nativePressStep(
             attempt = attempt,
             controlPresent = controlPresent,
             lookupRetried = lookupRetried,
             maxAttempts = if (isPrimaryAction(press.action)) MAX_PRIMARY_PRESS_ATTEMPTS else 1
         )
-        if (step == NativePressStep.PRESS && node != null) {
-            pressNativeNode(press, node, nativePressMethod(press.action, attempt)) { pressed ->
-                recycleSafely(node)
+        if (step == NativePressStep.PRESS && target != null) {
+            pressNativeTarget(press, target, nativePressMethod(press.action, attempt)) { pressed ->
+                target.recycle()
                 onNativePressResult(press, attempt, pressed)
             }
             return
         }
-        recycleSafely(node)
+        target?.recycle()
         if (step == NativePressStep.RETRY_LOOKUP) {
             // SystemUI can identify the window before its actionable children are
             // attached. A single short retry uses a fresh accessibility root without
@@ -876,23 +876,33 @@ class ProtectedPowerMenuController(
         scheduleRecheck()
     }
 
-    /** Aciona o botão nativo pelo método pedido; se ele não for aceito, tenta o outro. */
-    private fun pressNativeNode(
+    /**
+     * Aciona o botão nativo pelo método pedido; se ele não for aceito, tenta o outro.
+     *
+     * O clique de acessibilidade vai só ao controle da própria ação. Sem um controle
+     * desses, o toque vai ao centro do rótulo, onde o próprio menu decide quem o
+     * recebe; nenhum clique sobe até um contêiner, que fecharia o menu.
+     */
+    private fun pressNativeTarget(
         press: NativePress,
-        node: AccessibilityNodeInfo,
+        target: NativeActionTarget,
         method: NativePressMethod,
         onResult: (pressed: Boolean) -> Unit
     ) {
+        val control = target.control
         when (method) {
-            NativePressMethod.CLICK -> if (clickNodeOrParent(node)) {
+            NativePressMethod.CLICK -> if (control != null && clickControl(control)) {
                 onResult(true)
             } else {
-                NativeTap(node, onResult).start()
+                NativeTap(target.tapNode, onResult).start()
             }
-            NativePressMethod.TAP -> NativeTap(node) { delivered ->
+            NativePressMethod.TAP -> NativeTap(target.tapNode) { delivered ->
                 // Uma sequência cancelada (menu fechado, outro cartão tocado) não
                 // pode mais clicar em nada.
-                onResult(delivered || (isCurrentNativePress(press) && clickNodeOrParent(node)))
+                onResult(
+                    delivered ||
+                        (isCurrentNativePress(press) && control != null && clickControl(control))
+                )
             }.start()
         }
     }
@@ -931,6 +941,23 @@ class ProtectedPowerMenuController(
     /** Uma sequência de toques no botão nativo, iniciada por um toque no cartão. */
     private class NativePress(val action: Action, val generation: Int) {
         var delivered = 0
+    }
+
+    /**
+     * O rótulo da ação no menu nativo e o controle que a executa: o próprio rótulo,
+     * o botão em volta dele ou o botão ao lado dele (ícone em cima, texto embaixo).
+     * Sem controle reconhecível, [control] é null e o toque vai ao rótulo.
+     */
+    private inner class NativeActionTarget(
+        val label: AccessibilityNodeInfo,
+        val control: AccessibilityNodeInfo?
+    ) {
+        val tapNode: AccessibilityNodeInfo get() = control ?: label
+
+        fun recycle() {
+            if (control != null && control !== label) recycleSafely(control)
+            recycleSafely(label)
+        }
     }
 
     /**
@@ -1112,18 +1139,160 @@ class ProtectedPowerMenuController(
         return root
     }
 
-    private fun findNativeActionNode(action: Action): AccessibilityNodeInfo? {
+    private fun findNativeActionTarget(action: Action): NativeActionTarget? {
         if (isPrimaryAction(action)) {
             val tracked = findTrackedPowerMenuRootForPrimaryAction()
-            val node = tracked?.let { findActionNode(it, action) }
+            val target = tracked?.let { resolveNativeActionTarget(it, action) }
             recycleSafely(tracked)
-            if (node != null) return node
+            if (target != null) return target
         }
         val root = findPowerMenuRoot() ?: return null
-        val node = findActionNode(root, action)
+        val target = resolveNativeActionTarget(root, action)
         recycleSafely(root)
-        return node
+        return target
     }
+
+    /**
+     * Acha o rótulo de [action] e o controle que a executa.
+     *
+     * Os menus de energia fecham quando o toque ou o clique cai no fundo ou no
+     * contêiner dos botões, e alguns ainda deixam o texto fora do botão. O controle
+     * escolhido nunca contém outra ação do menu: um nó que contém mais de uma é o
+     * contêiner, e acioná-lo fecha o menu sem fazer nada.
+     */
+    private fun resolveNativeActionTarget(
+        root: AccessibilityNodeInfo,
+        action: Action
+    ): NativeActionTarget? {
+        val label = findActionNode(root, action) ?: return null
+        val metrics = service.resources.displayMetrics
+        val otherCenters = otherActionCenters(root, action)
+        val ancestors = mutableListOf<AccessibilityNodeInfo>()
+        var current: AccessibilityNodeInfo? = runCatching { label.parent }.getOrNull()
+        while (current != null && ancestors.size < MAX_PARENT_DEPTH) {
+            ancestors += current
+            current = runCatching { current?.parent }.getOrNull()
+        }
+        recycleSafely(current)
+
+        val labelBox = targetBoxOf(label, action)
+        val ancestorBoxes = ancestors.map { targetBoxOf(it, action) }
+        // Os botões vizinhos ficam no primeiro contêiner que também guarda outra ação.
+        val sharedIndex = PowerMenuActionTargetPolicy.firstSharedContainerIndex(
+            ancestorBoxes,
+            otherCenters
+        )
+        val scope = if (sharedIndex >= 0) ancestors[sharedIndex] else root
+        val nearby = mutableListOf<AccessibilityNodeInfo>()
+        val foreignTextCenters = mutableListOf<TargetPoint>()
+        collectNearbyNodes(scope, action, nearby, foreignTextCenters, depth = 0)
+        val choice = PowerMenuActionTargetPolicy.chooseActionControl(
+            label = labelBox,
+            ancestors = ancestorBoxes,
+            nearby = nearby.map { targetBoxOf(it, action) },
+            otherActionCenters = otherCenters,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels,
+            foreignTextCenters = foreignTextCenters
+        )
+        val control = when (choice.kind) {
+            ControlKind.LABEL -> label
+            ControlKind.ANCESTOR -> ancestors[choice.index]
+            ControlKind.NEARBY -> nearby[choice.index]
+            ControlKind.NONE -> null
+        }
+        ancestors.forEach { if (it !== control) recycleSafely(it) }
+        nearby.forEach { if (it !== control) recycleSafely(it) }
+        if (control == null) {
+            FocusGuardLogger.log(
+                "PowerMenu",
+                "Ação $action sem botão próprio reconhecido no menu nativo: o toque vai ao rótulo"
+            )
+        }
+        return NativeActionTarget(label, control)
+    }
+
+    /** Centro de cada outra ação na tela; um nó que contém um deles é contêiner. */
+    private fun otherActionCenters(root: AccessibilityNodeInfo, action: Action): List<TargetPoint> {
+        val centers = linkedSetOf<TargetPoint>()
+        val bounds = Rect()
+        Action.values().filter { it != action }.forEach { other ->
+            PowerMenuProtectionPolicy.termsFor(other).forEach { term ->
+                runCatching { root.findAccessibilityNodeInfosByText(term) }
+                    .getOrNull()
+                    .orEmpty()
+                    .forEach { node ->
+                        val values = listOf(node.text, node.contentDescription)
+                        val belongsToOther = PowerMenuProtectionPolicy.matchesAction(other, values) &&
+                            !PowerMenuProtectionPolicy.matchesAction(action, values)
+                        val readable = belongsToOther && runCatching {
+                            node.isVisibleToUser && run {
+                                node.getBoundsInScreen(bounds)
+                                !bounds.isEmpty
+                            }
+                        }.getOrDefault(false)
+                        if (readable) centers += TargetPoint(bounds.centerX(), bounds.centerY())
+                        recycleSafely(node)
+                    }
+            }
+        }
+        return centers.toList()
+    }
+
+    /**
+     * Os nós clicáveis em volta do rótulo, candidatos a botão da ação, e o centro de
+     * cada texto que não é desta ação (Cancelar, outro item do menu, um título).
+     */
+    private fun collectNearbyNodes(
+        parent: AccessibilityNodeInfo,
+        action: Action,
+        clickables: MutableList<AccessibilityNodeInfo>,
+        foreignTextCenters: MutableList<TargetPoint>,
+        depth: Int
+    ) {
+        if (depth >= MAX_TREE_DEPTH) return
+        val count = parent.childCount.coerceAtMost(MAX_CHILDREN_PER_NODE)
+        for (index in 0 until count) {
+            if (clickables.size >= MAX_NEARBY_CONTROLS) return
+            val child = runCatching { parent.getChild(index) }.getOrNull() ?: continue
+            collectNearbyNodes(child, action, clickables, foreignTextCenters, depth + 1)
+            val box = targetBoxOf(child, action)
+            if (box.foreignLabel) foreignTextCenters += TargetPoint(box.centerX, box.centerY)
+            if (box.clickable && clickables.size < MAX_NEARBY_CONTROLS) {
+                clickables += child
+            } else {
+                recycleSafely(child)
+            }
+        }
+    }
+
+    private fun targetBoxOf(node: AccessibilityNodeInfo, action: Action): TargetBox {
+        val bounds = Rect()
+        val visible = runCatching {
+            node.getBoundsInScreen(bounds)
+            node.isVisibleToUser
+        }.getOrDefault(false)
+        if (!visible) return TargetBox(0, 0, 0, 0, clickable = false)
+        val ownText = runCatching { listOf(node.text, node.contentDescription) }
+            .getOrDefault(emptyList())
+            .filter { !it.isNullOrBlank() }
+        return TargetBox(
+            left = bounds.left,
+            top = bounds.top,
+            right = bounds.right,
+            bottom = bounds.bottom,
+            clickable = isClickableNode(node),
+            foreignLabel = ownText.isNotEmpty() &&
+                !PowerMenuProtectionPolicy.matchesAction(action, ownText)
+        )
+    }
+
+    // Some OEM accessibility nodes advertise ACTION_CLICK even when isClickable is
+    // false. Asking for ACTION_CLICK is safe: this path never forwards ACTION_LONG_CLICK.
+    private fun isClickableNode(node: AccessibilityNodeInfo): Boolean = runCatching {
+        node.isClickable ||
+            node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+    }.getOrDefault(false)
 
     /**
      * Picks the native control for [action]. A menu can mention an action in more
@@ -1197,41 +1366,10 @@ class ProtectedPowerMenuController(
         ) || resourceIdMatchesAction(action, node.viewIdResourceName)
     }
 
-    private fun clickNodeOrParent(start: AccessibilityNodeInfo): Boolean {
-        val metrics = service.resources.displayMetrics
-        val bounds = Rect()
-        var current: AccessibilityNodeInfo? = start
-        var ownsCurrent = false
-        repeat(MAX_PARENT_DEPTH) {
-            val node = current ?: return false
-            // Um nó que cobre boa parte da tela é o fundo do menu, e clicar nele
-            // costuma fechá-lo. O botão da ação nunca é desse tamanho, e os
-            // ancestrais seguintes são maiores ainda: a subida para aqui.
-            val plausible = runCatching { node.getBoundsInScreen(bounds) }.isSuccess &&
-                isPlausibleActionTarget(
-                    bounds.width(),
-                    bounds.height(),
-                    metrics.widthPixels,
-                    metrics.heightPixels
-                )
-            // Some OEM accessibility nodes advertise ACTION_CLICK even when
-            // isClickable is false. Asking for ACTION_CLICK is safe here because
-            // this path never forwards ACTION_LONG_CLICK.
-            if (plausible && runCatching {
-                    node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                }.getOrDefault(false)
-            ) {
-                if (ownsCurrent) recycleSafely(node)
-                return true
-            }
-            val parent = if (plausible) runCatching { node.parent }.getOrNull() else null
-            if (ownsCurrent) recycleSafely(node)
-            current = parent
-            ownsCurrent = true
-        }
-        if (ownsCurrent) recycleSafely(current)
-        return false
-    }
+    /** Clique de acessibilidade só no controle escolhido; nunca sobe até um contêiner. */
+    private fun clickControl(control: AccessibilityNodeInfo): Boolean = runCatching {
+        control.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }.getOrDefault(false)
 
     /**
      * Returns only a System UI root that independently matches the power-menu
@@ -1454,11 +1592,12 @@ class ProtectedPowerMenuController(
             height: Int,
             screenWidth: Int,
             screenHeight: Int
-        ): Boolean {
-            if (screenWidth <= 0 || screenHeight <= 0) return true
-            val area = width.coerceAtLeast(0).toLong() * height.coerceAtLeast(0)
-            return area * MAX_ACTION_TARGET_SCREEN_FRACTION <= screenWidth.toLong() * screenHeight
-        }
+        ): Boolean = PowerMenuActionTargetPolicy.isPlausibleActionTarget(
+            width,
+            height,
+            screenWidth,
+            screenHeight
+        )
 
         internal fun powerMatchOverlayDecision(
             powerMatched: Boolean,
@@ -1552,6 +1691,7 @@ class ProtectedPowerMenuController(
         }
 
         const val MAX_PARENT_DEPTH = 8
+        const val MAX_NEARBY_CONTROLS = 40
         const val MAX_TREE_DEPTH = 12
         const val MAX_CHILDREN_PER_NODE = 30
         const val MAX_TEXT_VALUES = 300
@@ -1562,7 +1702,8 @@ class ProtectedPowerMenuController(
         const val NATIVE_TAP_TIMEOUT_MILLIS = 1_500L
         const val PRIMARY_PRESS_VERIFY_DELAY_MILLIS = 450L
         const val MAX_PRIMARY_PRESS_ATTEMPTS = 4
-        const val MAX_ACTION_TARGET_SCREEN_FRACTION = 3
+        const val MAX_ACTION_TARGET_SCREEN_FRACTION =
+            PowerMenuActionTargetPolicy.MAX_ACTION_TARGET_SCREEN_FRACTION
         private const val SCORE_VISIBLE = 4
         private const val SCORE_EXACT_LABEL = 2
         const val PRIMARY_ACTION_CONFIRM_WINDOW_MILLIS = 10_000L
