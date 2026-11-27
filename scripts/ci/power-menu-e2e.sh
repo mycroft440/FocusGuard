@@ -125,11 +125,12 @@ install_and_arm() {
 }
 
 post_notifications() {
-    adb shell cmd notification post -t "System update" e2e_update "Restart now" >/dev/null
-    adb shell cmd notification post -t "Hotspot" e2e_hotspot "Turn off" >/dev/null
-    adb shell cmd notification post -t "Atualização" e2e_update_pt "Reiniciar" >/dev/null
-    adb shell cmd notification post -t "Ponto de acesso" e2e_hotspot_pt "Desligar" >/dev/null
+    adb shell cmd notification post -t "'System update'" e2e_update "'Restart now'" >> "$RESULTS" 2>&1
+    adb shell cmd notification post -t Hotspot e2e_hotspot "'Turn off'" >> "$RESULTS" 2>&1
+    adb shell cmd notification post -t "'Atualização'" e2e_update_pt Reiniciar >> "$RESULTS" 2>&1
+    adb shell cmd notification post -t "'Ponto de acesso'" e2e_hotspot_pt Desligar >> "$RESULTS" 2>&1
     sleep 2
+    log "  notificações de teste na lista: $(adb shell dumpsys notification --noredact | grep -c 'e2e_' | tr -d '\r')"
 }
 
 # A proteção não pode abrir sem o menu de energia na tela.
@@ -162,6 +163,7 @@ false_positive_round() {
     adb shell wm dismiss-keyguard >/dev/null 2>&1 || adb shell input keyevent 82
     sleep 2
     go_home
+    adb shell cmd notification cancel e2e_update >/dev/null 2>&1 || true
 
     if [ "$in_shade_first" = "VISIVEL" ] || [ "$in_shade_later" = "VISIVEL" ] || [ "$on_lock" = "VISIVEL" ]; then
         log "  RESULTADO [$label]: a proteção ABRIU SOZINHA"
@@ -198,6 +200,7 @@ emergency_round() {
     log "[atual] Emergência"
     open_power_menu
     log "  proteção antes do toque: $(overlay_state)"
+    shot "atual-emergencia-antes-do-toque"
     tap_card 218
     sleep 5
     local focus
@@ -217,6 +220,7 @@ restart_round() {
     log "[atual] Reiniciar"
     open_power_menu
     log "  proteção antes do toque: $(overlay_state)"
+    shot "atual-reiniciar-antes-do-toque"
     local uptime_before
     uptime_before="$(adb shell cut -d. -f1 /proc/uptime | tr -d '\r')"
     tap_card 326
@@ -241,6 +245,7 @@ restart_round() {
     wait_boot || log "  o aparelho não terminou de ligar"
     become_root
     sleep 15
+    adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
     go_home
     shot "atual-depois-de-reiniciar"
     log "  depois de religar: proteção=$(overlay_state)"
@@ -250,6 +255,7 @@ power_off_round() {
     log "[atual] Desligar"
     open_power_menu
     log "  proteção antes do toque: $(overlay_state)"
+    shot "atual-desligar-antes-do-toque"
     tap_card 397
     local off="nao"
     for _ in $(seq 1 30); do
@@ -268,8 +274,21 @@ power_off_round() {
     fi
 }
 
+# Preparação do aparelho para o teste:
+# - segurar o botão de ligar abre o menu de energia (o padrão do Google é o Assistente);
+# - tela de bloqueio ligada (deslizar), para ela aparecer ao acender a tela;
+# - o shell pode postar notificações (o Android 13+ pede a permissão).
+prepare_device() {
+    adb shell settings put global power_button_long_press 1
+    adb shell locksettings set-disabled false >/dev/null 2>&1 || true
+    adb shell pm grant com.android.shell android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
+    adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+}
+
 become_root
+prepare_device
 log "Aparelho: $(adb shell getprop ro.product.model | tr -d '\r'), Android $(adb shell getprop ro.build.version.release | tr -d '\r')"
+log "Botão de ligar segurado: $(adb shell settings get global power_button_long_press | tr -d '\r') (1 = menu de energia)"
 
 install_and_arm "e2e-apks/old.apk"
 false_positive_round "anterior"
