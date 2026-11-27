@@ -145,6 +145,9 @@ install_and_arm() {
     adb shell settings put secure enabled_accessibility_services "$SVC"
     adb shell settings put secure accessibility_enabled 1
     sleep 8
+    if [ "${E2E_DEVICE_OWNER:-false}" = "true" ]; then
+        log "  Device Owner: $(adb shell dpm set-device-owner "$PKG/com.focusguard.admin.FocusGuardDeviceAdminReceiver" 2>&1 | tr -d '\r' | tail -n 1)"
+    fi
     if ! adb shell "test -f $DB"; then
         log "  banco ainda não existe; abrindo o app uma vez"
         adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
@@ -349,6 +352,7 @@ become_root
 prepare_device
 log "Aparelho: $(adb shell getprop ro.product.model | tr -d '\r'), Android $(adb shell getprop ro.build.version.release | tr -d '\r')"
 log "Botão de ligar segurado: $(adb shell settings get global power_button_long_press | tr -d '\r') (1 = menu de energia)"
+log "Idioma: $(adb shell getprop persist.sys.locale | tr -d '\r') $(adb shell getprop ro.product.locale | tr -d '\r'), Device Owner pedido: ${E2E_DEVICE_OWNER:-false}"
 
 install_and_arm "e2e-apks/old.apk"
 false_positive_round "anterior"
