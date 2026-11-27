@@ -1,0 +1,105 @@
+name: Power Menu E2E
+# Instala o app num emulador Android e testa o menu de energia protegido de ponta a
+# ponta (scripts/ci/power-menu-e2e.sh). O teste de "abrir sozinho" roda também com a
+# detecção anterior, como controle.
+
+on:
+  push:
+    branches: ["ccr-a9210bcc-nfi3yi"]
+    paths:
+      - ".github/workflows/power-menu-e2e.yml"
+      - "scripts/ci/power-menu-e2e.sh"
+      - "app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt"
+      - "app/src/main/java/com/focusguard/service/PowerMenuActionTarget.kt"
+      - "app/src/main/java/com/focusguard/security/PowerMenuProtectionPolicy.kt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: power-menu-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Detecção do menu de energia antes da correção de "abrir sozinho".
+  CONTROL_COMMIT: 3795e520581c4a7b62282097cd6936120f3f44eb
+
+jobs:
+  e2e:
+    name: Menu de energia num emulador Android 14
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - run: chmod +x gradlew
+
+      - name: Build debug APKs (atual e controle)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p e2e-apks
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          cp "$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)" e2e-apks/new.apk
+          git checkout "$CONTROL_COMMIT" -- \
+            app/src/main/java/com/focusguard/security/PowerMenuProtectionPolicy.kt \
+            app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          cp "$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)" e2e-apks/old.apk
+          git checkout HEAD -- \
+            app/src/main/java/com/focusguard/security/PowerMenuProtectionPolicy.kt \
+            app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt
+          ls -la e2e-apks
+
+      - name: Run power menu test on the emulator
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash scripts/ci/power-menu-e2e.sh
+
+      - name: Show results
+        if: always()
+        shell: bash
+        run: cat power-menu-e2e/results.txt || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: power-menu-e2e-${{ github.run_number }}
+          path: power-menu-e2e/
+          if-no-files-found: warn
+          retention-days: 14
