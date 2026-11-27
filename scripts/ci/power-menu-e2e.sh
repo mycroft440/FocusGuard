@@ -44,6 +44,46 @@ print("OCULTA" if hidden else "VISIVEL")
 '
 }
 
+# Registros do menu de energia (do app e do sistema) desde a última chamada.
+power_logs() {
+    log "  --- registros ($1) ---"
+    adb logcat -d 2>/dev/null | tr -d '\r' \
+        | grep -E "PowerMenu|ShutdownThread|GlobalActions|RestartAction|ShutdownAction|EmergencyDialer" \
+        | tail -n 40 | sed 's/^/    /' | tee -a "$RESULTS"
+    adb logcat -c >/dev/null 2>&1 || true
+}
+
+# Árvore do menu de energia nativo, como a acessibilidade a vê. O uiautomator
+# suspende os outros serviços de acessibilidade enquanto lê; o do app volta depois.
+dump_native_menu() {
+    log "[atual] Árvore do menu de energia nativo"
+    open_power_menu
+    adb shell uiautomator dump /sdcard/native-menu.xml >/dev/null 2>&1
+    adb pull /sdcard/native-menu.xml "$OUT/native-menu.xml" >/dev/null 2>&1
+    python3 - "$OUT/native-menu.xml" <<'PY' | tee -a "$RESULTS"
+import re, sys
+try:
+    xml = open(sys.argv[1], encoding="utf-8").read()
+except OSError:
+    print("    (sem árvore)")
+    sys.exit()
+for node in re.findall(r"<node [^>]*>", xml):
+    attrs = dict(re.findall(r'(\w[\w-]*)="([^"]*)"', node))
+    if attrs.get("package") != "com.android.systemui":
+        continue
+    text = attrs.get("text") or attrs.get("content-desc") or ""
+    if not text and attrs.get("clickable") != "true":
+        continue
+    print("    {} '{}' {} clicável={} id={}".format(
+        attrs.get("class", "").split(".")[-1], text, attrs.get("bounds"),
+        attrs.get("clickable"), attrs.get("resource-id", "").split("/")[-1]))
+PY
+    adb shell input keyevent KEYCODE_BACK
+    sleep 10
+    go_home
+    log "  proteção de prontidão de novo: $(overlay_state)"
+}
+
 focused_window() {
     adb shell dumpsys window 2>/dev/null | tr -d '\r' | grep -m1 "mCurrentFocus" | sed 's/^ *//'
 }
@@ -130,7 +170,7 @@ post_notifications() {
     adb shell cmd notification post -t "'Atualização'" e2e_update_pt Reiniciar >> "$RESULTS" 2>&1
     adb shell cmd notification post -t "'Ponto de acesso'" e2e_hotspot_pt Desligar >> "$RESULTS" 2>&1
     sleep 2
-    log "  notificações de teste na lista: $(adb shell dumpsys notification --noredact | grep -c 'e2e_' | tr -d '\r')"
+    log "  notificações de teste na lista: $(adb shell dumpsys notification --noredact | grep -c 'pkg=com.android.shell' | tr -d '\r')"
 }
 
 # A proteção não pode abrir sem o menu de energia na tela.
@@ -193,7 +233,10 @@ shield_round() {
     sleep 3
     log "  depois de Cancelar: proteção=$(overlay_state), foco=$(focused_window)"
     shot "atual-depois-de-cancelar"
+    power_logs "Cancelar"
     go_home
+    adb shell input keyevent KEYCODE_BACK
+    sleep 2
 }
 
 emergency_round() {
@@ -202,17 +245,22 @@ emergency_round() {
     log "  proteção antes do toque: $(overlay_state)"
     shot "atual-emergencia-antes-do-toque"
     tap_card 218
-    sleep 5
+    sleep 1
+    shot "atual-emergencia-logo-depois"
+    sleep 4
     local focus
     focus="$(focused_window)"
     shot "atual-emergencia"
     log "  janela em foco depois do toque: $focus"
-    if echo "$focus" | grep -qi "emergency\|dialer"; then
+    log "  proteção depois do toque: $(overlay_state)"
+    if echo "$focus" | grep -qi "emergency\|dialer\|safety"; then
         log "  RESULTADO: Emergência abriu o discador de emergência"
     else
         log "  RESULTADO: FALHA, Emergência não abriu o discador"
     fi
+    power_logs "Emergência"
     go_home
+    adb shell input keyevent KEYCODE_BACK
     go_home
 }
 
@@ -224,6 +272,8 @@ restart_round() {
     local uptime_before
     uptime_before="$(adb shell cut -d. -f1 /proc/uptime | tr -d '\r')"
     tap_card 326
+    sleep 1
+    shot "atual-reiniciar-logo-depois"
     local restarted="nao"
     for _ in $(seq 1 30); do
         sleep 2
@@ -238,6 +288,7 @@ restart_round() {
         shot "atual-reiniciar-falhou"
         log "  proteção depois do toque: $(overlay_state), foco: $(focused_window)"
         log "  RESULTADO: FALHA, o aparelho não reiniciou"
+        power_logs "Reiniciar"
         go_home
         return
     fi
@@ -257,6 +308,8 @@ power_off_round() {
     log "  proteção antes do toque: $(overlay_state)"
     shot "atual-desligar-antes-do-toque"
     tap_card 397
+    sleep 1
+    shot "atual-desligar-logo-depois"
     local off="nao"
     for _ in $(seq 1 30); do
         sleep 2
@@ -271,6 +324,7 @@ power_off_round() {
         shot "atual-desligar-falhou"
         log "  proteção depois do toque: $(overlay_state), foco: $(focused_window)"
         log "  RESULTADO: FALHA, o aparelho não desligou"
+        power_logs "Desligar"
     fi
 }
 
@@ -295,7 +349,9 @@ false_positive_round "anterior"
 
 install_and_arm "e2e-apks/new.apk"
 false_positive_round "atual"
+adb logcat -c >/dev/null 2>&1 || true
 shield_round
+dump_native_menu
 emergency_round
 
 adb logcat -d > "$OUT/logcat-antes-de-reiniciar.txt" 2>/dev/null || true

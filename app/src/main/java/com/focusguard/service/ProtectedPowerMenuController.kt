@@ -789,6 +789,7 @@ class ProtectedPowerMenuController(
         (value * service.resources.displayMetrics.density + 0.5f).toInt()
 
     private fun performNativeSinglePress(action: Action) {
+        FocusGuardLogger.log("PowerMenu", "Cartão $action tocado na proteção")
         // Com Device Owner, reiniciar usa a API oficial do Android: não depende da
         // árvore de acessibilidade do menu nativo, que muda entre fabricantes.
         if (action == Action.RESTART && rebootWithDeviceOwner()) {
@@ -832,7 +833,17 @@ class ProtectedPowerMenuController(
             maxAttempts = if (isPrimaryAction(press.action)) MAX_PRIMARY_PRESS_ATTEMPTS else 1
         )
         if (step == NativePressStep.PRESS && target != null) {
-            pressNativeTarget(press, target, nativePressMethod(press.action, attempt)) { pressed ->
+            val method = nativePressMethod(press.action, attempt)
+            FocusGuardLogger.log(
+                "PowerMenu",
+                "Ação ${press.action}, tentativa $attempt: $method no ${describeNode(target.tapNode)}" +
+                    " (rótulo ${describeNode(target.label)}, botão próprio=${target.control != null})"
+            )
+            pressNativeTarget(press, target, method) { pressed ->
+                FocusGuardLogger.log(
+                    "PowerMenu",
+                    "Ação ${press.action}, tentativa $attempt: entregue=$pressed"
+                )
                 target.recycle()
                 onNativePressResult(press, attempt, pressed)
             }
@@ -1507,15 +1518,26 @@ class ProtectedPowerMenuController(
         // confirmado: nada mais é acionado no menu nativo depois deste toque.
         cancelNativePress()
         clearPendingPrimaryAction()
+        FocusGuardLogger.log("PowerMenu", "Cancelar tocado na proteção")
         requestNativeBackClose()
     }
+
+    /** Texto, posição e se aceita clique: o que o registro precisa para achar o botão. */
+    private fun describeNode(node: AccessibilityNodeInfo): String = runCatching {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        val label = (node.text ?: node.contentDescription)?.toString().orEmpty().take(40)
+        "'$label' ${bounds.toShortString()} clicável=${isClickableNode(node)}" +
+            " id=${node.viewIdResourceName.orEmpty().substringAfterLast('/')}"
+    }.getOrDefault("nó ilegível")
 
     private fun requestNativeBackClose() {
         if (!overlayVisible) return
         closeStage = CloseStage.BACK_REQUESTED
         closeStageAtElapsed = SystemClock.elapsedRealtime()
         closeBackAttempts += 1
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        val accepted = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        FocusGuardLogger.log("PowerMenu", "Voltar pedido ao menu nativo: aceito=$accepted")
         scheduleRecheck()
     }
 
