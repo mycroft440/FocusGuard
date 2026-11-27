@@ -105,21 +105,27 @@ become_root() {
     wait_boot
 }
 
-# Toque no centro de um cartão da proteção. O cartão é achado pela posição no
-# layout (dp a partir do fim da tela): o menu da proteção fica preso embaixo.
-#   Cancelar 80 · Informações médicas 147 · Emergência 218 · Reiniciar 326 · Desligar 397
+# Toque no centro de um cartão da proteção, na posição que o próprio app registra
+# quando a proteção aparece ("Proteção exibida: POWER_OFF=[l,t][r,b] ...").
+#   $1 = POWER_OFF, RESTART, EMERGENCY, MEDICAL_INFO ou CANCEL
 tap_card() {
-    local from_bottom_dp="$1"
-    local size density width height
-    size="$(adb shell wm size | tr -d '\r' | awk '/Physical size/ {print $3}')"
-    density="$(adb shell wm density | tr -d '\r' | awk '/Physical density/ {print $3}')"
-    width="${size%x*}"
-    height="${size#*x}"
-    local x=$(( width / 2 ))
-    local y
-    y="$(python3 -c "print(round($height - $from_bottom_dp * $density / 160))")"
-    log "  toque em ($x, $y) para o cartão a ${from_bottom_dp} dp do fim da tela"
-    adb shell input tap "$x" "$y"
+    local card="$1"
+    local center
+    center="$(adb logcat -d 2>/dev/null | tr -d '\r' | grep "Proteção exibida:" | tail -n 1 \
+        | python3 -c '
+import re, sys
+line = sys.stdin.read()
+match = re.search(sys.argv[1] + r"=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]", line)
+if match:
+    left, top, right, bottom = map(int, match.groups())
+    print((left + right) // 2, (top + bottom) // 2)
+' "$card")"
+    if [ -z "$center" ]; then
+        log "  FALHA do teste: a proteção não registrou onde fica o cartão $card"
+        return 1
+    fi
+    log "  toque em ($center) no cartão $card"
+    adb shell input tap $center
 }
 
 open_power_menu() {
@@ -229,7 +235,7 @@ shield_round() {
     fi
 
     log "[atual] Cancelar na proteção"
-    tap_card 80
+    tap_card CANCEL
     sleep 3
     log "  depois de Cancelar: proteção=$(overlay_state), foco=$(focused_window)"
     shot "atual-depois-de-cancelar"
@@ -244,7 +250,7 @@ emergency_round() {
     open_power_menu
     log "  proteção antes do toque: $(overlay_state)"
     shot "atual-emergencia-antes-do-toque"
-    tap_card 218
+    tap_card EMERGENCY
     sleep 1
     shot "atual-emergencia-logo-depois"
     sleep 4
@@ -271,7 +277,7 @@ restart_round() {
     shot "atual-reiniciar-antes-do-toque"
     local uptime_before
     uptime_before="$(adb shell cut -d. -f1 /proc/uptime | tr -d '\r')"
-    tap_card 326
+    tap_card RESTART
     sleep 1
     shot "atual-reiniciar-logo-depois"
     local restarted="nao"
@@ -307,7 +313,7 @@ power_off_round() {
     open_power_menu
     log "  proteção antes do toque: $(overlay_state)"
     shot "atual-desligar-antes-do-toque"
-    tap_card 397
+    tap_card POWER_OFF
     sleep 1
     shot "atual-desligar-logo-depois"
     local off="nao"

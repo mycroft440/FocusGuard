@@ -101,6 +101,8 @@ class ProtectedPowerMenuController(
     private var nativePressGeneration = 0
     private val nativePressToken = Any()
     private var activeNativeTap: NativeTap? = null
+    private val actionCards = linkedMapOf<Action, View>()
+    private var cancelButton: View? = null
 
     fun isVisible(): Boolean = overlayVisible
 
@@ -340,6 +342,7 @@ class ProtectedPowerMenuController(
             closeStage = CloseStage.NONE
             closeStageAtElapsed = 0L
             closeBackAttempts = 0
+            current.post(::logShieldLayout)
             true
         }.onFailure { error ->
             FocusGuardLogger.logError(
@@ -526,6 +529,7 @@ class ProtectedPowerMenuController(
             setOnClickListener {
                 requestExplicitCancelClose()
             }
+            cancelButton = this
             setOnLongClickListener { true }
         }, LinearLayout.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -630,7 +634,7 @@ class ProtectedPowerMenuController(
         }
         val label = service.getString(labelRes)
 
-        val row = LinearLayout(service).apply {
+        val row = LinearLayout(service).also { actionCards[action] = it }.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), 0, dp(16), 0)
@@ -1520,6 +1524,22 @@ class ProtectedPowerMenuController(
         clearPendingPrimaryAction()
         FocusGuardLogger.log("PowerMenu", "Cancelar tocado na proteção")
         requestNativeBackClose()
+    }
+
+    /** Onde cada cartão da proteção ficou na tela: o registro mostra o que foi tocado. */
+    private fun logShieldLayout() {
+        if (!overlayVisible) return
+        val cards = buildList {
+            actionCards.forEach { (action, view) -> add("$action=${screenBoundsOf(view)}") }
+            cancelButton?.let { add("CANCEL=${screenBoundsOf(it)}") }
+        }
+        FocusGuardLogger.log("PowerMenu", "Proteção exibida: ${cards.joinToString(" ")}")
+    }
+
+    private fun screenBoundsOf(view: View): String {
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        return "[${location[0]},${location[1]}][${location[0] + view.width},${location[1] + view.height}]"
     }
 
     /** Texto, posição e se aceita clique: o que o registro precisa para achar o botão. */
