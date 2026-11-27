@@ -150,6 +150,13 @@ class ProtectedPowerMenuController(
                 }
             )) {
                 DirectDecision.MATCH -> {
+                    // Uma mudança de conteúdo não é o menu aparecendo: sem a própria
+                    // janela do evento confirmar que é ele, a proteção não abre.
+                    if (contentChangeNeedsWindowConfirmation(event.eventType, overlayVisible)) {
+                        val confirmedRoot = findPowerMenuRoot(event, scanAllWindows = false)
+                            ?: return false
+                        recycleSafely(confirmedRoot)
+                    }
                     if (!overlayVisible) reliableWindowObserved = false
                     directSignalActive = true
                     directMatchedWindowId = event.windowId
@@ -185,7 +192,12 @@ class ProtectedPowerMenuController(
             // different/blank window id, scan all System UI windows and require a
             // real power-menu signature before selecting one. This avoids confusing
             // notification shade/status-bar windows with global actions.
-            val powerMenuRoot = findPowerMenuRoot(event)
+            // Content changes (the status bar clock, a notification updating) arrive
+            // all the time: they check only their own window, never every window.
+            val powerMenuRoot = findPowerMenuRoot(
+                event,
+                scanAllWindows = shouldScanAllWindowsForPowerMenu(event.eventType)
+            )
             if (powerMenuRoot != null) {
                 reliableWindowObserved = true
                 recycleSafely(powerMenuRoot)
@@ -1664,6 +1676,20 @@ class ProtectedPowerMenuController(
         internal fun shouldRecheckPowerOverlayOnScreenOn(
             overlayVisible: Boolean
         ): Boolean = overlayVisible
+
+        /**
+         * Só uma janela nova ou trocada pode ser o menu de energia aparecendo. Uma
+         * mudança de conteúdo é conferida só na janela do próprio evento.
+         */
+        internal fun shouldScanAllWindowsForPowerMenu(eventType: Int): Boolean =
+            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+
+        /** Uma mudança de conteúdo só abre a proteção com a janela do evento confirmando. */
+        internal fun contentChangeNeedsWindowConfirmation(
+            eventType: Int,
+            overlayVisible: Boolean
+        ): Boolean = !overlayVisible &&
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
 
         internal fun shouldInspectExactPowerWindow(
             packageName: String,

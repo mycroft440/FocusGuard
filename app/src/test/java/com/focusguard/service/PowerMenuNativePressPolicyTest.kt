@@ -1,5 +1,6 @@
 package com.focusguard.service
 
+import android.view.accessibility.AccessibilityEvent
 import com.focusguard.security.PowerMenuProtectionPolicy.Action
 import com.focusguard.service.ProtectedPowerMenuController.NativePressMethod
 import com.focusguard.service.ProtectedPowerMenuController.NativePressStep
@@ -107,6 +108,49 @@ class PowerMenuNativePressPolicyTest {
                 screenHeight = 0
             )
         ).isTrue()
+    }
+
+    @Test
+    fun `content changes are checked only in their own window`() {
+        assertThat(
+            ProtectedPowerMenuController.shouldScanAllWindowsForPowerMenu(
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isFalse()
+        assertThat(
+            ProtectedPowerMenuController.shouldScanAllWindowsForPowerMenu(
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            )
+        ).isTrue()
+        assertThat(
+            ProtectedPowerMenuController.shouldScanAllWindowsForPowerMenu(
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `a content change opens the shield only with its window confirming`() {
+        assertThat(
+            ProtectedPowerMenuController.contentChangeNeedsWindowConfirmation(
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                overlayVisible = false
+            )
+        ).isTrue()
+        // Já aberta, a proteção segue o menu sem nova confirmação.
+        assertThat(
+            ProtectedPowerMenuController.contentChangeNeedsWindowConfirmation(
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                overlayVisible = true
+            )
+        ).isFalse()
+        // A janela do menu aparecendo continua abrindo a proteção na hora.
+        assertThat(
+            ProtectedPowerMenuController.contentChangeNeedsWindowConfirmation(
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                overlayVisible = false
+            )
+        ).isFalse()
     }
 
     private fun step(

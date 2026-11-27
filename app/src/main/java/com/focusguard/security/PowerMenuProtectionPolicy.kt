@@ -41,6 +41,33 @@ object PowerMenuProtectionPolicy {
         "Keyguard"
     )
 
+    /**
+     * Partes do id de telas do System UI que nunca são o menu de energia: a cortina
+     * de notificações, a barra de status, a tela de bloqueio e as configurações
+     * rápidas. Elas mostram texto de notificações de qualquer app ("Reiniciar
+     * agora", "Desligar" de um ponto de acesso) e não podem ser tomadas pelo menu.
+     */
+    private val knownNonPowerResourceIdMarkers = setOf(
+        "notification_stack_scroller",
+        "notification_panel",
+        "notification_shade",
+        "notification_shelf",
+        "notification_container",
+        "status_bar",
+        "statusbar",
+        "keyguard",
+        "lock_screen",
+        "lockscreen",
+        "quick_settings",
+        "qs_panel",
+        "qs_frame",
+        "qs_footer",
+        "qs_header",
+        "heads_up",
+        "navigation_bar",
+        "volume_dialog"
+    )
+
     private val termsByAction = mapOf(
         Action.POWER_OFF to listOf("Desligar", "Power off", "Turn off", "Apagar"),
         Action.RESTART to listOf("Reiniciar", "Restart", "Reboot"),
@@ -136,10 +163,13 @@ object PowerMenuProtectionPolicy {
         // identity evidence for a power menu. Outside a known global-actions class,
         // require distinct rendered evidence for both primary power actions.
         //
-        // This is intentionally a single pass with no intermediate list allocation:
-        // the accessibility service executes this classifier on the latency-sensitive
-        // interception path.
-        return hasIndependentPrimaryPowerActions(values)
+        // Without the class, the two actions must be buttons named exactly after
+        // them ("Desligar" and "Reiniciar"), never sentences that merely mention
+        // them: the notification shade and the lock screen show notifications from
+        // any app ("Reiniciar agora", "Toque para desligar"), and those were taken
+        // for the power menu, which then opened on its own. A tree that carries a
+        // shade, status bar, lock screen or quick settings id is never the menu.
+        return hasIndependentPrimaryPowerActions(values) && !hasNonPowerSurfaceId(values)
     }
 
     private fun hasIndependentPrimaryPowerActions(values: Iterable<CharSequence?>): Boolean {
@@ -148,19 +178,29 @@ object PowerMenuProtectionPolicy {
         var powerOffEvidence = false
         var restartEvidence = false
 
+        // Single pass with no intermediate list allocation: the accessibility service
+        // runs this classifier on the latency-sensitive interception path.
         for (value in values) {
-            val normalizedValue = normalize(value?.toString().orEmpty())
-            if (normalizedValue.isBlank()) continue
-            val matchesPowerOff = powerOffTerms.any(normalizedValue::contains)
-            val matchesRestart = restartTerms.any(normalizedValue::contains)
-
-            // A single combined shortcut/description is not two independent actions.
-            if (matchesPowerOff && !matchesRestart) powerOffEvidence = true
-            if (matchesRestart && !matchesPowerOff) restartEvidence = true
+            val normalizedValue = normalize(value?.toString().orEmpty()).trim()
+            if (normalizedValue.isEmpty()) continue
+            if (normalizedValue in powerOffTerms) powerOffEvidence = true
+            if (normalizedValue in restartTerms) restartEvidence = true
             if (powerOffEvidence && restartEvidence) return true
         }
         return false
     }
+
+    /** O valor é o id de uma tela do System UI que nunca é o menu de energia. */
+    private fun hasNonPowerSurfaceId(values: Iterable<CharSequence?>): Boolean =
+        values.any { value ->
+            val text = value?.toString() ?: return@any false
+            val idStart = text.indexOf(RESOURCE_ID_SEPARATOR)
+            if (idStart < 0) return@any false
+            val idName = text.substring(idStart + RESOURCE_ID_SEPARATOR.length).lowercase(Locale.ROOT)
+            knownNonPowerResourceIdMarkers.any(idName::contains)
+        }
+
+    private const val RESOURCE_ID_SEPARATOR = ":id/"
 
     private fun normalize(value: String): String =
         Normalizer.normalize(value, Normalizer.Form.NFD)

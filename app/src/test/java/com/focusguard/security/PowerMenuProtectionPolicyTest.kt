@@ -240,4 +240,79 @@ class PowerMenuProtectionPolicyTest {
             PowerMenuProtectionPolicy.isExactActionLabel(Action.RESTART, listOf("Desligar"))
         ).isFalse()
     }
+
+    @Test
+    fun `notifications that mention the actions never make a power menu`() {
+        // Cortina ou tela de bloqueio com notificações de outros apps: frases que
+        // citam as ações não são os botões do menu.
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf(
+                    "Atualização do sistema pronta",
+                    "Reiniciar agora",
+                    "Ponto de acesso ativo",
+                    "Toque para desligar"
+                )
+            )
+        ).isEqualTo(DirectDecision.UNKNOWN)
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.TextView",
+                values = listOf("Restart to update", "Turn off battery saver")
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `notification shade with exact action buttons is still not a power menu`() {
+        // Dois botões de notificação com o nome exato das ações, dentro da cortina.
+        val shade = listOf(
+            "com.android.systemui:id/notification_stack_scroller",
+            "Desligar",
+            "Reiniciar"
+        )
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = shade
+            )
+        ).isFalse()
+        listOf("status_bar_container", "keyguard_bottom_area", "qs_frame").forEach { id ->
+            assertThat(
+                PowerMenuProtectionPolicy.isPowerMenu(
+                    packageName = "com.android.systemui",
+                    className = "android.widget.FrameLayout",
+                    values = listOf("Desligar", "Reiniciar", "com.android.systemui:id/$id")
+                )
+            ).isFalse()
+        }
+    }
+
+    @Test
+    fun `a real menu without its class is still recognised by its buttons`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf(
+                    "com.android.systemui:id/global_actions_view",
+                    " Desligar ",
+                    "REINICIAR",
+                    "Chamada de emergência"
+                )
+            )
+        ).isTrue()
+        // A classe do menu continua bastando, com qualquer id na árvore.
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.globalactions.GlobalActionsDialogLite",
+                values = listOf("com.android.systemui:id/keyguard_message_area")
+            )
+        ).isEqualTo(DirectDecision.MATCH)
+    }
 }
